@@ -24,7 +24,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Public paths — always allowed
-  const isPublic = pathname.startsWith('/login') || pathname.startsWith('/api/')
+  const isPublic = pathname === '/' || pathname.startsWith('/login') || pathname.startsWith('/api/')
   if (!user && !isPublic) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
