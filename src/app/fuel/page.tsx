@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import KpiCard from '@/components/ui/KpiCard'
 import LoadBadge from '@/components/ui/LoadBadge'
@@ -7,6 +7,12 @@ import { supabase } from '@/lib/supabase'
 import { SAMPLE_FUEL } from '@/lib/store'
 import Attachments from '@/components/ui/Attachments'
 import type { FuelEntry } from '@/types'
+
+type LovesStore = {
+  siteId: number; name: string; city: string; state: string; address: string | null
+  miles: number | null; diesel: number | null; reefer: number | null
+  showers: { total: number; available: number; queued: number; active: boolean } | null
+}
 
 const fmtM = (n: number) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const inp: React.CSSProperties = { width: '100%', padding: '.8rem 1rem', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface-2)', outline: 'none', fontSize: 'var(--text-sm)' }
@@ -35,8 +41,15 @@ export default function Fuel() {
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState<F>(BLANK)
   const [saving, setSaving] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const [scanError, setScanError] = useState('')
+  const [lovesOpen, setLovesOpen] = useState(false)
+  const [lovesLoading, setLovesLoading] = useState(false)
+  const [lovesError, setLovesError] = useState('')
+  const [lovesStores, setLovesStores] = useState<LovesStore[]>([])
   const [deleteTarget, setDeleteTarget] = useState<FuelEntry | null>(null)
   const [attachTarget, setAttachTarget] = useState<FuelEntry | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!supabase) { setEntries(SAMPLE_FUEL); setLoading(false); return }
@@ -85,6 +98,64 @@ export default function Fuel() {
     if (!supabase) { setEntries(es => es.map(e => e.id === entry.id ? { ...e, receiptSaved: next } : e)); return }
     const { data, error } = await supabase.from('fuel_entries').update({ receipt_saved: next }).eq('id', entry.id).select().single()
     if (!error && data) setEntries(es => es.map(e => e.id === entry.id ? fromDB(data) : e))
+  }
+
+  async function handleScanReceipt(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setScanning(true)
+    setScanError('')
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/extract-receipt', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok) { setScanError(data.error || 'Scan failed'); return }
+      setForm(f => ({
+        ...f,
+        date: data.date || f.date,
+        location: data.location || f.location,
+        fuelType: (['Tractor', 'Reefer', 'DEF'].includes(data.fuelType) ? data.fuelType : f.fuelType) as F['fuelType'],
+        gallons: data.gallons != null ? String(data.gallons) : f.gallons,
+        pricePerGal: data.pricePerGal != null ? String(data.pricePerGal) : f.pricePerGal,
+        totalCost: data.totalCost != null ? String(data.totalCost) : f.totalCost,
+        notes: data.notes ? (f.notes ? f.notes + ' | ' + data.notes : data.notes) : f.notes,
+      }))
+    } catch {
+      setScanError('Network error — try again')
+    } finally {
+      setScanning(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function fetchLovesPrices() {
+    setLovesOpen(true)
+    if (lovesStores.length) return
+    setLovesLoading(true)
+    setLovesError('')
+    try {
+      let url = '/api/loves-fuel'
+      if (navigator.geolocation) {
+        const pos = await new Promise<GeolocationPosition | null>(r =>
+          navigator.geolocation.getCurrentPosition(p => r(p), () => r(null), { timeout: 5000 })
+        )
+        if (pos) url += `?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`
+      }
+      const res = await fetch(url)
+      const data = await res.json()
+      if (!res.ok || data.error === 'not_configured') {
+        setLovesError(data.error === 'not_configured'
+          ? 'LOVES_API_URL not set — see setup instructions.'
+          : (data.error || 'Failed to load prices'))
+        return
+      }
+      setLovesStores(data)
+    } catch {
+      setLovesError('Network error')
+    } finally {
+      setLovesLoading(false)
+    }
   }
 
   const totalCost = entries.reduce((a, e) => a + (e.totalCost || 0), 0)
@@ -151,13 +222,68 @@ export default function Fuel() {
           </div>
 
           <form onSubmit={handleSave} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 20, padding: '1.5rem', display: 'grid', gap: '1rem' }}>
-            <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 800 }}>Add fuel entry</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 800 }}>Add fuel entry</h2>
+              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={scanning}
+                style={{ padding: '.45rem .9rem', borderRadius: 10, border: '1px solid var(--primary)', color: 'var(--primary)', fontSize: 'var(--text-xs)', fontWeight: 700, opacity: scanning ? .6 : 1, whiteSpace: 'nowrap' }}>
+                {scanning ? 'Scanning…' : 'Scan receipt'}
+              </button>
+            </div>
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleScanReceipt} style={{ display: 'none' }} />
+            {scanError && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--error)', background: 'rgba(209,99,167,.1)', padding: '.6rem .8rem', borderRadius: 8 }}>{scanError}</div>}
             {([['date', 'Date', 'date'], ['location', 'Location', 'text'], ['gallons', 'Gallons', 'number'], ['pricePerGal', 'Price/gal', 'number']] as [keyof F, string, string][]).map(([k, label, type]) => (
               <div key={k}>
                 <label style={lbl}>{label}</label>
                 <input value={form[k]} onChange={e => set(k, e.target.value)} type={type} step={type === 'number' ? 'any' : undefined} style={inp} />
               </div>
             ))}
+            {/* Love's live prices */}
+            <div>
+              <button type="button" onClick={fetchLovesPrices}
+                style={{ width: '100%', padding: '.5rem', borderRadius: 10, border: '1px solid var(--border)', background: lovesOpen ? 'var(--surface-off)' : 'none', color: 'var(--primary)', fontSize: 'var(--text-xs)', fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Love&apos;s live prices</span>
+                <span style={{ fontSize: '.8em', opacity: .6 }}>{lovesOpen ? '▲' : '▼'}</span>
+              </button>
+              {lovesOpen && (
+                <div style={{ marginTop: 6, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                  {lovesLoading && <div style={{ padding: '.8rem', fontSize: 'var(--text-xs)', color: 'var(--muted)', textAlign: 'center' }}>Fetching prices…</div>}
+                  {lovesError && <div style={{ padding: '.8rem', fontSize: 'var(--text-xs)', color: 'var(--error)' }}>{lovesError}</div>}
+                  {!lovesLoading && !lovesError && lovesStores.length === 0 && (
+                    <div style={{ padding: '.8rem', fontSize: 'var(--text-xs)', color: 'var(--muted)', textAlign: 'center' }}>No diesel prices found</div>
+                  )}
+                  {lovesStores.map(s => {
+                    const sh = s.showers
+                    const showerColor = !sh ? 'var(--muted)' : !sh.active ? 'var(--muted)' : sh.available > 0 ? 'var(--success)' : 'var(--error)'
+                    const showerLabel = !sh ? null : !sh.active ? 'Showers closed' : `${sh.available}/${sh.total} showers${sh.queued > 0 ? ` · ${sh.queued} in line` : ''}`
+                    return (
+                      <div key={s.siteId} style={{ padding: '.55rem .75rem', borderBottom: '1px solid var(--border)', display: 'grid', gap: '.2rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>{s.name} · {s.city}, {s.state}{s.miles != null ? ` · ${s.miles.toFixed(0)} mi` : ''}</div>
+                          {showerLabel && <div style={{ fontSize: 'var(--text-xs)', color: showerColor, whiteSpace: 'nowrap', marginLeft: 8 }}>{showerLabel}</div>}
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {s.diesel != null && (
+                            <button type="button"
+                              onClick={() => { set('pricePerGal', String(s.diesel)); set('fuelType', 'Tractor'); set('location', s.address || `Love's ${s.name}`) }}
+                              style={{ padding: '.25rem .5rem', borderRadius: 6, border: '1px solid var(--border)', fontSize: 'var(--text-xs)', background: 'var(--surface-2)', cursor: 'pointer' }}>
+                              Diesel {fmtM(s.diesel)}
+                            </button>
+                          )}
+                          {s.reefer != null && (
+                            <button type="button"
+                              onClick={() => { set('pricePerGal', String(s.reefer)); set('fuelType', 'Reefer'); set('location', s.address || `Love's ${s.name}`) }}
+                              style={{ padding: '.25rem .5rem', borderRadius: 6, border: '1px solid var(--primary)', fontSize: 'var(--text-xs)', background: 'var(--surface-2)', cursor: 'pointer', color: 'var(--primary)' }}>
+                              Reefer {fmtM(s.reefer!)}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
             <div>
               <label style={lbl}>Total cost $</label>
               <input
