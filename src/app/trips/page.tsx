@@ -1,0 +1,1243 @@
+'use client'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
+import TopBar from '@/components/layout/TopBar'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+type InputTab  = 'form' | 'paste' | 'file' | 'ai'
+
+type AIResult = {
+  recommendation: 'ACCEPT' | 'DENY' | 'REVIEW'
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW'
+  summary: string
+  parsed: {
+    origin: string | null; dest: string | null; miles: number | null
+    cpm: number | null; weight: number | null; loadNum: string | null
+    broker: string | null; commodity: string | null; depart: string | null
+    deadhead: number | null; totalPay: number | null
+  }
+  financials: {
+    grossPay: number | null; fuelCost: number | null; netPay: number | null
+    cpm: number | null; profitScore: number; ratePerMile: number | null
+  }
+  hos: { legal: boolean; driveNeeded: number | null; driveAvailable: number | null; note: string }
+  legal: { weightOk: boolean | null; heightOk: boolean | null; notes: string[] }
+  redFlags: string[]
+  greenFlags: string[]
+  reasons: string[]
+  suggestedReply: string
+}
+type StopType  = 'start' | 'delivery' | 'fuel' | 'break30' | 'rest10' | 'stretch' | 'pet'
+
+type Truck = {
+  truckNum: string; year: string; make: string; model: string; vin: string; hp: string
+  mpgLoaded: number; mpgEmpty: number; tankGal: number; fuelPrice: number
+  truckHeight: number; trailerNum: string; trailerType: string
+  trailerLen: number; trailerHeight: number; axles: string
+  maxWeight: number; gvwr: number; cdlClass: string; endorsements: string
+}
+
+type TripOptions = { pet: boolean; team: boolean; haz: boolean }
+
+type Stop = {
+  type: StopType; icon: string; color: string; label: string
+  location: string; address?: string; eta: string; dur: string
+  mi: number; hosStr: string; note: string; tag?: string
+}
+
+type GPSStop = {
+  order: number; typeLabel: string; icon: string
+  name: string; address: string; eta: string; mi: number; tag?: string
+}
+
+type LegalCheck = {
+  label: string; val: string; legal: string; ok: boolean; warn: boolean
+}
+
+type Plan = {
+  stops: Stop[]; gpsStops: GPSStop[]; warnings: string[]
+  hos_compliant: boolean; total_miles: number
+  drive_time: string; trip_time: string; eta: string; depart_display: string
+  fuel_cost: number; est_pay: number; net: number; cpm: number
+  origin: string; dest: string; loadNum: string; broker: string
+  commodity: string; weight: number; deadhead: number; deadheadCost: number
+  legalChecks: LegalCheck[] | null
+}
+
+type Parsed = {
+  origin?: string; dest?: string; miles?: string; loadNum?: string
+  cpm?: string; weight?: string; broker?: string; commodity?: string; depart?: string
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const DEFAULT_TRUCK: Truck = {
+  truckNum: '', year: '', make: '', model: '', vin: '', hp: '',
+  mpgLoaded: 6.2, mpgEmpty: 8.0, tankGal: 120, fuelPrice: 3.85,
+  truckHeight: 13.5, trailerNum: '', trailerType: '53dry',
+  trailerLen: 53, trailerHeight: 13.5, axles: '5',
+  maxWeight: 80000, gvwr: 80000, cdlClass: 'A', endorsements: '',
+}
+
+const FUEL_STOPS = [
+  { name: "Love's #478",        loc: 'Tonopah, NV',        address: '1170 US-95, Tonopah, NV 89049',                     range: [70,  100] as [number,number] },
+  { name: "Love's #255",        loc: 'Winnemucca, NV',     address: '4844 W Winnemucca Blvd, Winnemucca, NV 89445',      range: [200, 240] as [number,number] },
+  { name: 'Pilot Flying J #347',loc: 'Battle Mountain, NV',address: '650 W Front St, Battle Mountain, NV 89820',         range: [245, 275] as [number,number] },
+  { name: 'TA Travel Center',   loc: 'Fernley, NV',        address: '1451 Newlands Dr E, Fernley, NV 89408',             range: [280, 300] as [number,number] },
+  { name: 'Petro Iron Skillet', loc: 'Sparks, NV',         address: '1015 Greg St, Sparks, NV 89431',                    range: [320, 350] as [number,number] },
+  { name: 'Pilot Flying J',     loc: 'Las Vegas, NV',      address: '5390 Boulder Hwy, Las Vegas, NV 89122',             range: [120, 145] as [number,number] },
+]
+
+const SAVED_LANES = [
+  { label: 'Amargosa → Walmart DC Sparks',     origin: 'Amargosa Valley, NV',      dest: 'Walmart DC Sparks, NV',       miles: 335 },
+  { label: 'PetSmart DC41 → Spice Island',     origin: 'PetSmart DC41, McCarran, NV', dest: 'Spice Island, Sparks, NV',  miles: 20  },
+]
+
+const LEGAL = { maxHeight: 13.5, maxLength: 53, grossWeight: 80000 }
+
+// ─── HOS Engine ───────────────────────────────────────────────────────────────
+const fmtMins = (m: number) =>
+  m < 60 ? `${Math.round(m)}m` : `${Math.floor(m/60)}h${Math.round(m%60) > 0 ? ` ${Math.round(m%60)}m` : ''}`
+
+const minsToTime = (m: number) => {
+  const n = ((m % 1440) + 1440) % 1440
+  const h = Math.floor(n/60), min = Math.floor(n%60)
+  const ap = h >= 12 ? 'PM' : 'AM', h12 = h%12 || 12
+  return `${h12}:${String(min).padStart(2,'0')} ${ap}`
+}
+
+const hosLabel = (hosMin: number) =>
+  `${Math.floor(hosMin/60)}h ${Math.round(hosMin%60)}m / 11h`
+
+const getFuelStop = (mi: number) => {
+  const f = FUEL_STOPS.find(s => mi >= s.range[0] && mi <= s.range[1])
+  return f
+    ? { label: `${f.name} — ${f.loc}`, address: f.address }
+    : { label: `Mile ~${Math.round(mi)} — verify on Trucker Path`, address: '' }
+}
+
+function buildPlan(inputs: {
+  origin: string; dest: string; totalMiles: number; departMin: number
+  cpm: number; hasPet: boolean; truck: Truck | null
+}): Plan {
+  const { origin, dest, totalMiles, departMin, cpm, hasPet, truck } = inputs
+  const mpg       = truck?.mpgLoaded  ?? 6.2
+  const fuelPrice = truck?.fuelPrice  ?? 3.85
+  const tankGal   = truck?.tankGal    ?? 120
+  const MPM       = 60 / 58                      // minutes per mile @ 58 mph avg
+
+  const stops: Stop[] = []
+  const warnings: string[] = []
+  let clock = departMin, drive = 0, hos = 0, onDuty = 0, miles = 0
+  let nextStretch = 120, nextPet = hasPet ? 120 : 999999
+
+  const rangePerTank  = tankGal * mpg
+  const numFuel       = Math.max(1, Math.ceil(totalMiles / (rangePerTank * 0.85)))
+  const fuelMiles     = Array.from({ length: numFuel }, (_, i) =>
+    Math.round(totalMiles / (numFuel + 1) * (i + 1)))
+
+  stops.push({
+    type: 'start', icon: '🚛', color: 'var(--primary)',
+    label: 'Departure — Pre-trip inspection', location: origin,
+    eta: minsToTime(clock), dur: '—', mi: 0, hosStr: '0h driving',
+    note: 'Check lights, tires, brakes, fluids, cargo securement. Log on-duty not driving.',
+  })
+
+  while (miles < totalMiles) {
+    const rem = totalMiles - miles
+    const candidates = [
+      nextStretch - drive, 480 - drive, 660 - hos, 840 - onDuty,
+      hasPet ? nextPet - drive : 999999, rem * MPM,
+    ].filter(x => x > 0)
+    const dt = Math.min(...candidates)
+    const dm = Math.min(dt / MPM, rem)
+    miles += dm; clock += dt; drive += dt; hos += dt; onDuty += dt
+    if (miles >= totalMiles - 0.5) break
+
+    // Fuel stop
+    const fi = fuelMiles.findIndex(f => Math.abs(f - miles) < 15)
+    if (fi !== -1) {
+      fuelMiles.splice(fi, 1)
+      const fs = getFuelStop(miles)
+      stops.push({
+        type: 'fuel', icon: '⛽', color: 'var(--warn)',
+        label: '⛽ Fuel Stop', location: fs.label, address: fs.address,
+        eta: minsToTime(clock), dur: '15–20 min', mi: Math.round(miles),
+        hosStr: hosLabel(hos),
+        note: `Fill up. Check oil/coolant, tire pressure. Approx $${fuelPrice.toFixed(3)}/gal.`,
+      })
+      clock += 18; onDuty += 18; continue
+    }
+
+    // Mandatory 30-min break (after 8h consecutive drive)
+    if (drive >= 480) {
+      stops.push({
+        type: 'break30', icon: '⏸', color: 'var(--error)',
+        label: '⏸ Mandatory 30-min Break',
+        location: `Mile ~${Math.round(miles)} — rest area or truck stop`,
+        eta: minsToTime(clock), dur: '30 min', mi: Math.round(miles),
+        hosStr: hosLabel(hos),
+        note: 'FMCSA §395.3(a)(3): Required before 8h consecutive drive. Log off-duty or sleeper berth.',
+        tag: 'DOT REQUIRED — log in ELD',
+      })
+      clock += 30; onDuty += 30; drive = 0; nextStretch = 120
+      if (hasPet) nextPet = 120
+      continue
+    }
+
+    // 11-hour driving limit → 10-hr rest
+    if (hos >= 660) {
+      warnings.push(`11-hour HOS limit reached at mile ~${Math.round(miles)}. 10-hr rest required.`)
+      stops.push({
+        type: 'rest10', icon: '🛑', color: 'var(--error)',
+        label: '🛑 10-Hour Rest — 11h Driving Limit',
+        location: `Mile ~${Math.round(miles)} — secure truck stop`,
+        eta: minsToTime(clock), dur: '10 hrs minimum', mi: Math.round(miles),
+        hosStr: '11h — LIMIT',
+        note: 'FMCSA §395.3: 11h driving reached. Must rest 10 consecutive off-duty hours before resuming.',
+        tag: 'HOS VIOLATION RISK',
+      })
+      clock += 600; hos = 0; drive = 0; onDuty = 0; nextStretch = 120
+      if (hasPet) nextPet = 120
+      continue
+    }
+
+    // 14-hour on-duty window → 10-hr rest
+    if (onDuty >= 840) {
+      warnings.push(`14-hour on-duty window at mile ~${Math.round(miles)}.`)
+      stops.push({
+        type: 'rest10', icon: '🛑', color: 'var(--error)',
+        label: '🛑 14-Hour Window Reached',
+        location: `Mile ~${Math.round(miles)} — secure parking`,
+        eta: minsToTime(clock), dur: '10 hrs minimum', mi: Math.round(miles),
+        hosStr: '14h window — STOP',
+        note: 'FMCSA §395.3(b): 14-hour on-duty window expired. No driving until 10-hr off-duty complete.',
+        tag: '14-HR WINDOW EXPIRED',
+      })
+      clock += 600; hos = 0; drive = 0; onDuty = 0; nextStretch = 120
+      if (hasPet) nextPet = 120
+      continue
+    }
+
+    // Stretch every 2h
+    if (drive >= nextStretch) {
+      stops.push({
+        type: 'stretch', icon: '🚶', color: '#e8af34',
+        label: '🚶 Stretch Break',
+        location: `Mile ~${Math.round(miles)} — exit or rest area`,
+        eta: minsToTime(clock), dur: '10–15 min', mi: Math.round(miles),
+        hosStr: hosLabel(hos),
+        note: 'Recommended every 2h: stretch, hydrate, walk the trailer. Quick visual cargo inspection.',
+      })
+      clock += 12; onDuty += 12; nextStretch = drive + 120
+      if (hasPet) nextPet = drive + 60
+      continue
+    }
+
+    // Pet break
+    if (hasPet && drive >= nextPet) {
+      stops.push({
+        type: 'pet', icon: '🐾', color: '#fdab43',
+        label: '🐾 Pet Break',
+        location: `Mile ~${Math.round(miles)} — pet-friendly rest area`,
+        eta: minsToTime(clock), dur: '15–20 min', mi: Math.round(miles),
+        hosStr: hosLabel(hos),
+        note: 'Walk, water, waste. Never leave pet in cab above 70°F ambient. Use rest areas with grass.',
+      })
+      clock += 20; onDuty += 20; nextPet = drive + 120
+      continue
+    }
+    break
+  }
+
+  stops.push({
+    type: 'delivery', icon: '✅', color: 'var(--success)',
+    label: '✅ Arrival — Delivery', location: dest,
+    eta: minsToTime(clock), dur: '—', mi: totalMiles,
+    hosStr: hosLabel(hos),
+    note: 'Check in at guard shack. Document arrival — detention clock starts if not unloaded in 2h. Get lumper receipt.',
+  })
+
+  // GPS stop list (actionable stops only)
+  const GPS_TYPES: StopType[] = ['start','fuel','break30','rest10','delivery']
+  const gpsStops: GPSStop[] = stops
+    .filter(s => GPS_TYPES.includes(s.type))
+    .map((s, i) => ({
+      order: i + 1,
+      typeLabel:
+        s.type === 'start'    ? 'ORIGIN'               :
+        s.type === 'delivery' ? 'DESTINATION'           :
+        s.type === 'fuel'     ? 'FUEL STOP'             :
+        s.type === 'break30'  ? 'MANDATORY 30-MIN BREAK':
+                                '10-HR REST STOP',
+      icon:    s.icon,
+      name:    s.location,
+      address: s.address ?? '',
+      eta:     s.eta,
+      mi:      s.mi,
+      tag:     s.tag,
+    }))
+
+  const driveMin = Math.round(totalMiles / 58 * 60)
+  const totalFuel = (totalMiles / mpg) * fuelPrice
+
+  return {
+    stops, gpsStops, warnings,
+    hos_compliant: warnings.length === 0,
+    total_miles: totalMiles,
+    drive_time: fmtMins(driveMin),
+    trip_time:  fmtMins(clock - departMin),
+    eta:        minsToTime(clock),
+    depart_display: minsToTime(departMin),
+    fuel_cost: totalFuel,
+    est_pay:   totalMiles * cpm,
+    net:       totalMiles * cpm - totalFuel,
+    cpm, origin, dest,
+    loadNum: '', broker: '', commodity: '',
+    weight: 0, deadhead: 0, deadheadCost: 0,
+    legalChecks: null,
+  }
+}
+
+function checkLegal(truck: Truck, weight: number, haz: boolean): LegalCheck[] {
+  const maxH = Math.max(truck.truckHeight, truck.trailerHeight)
+  const checks: LegalCheck[] = [
+    {
+      label: 'Height', val: `${maxH}′`, legal: `${LEGAL.maxHeight}′ max`,
+      ok: maxH <= LEGAL.maxHeight, warn: maxH > 13.0 && maxH <= LEGAL.maxHeight,
+    },
+    {
+      label: 'Trailer length', val: `${truck.trailerLen}′`, legal: `${LEGAL.maxLength}′ max`,
+      ok: truck.trailerLen <= LEGAL.maxLength, warn: false,
+    },
+  ]
+  if (weight > 0) checks.push({
+    label: 'Gross weight', val: `${weight.toLocaleString()} lbs`,
+    legal: `${LEGAL.grossWeight.toLocaleString()} lbs max`,
+    ok: weight <= LEGAL.grossWeight, warn: weight > 75000 && weight <= LEGAL.grossWeight,
+  })
+  if (haz) checks.push({
+    label: 'Hazmat routing', val: 'Active', legal: 'Restricted tunnels/routes',
+    ok: false, warn: true,
+  })
+  return checks
+}
+
+function parseText(txt: string): Parsed {
+  const r: Parsed = {}
+  const mi = txt.match(/(\d[\d,]+)\s*(loaded\s+)?miles?/i)
+  if (mi) r.miles = mi[1].replace(/,/g,'')
+  const ln = txt.match(/(?:load|order|ref)\s*[#:]?\s*([A-Z0-9\-]{4,20})/i)
+  if (ln) r.loadNum = ln[1]
+  const cp = txt.match(/\$?\s*([0-9]+\.[0-9]+)\s*(?:\/\s*mi|cpm|per\s+mile)/i)
+  if (cp) r.cpm = cp[1]
+  const wt = txt.match(/([\d,]+)\s*(?:lbs?|pounds?)/i)
+  if (wt) r.weight = wt[1].replace(/,/g,'')
+  for (const p of [/pickup\s*[:\-]\s*([^\n;—]+(?:,\s*[A-Z]{2})?)/i, /from\s*[:\-]?\s*([^\n;—]+(?:,\s*[A-Z]{2})?)/i, /origin\s*[:\-]\s*([^\n;—]+)/i]) {
+    const m = txt.match(p); if (m) { r.origin = m[1].trim(); break }
+  }
+  for (const p of [/deliver(?:y|to)?\s*[:\-]\s*([^\n;—]+(?:,\s*[A-Z]{2})?)/i, /to\s*[:\-]?\s*([^\n;—]+(?:,\s*[A-Z]{2})?)/i, /destination\s*[:\-]\s*([^\n;—]+)/i]) {
+    const m = txt.match(p); if (m) { r.dest = m[1].trim(); break }
+  }
+  const brk = txt.match(/(?:broker|carrier)\s*[:\-]\s*([^\n]{2,40})/i)
+  if (brk) r.broker = brk[1].trim()
+  const com = txt.match(/(?:commodity|freight|cargo)\s*[:\-]\s*([^\n]{2,50})/i)
+  if (com) r.commodity = com[1].trim()
+  const tm = txt.match(/(?:pickup\s+time|depart|departure)[:\s]+(\d{1,2}:\d{2}\s*[ap]m?|\d{1,2}\s*[ap]m)/i)
+  if (tm) {
+    const hm = tm[1].trim().toLowerCase().match(/(\d{1,2}):?(\d{2})?\s*([ap]m?)/)
+    if (hm) {
+      let h = parseInt(hm[1]); const mn = hm[2] || '00'
+      if (hm[3] === 'pm' && h < 12) h += 12; if (hm[3] === 'am' && h === 12) h = 0
+      r.depart = `${String(h).padStart(2,'0')}:${mn}`
+    }
+  }
+  return r
+}
+
+// ─── Shared styles ────────────────────────────────────────────────────────────
+const S = {
+  card:   { background:'var(--surface)', border:'1px solid var(--border)', borderRadius:18, padding:'1.2rem', boxShadow:'0 2px 8px rgba(0,0,0,.2)' } as React.CSSProperties,
+  inp:    { width:'100%', padding:'.55rem .85rem', borderRadius:8, border:'1px solid var(--border)', background:'var(--surface-2)', color:'var(--text)', fontSize:'var(--text-sm)', outline:'none', boxSizing:'border-box' as const },
+  lbl:    { display:'block', fontSize:'var(--text-xs)', color:'var(--muted)', fontWeight:700, textTransform:'uppercase' as const, letterSpacing:'.08em', marginBottom:5 },
+  sec:    { fontSize:'var(--text-xs)', fontWeight:800, textTransform:'uppercase' as const, letterSpacing:'.1em', color:'var(--primary)', paddingBottom:'.5rem', borderBottom:'1px solid var(--border)', marginBottom:'.9rem' },
+  btn:    { padding:'.6rem 1rem', borderRadius:8, border:'1px solid var(--border)', background:'var(--surface-2)', color:'var(--text)', fontWeight:700, fontSize:'var(--text-xs)', cursor:'pointer' } as React.CSSProperties,
+  btnPri: { padding:'.6rem 1rem', borderRadius:8, border:'1px solid var(--primary)', background:'var(--primary)', color:'#fff', fontWeight:700, fontSize:'var(--text-xs)', cursor:'pointer', boxShadow:'0 3px 12px rgba(79,152,163,.35)' } as React.CSSProperties,
+}
+
+const money = (n: number) => '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 })
+
+// ─── Truck Setup Modal ────────────────────────────────────────────────────────
+function TruckModal({ form, onChange, onSave, onClose }: {
+  form: Truck; onChange: (k: keyof Truck, v: string | number) => void
+  onSave: () => void; onClose: () => void
+}) {
+  const Field = ({ label, k, type='text', step, ph }: { label:string; k:keyof Truck; type?:string; step?:string; ph?:string }) => (
+    <div>
+      <label style={S.lbl}>{label}</label>
+      <input style={S.inp} type={type} step={step} placeholder={ph}
+        value={String(form[k])}
+        onChange={e => onChange(k, type === 'number' ? (parseFloat(e.target.value) || 0) : e.target.value)} />
+    </div>
+  )
+  return (
+    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:100, background:'rgba(0,0,0,.65)', backdropFilter:'blur(8px)', display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:24, padding:'1.6rem', width:'100%', maxWidth:640, maxHeight:'90dvh', overflowY:'auto', boxShadow:'0 8px 32px rgba(0,0,0,.5)', display:'grid', gap:'.9rem' }}>
+
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'start' }}>
+          <div>
+            <div style={{ fontWeight:900, fontSize:'var(--text-lg)' }}>Truck &amp; Trailer Setup</div>
+            <div style={{ fontSize:'var(--text-xs)', color:'var(--muted)', marginTop:3 }}>Used for legal checks, fuel calc, and profitability</div>
+          </div>
+          <button onClick={onClose} style={S.btn}>✕</button>
+        </div>
+
+        {/* Tractor */}
+        <div style={S.sec}>Tractor</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
+          <Field label="Truck number" k="truckNum" ph="T-001" />
+          <Field label="Year" k="year" type="number" ph="2022" />
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
+          <div>
+            <label style={S.lbl}>Make</label>
+            <select style={S.inp} value={form.make} onChange={e => onChange('make', e.target.value)}>
+              <option value="">Select make</option>
+              {['Peterbilt','Kenworth','Freightliner','International','Mack','Volvo','Western Star','Other'].map(m=><option key={m}>{m}</option>)}
+            </select>
+          </div>
+          <Field label="Model" k="model" ph="389, T680, Cascadia" />
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
+          <Field label="VIN (last 8)" k="vin" ph="optional" />
+          <Field label="Horsepower" k="hp" ph="550" />
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'.75rem' }}>
+          <Field label="MPG loaded"     k="mpgLoaded"  type="number" step="0.1" />
+          <Field label="MPG empty"      k="mpgEmpty"   type="number" step="0.1" />
+          <Field label="Tank (gal)"     k="tankGal"    type="number" step="1"   />
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
+          <Field label="Fuel price ($/gal)" k="fuelPrice"    type="number" step="0.01" />
+          <Field label="Truck height (ft)"  k="truckHeight"  type="number" step="0.1"  />
+        </div>
+
+        {/* Trailer */}
+        <div style={{ ...S.sec, marginTop:'.25rem' }}>Trailer</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
+          <Field label="Trailer number" k="trailerNum" ph="260692" />
+          <div>
+            <label style={S.lbl}>Trailer type</label>
+            <select style={S.inp} value={form.trailerType} onChange={e => onChange('trailerType', e.target.value)}>
+              {[["53dry","53′ Dry Van"],["48dry","48′ Dry Van"],["53reefer","53′ Reefer"],["flatbed","Flatbed"],["stepdeck","Step Deck"],["lowboy","Lowboy"],["tanker","Tanker"],["doubles","Doubles/Pups"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'.75rem' }}>
+          <Field label="Trailer length (ft)"  k="trailerLen"    type="number" />
+          <Field label="Trailer height (ft)"  k="trailerHeight" type="number" step="0.1" />
+          <div>
+            <label style={S.lbl}>Axles</label>
+            <select style={S.inp} value={form.axles} onChange={e => onChange('axles', e.target.value)}>
+              {[["5","5-axle (std)"],["6","6-axle"],["7","7-axle"],["3","3-axle bobtail"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
+          <Field label="Max legal weight (lbs)" k="maxWeight" type="number" />
+          <Field label="GVWR (lbs)"             k="gvwr"      type="number" />
+        </div>
+
+        {/* Licensing */}
+        <div style={{ ...S.sec, marginTop:'.25rem' }}>Licensing</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
+          <div>
+            <label style={S.lbl}>CDL class</label>
+            <select style={S.inp} value={form.cdlClass} onChange={e => onChange('cdlClass', e.target.value)}>
+              <option value="A">Class A</option><option value="B">Class B</option>
+            </select>
+          </div>
+          <Field label="Endorsements" k="endorsements" ph="H, N, T, X" />
+        </div>
+
+        <button onClick={onSave} style={{ ...S.btnPri, padding:'.85rem', fontSize:'var(--text-sm)', marginTop:'.25rem', textAlign:'center' }}>
+          💾 Save truck &amp; trailer
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+export default function TripPlanner() {
+  const router    = useRouter()
+  const fileRef   = useRef<HTMLInputElement>(null)
+
+  // Input
+  const [tab,       setTab]       = useState<InputTab>('form')
+  const [origin,    setOrigin]    = useState('')
+  const [dest,      setDest]      = useState('')
+  const [miles,     setMiles]     = useState('')
+  const [depart,    setDepart]    = useState('07:00')
+  const [loadNum,   setLoadNum]   = useState('')
+  const [broker,    setBroker]    = useState('')
+  const [commodity, setCommodity] = useState('')
+  const [weight,    setWeight]    = useState('')
+  const [cpm,       setCpm]       = useState('0.55')
+  const [deadhead,  setDeadhead]  = useState('')
+  const [paste,     setPaste]     = useState('')
+  const [fileParsed,setFileParsed]= useState<Parsed | null>(null)
+  const [fileName,  setFileName]  = useState('')
+
+  // App state
+  const [opts,      setOpts]      = useState<TripOptions>({ pet:false, team:false, haz:false })
+  const [truck,     setTruck]     = useState<Truck | null>(null)
+  const [truckForm, setTruckForm] = useState<Truck>(DEFAULT_TRUCK)
+  const [showModal, setShowModal] = useState(false)
+  const [plan,      setPlan]      = useState<Plan | null>(null)
+  const [copiedGPS, setCopiedGPS] = useState(false)
+
+  // AI Load Prep
+  const [aiText,    setAiText]    = useState('')
+  const [aiResult,  setAiResult]  = useState<AIResult | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError,   setAiError]   = useState('')
+  const [copiedReply, setCopiedReply] = useState(false)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('3b-vehicle')
+      if (raw) { const v = JSON.parse(raw); setTruck(v); setTruckForm(v) }
+    } catch { /* ignore */ }
+  }, [])
+
+  const fill = useCallback((f: Parsed) => {
+    if (f.origin)    setOrigin(f.origin)
+    if (f.dest)      setDest(f.dest)
+    if (f.miles)     setMiles(f.miles)
+    if (f.loadNum)   setLoadNum(f.loadNum)
+    if (f.cpm)       setCpm(f.cpm)
+    if (f.weight)    setWeight(f.weight)
+    if (f.broker)    setBroker(f.broker)
+    if (f.commodity) setCommodity(f.commodity)
+    if (f.depart)    setDepart(f.depart)
+  }, [])
+
+  const runBuild = useCallback(() => {
+    const totalMiles = parseFloat(miles)
+    if (!origin || !dest || !totalMiles) return
+    const [dh, dm] = depart.split(':').map(Number)
+    const p = buildPlan({
+      origin, dest, totalMiles,
+      departMin: dh * 60 + (dm || 0),
+      cpm: parseFloat(cpm) || 0.55,
+      hasPet: opts.pet,
+      truck,
+    })
+    p.loadNum    = loadNum
+    p.broker     = broker
+    p.commodity  = commodity
+    p.weight     = parseFloat(weight) || 0
+    p.deadhead   = parseFloat(deadhead) || 0
+    p.deadheadCost = p.deadhead * p.cpm
+    p.legalChecks = truck ? checkLegal(truck, p.weight, opts.haz) : null
+
+    // Save active trip to localStorage for dashboard
+    const today      = new Date().toISOString().slice(0,10)
+    const departISO  = `${today}T${depart}:00`
+    const arrMins    = dh * 60 + (dm||0) + Math.round((totalMiles/58)*60)
+    const arrDate    = new Date(departISO)
+    arrDate.setHours(Math.floor(((arrMins%1440)+1440)%1440/60), Math.floor(((arrMins%1440)+1440)%1440%60), 0, 0)
+    if (arrDate < new Date(departISO)) arrDate.setDate(arrDate.getDate()+1)
+    localStorage.setItem('3b-active-trip', JSON.stringify({
+      origin:      { query: origin },
+      destination: { query: dest },
+      totalMiles, departTime: departISO,
+      estArrival:  arrDate.toISOString(),
+      estDriveHours: (totalMiles/58).toFixed(1),
+      loadNumber:  loadNum || null,
+      stops: p.stops.filter(s=>s.type==='fuel').map(s=>({
+        name: s.location, city:'', state:'', miFromOrigin: s.mi,
+        eta: arrDate.toISOString(), stopType: s.type,
+        diesel: null, showers: null, recommended: false,
+      })),
+    }))
+    setPlan(p)
+  }, [origin, dest, miles, depart, cpm, loadNum, broker, commodity, weight, deadhead, opts, truck])
+
+  const saveTruck = () => {
+    setTruck(truckForm)
+    localStorage.setItem('3b-vehicle', JSON.stringify(truckForm))
+    setShowModal(false)
+  }
+
+  const acceptLoad = () => {
+    if (!plan) return
+    const params = new URLSearchParams({
+      origin:        plan.origin,
+      destination:   plan.dest,
+      loadNumber:    plan.loadNum,
+      broker:        plan.broker,
+      dispatchMiles: String(plan.total_miles),
+      cpmRate:       String(plan.cpm),
+    })
+    router.push(`/loads?new=1&${params}`)
+  }
+
+  const copyGPS = () => {
+    if (!plan) return
+    const text = [
+      "TRUCKER'S PATH / GPS STOP PLAN",
+      `${plan.origin} → ${plan.dest}`,
+      `${plan.total_miles} miles · Depart ${plan.depart_display} · ETA ${plan.eta}`,
+      plan.loadNum ? `Load #${plan.loadNum}` : '',
+      '━'.repeat(44),
+      '',
+      ...plan.gpsStops.map(s => [
+        `STOP ${s.order}: ${s.typeLabel}`,
+        `  Name:    ${s.name}`,
+        s.address ? `  Address: ${s.address}` : '',
+        `  ETA:     ${s.eta}  |  Mile: ${s.mi}`,
+        s.tag      ? `  ⚠ ${s.tag}` : '',
+        '',
+      ].filter(Boolean).join('\n')),
+      '━'.repeat(44),
+      'Generated by 3B Fleet Commander',
+    ].filter(l => l !== '').join('\n')
+    navigator.clipboard.writeText(text)
+    setCopiedGPS(true)
+    setTimeout(() => setCopiedGPS(false), 2500)
+  }
+
+  const copyFullPlan = () => {
+    if (!plan) return
+    const text = [
+      '3B FLEET COMMANDER — TRIP PLAN',
+      '━'.repeat(40),
+      `${plan.origin} → ${plan.dest}`,
+      `Load #: ${plan.loadNum||'—'} | Broker: ${plan.broker||'—'}`,
+      `Miles: ${plan.total_miles} | Drive: ${plan.drive_time} | ETA: ${plan.eta}`,
+      `Est. pay: ${money(plan.est_pay)} | Fuel: ${money(plan.fuel_cost)} | Net: ${money(plan.net)}`,
+      `HOS: ${plan.hos_compliant ? '✓ Compliant' : '⚠ Warnings'}`,
+      '', 'TIMELINE:',
+      ...plan.stops.map(s => `  ${s.eta.padEnd(10)} ${s.label.padEnd(38)} ${s.location}`),
+      '', plan.warnings.length
+        ? 'WARNINGS:\n' + plan.warnings.map(w=>'  ⚠ '+w).join('\n')
+        : 'No HOS warnings.',
+    ].join('\n')
+    navigator.clipboard.writeText(text)
+  }
+
+  const analyzeLoad = async () => {
+    if (!aiText.trim()) return
+    setAiLoading(true); setAiError(''); setAiResult(null)
+    try {
+      // Read HOS from localStorage if available
+      let hosPayload: Record<string, number | null> = { driveHoursRemaining: null, shiftHoursRemaining: null, cycleHoursRemaining: null }
+      try {
+        const raw = localStorage.getItem('3b-hos-data')
+        if (raw) {
+          const h = JSON.parse(raw)
+          hosPayload = {
+            driveHoursRemaining:  h.driveRemaining  ?? null,
+            shiftHoursRemaining:  h.shiftRemaining  ?? null,
+            cycleHoursRemaining:  h.cycleRemaining  ?? null,
+          }
+        }
+      } catch { /* ignore */ }
+      const res = await fetch('/api/load-prep', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          loadText: aiText,
+          ...hosPayload,
+          fuelPrice:     truck?.fuelPrice    ?? 3.85,
+          mpg:           truck?.mpgLoaded    ?? 6.2,
+          tankGal:       truck?.tankGal      ?? 120,
+          truckHeight:   truck?.truckHeight  ?? 13.5,
+          trailerHeight: truck?.trailerHeight ?? 13.5,
+          trailerLen:    truck?.trailerLen    ?? 53,
+          maxWeight:     truck?.maxWeight     ?? 80000,
+        }),
+      })
+      if (!res.ok) throw new Error(`Server error ${res.status}`)
+      const data: AIResult = await res.json()
+      if ('error' in data) throw new Error((data as unknown as { error: string }).error)
+      setAiResult(data)
+    } catch (e: unknown) {
+      setAiError(e instanceof Error ? e.message : 'Analysis failed')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  const fillFromAI = () => {
+    if (!aiResult?.parsed) return
+    const p = aiResult.parsed
+    const mapped: Parsed = {
+      origin:    p.origin    ?? undefined,
+      dest:      p.dest      ?? undefined,
+      miles:     p.miles     != null ? String(p.miles) : undefined,
+      cpm:       p.cpm       != null ? String(p.cpm)   : undefined,
+      weight:    p.weight    != null ? String(p.weight) : undefined,
+      loadNum:   p.loadNum   ?? undefined,
+      broker:    p.broker    ?? undefined,
+      commodity: p.commodity ?? undefined,
+    }
+    if (p.depart) {
+      const hm = p.depart.trim().toLowerCase().match(/(\d{1,2}):?(\d{2})?\s*([ap]m?)?/)
+      if (hm) {
+        let h = parseInt(hm[1]); const mn = hm[2] || '00'
+        if (hm[3] === 'pm' && h < 12) h += 12
+        if (hm[3] === 'am' && h === 12) h = 0
+        mapped.depart = `${String(h).padStart(2,'0')}:${mn}`
+      }
+    }
+    fill(mapped)
+    setTab('form')
+  }
+
+  const truckLabel = truck
+    ? `${[truck.year, truck.make, truck.model].filter(Boolean).join(' ')||'Truck'} · #${truck.truckNum||'—'}`
+    : null
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  return (
+    <>
+      {showModal && (
+        <TruckModal
+          form={truckForm}
+          onChange={(k,v) => setTruckForm(p=>({...p,[k]:v}))}
+          onSave={saveTruck}
+          onClose={() => setShowModal(false)}
+        />
+      )}
+
+      <TopBar
+        title="Trip Planner"
+        module="ops"
+        subtitle={truckLabel ?? 'Set up your truck for legal & fuel checks'}
+      />
+
+      <main style={{ display:'grid', gridTemplateColumns:'minmax(0,420px) 1fr', gap:'1.4rem', padding:'1.4rem', alignItems:'start' }}>
+
+        {/* ── LEFT PANEL ── */}
+        <div style={{ display:'grid', gap:'.75rem' }}>
+
+          {/* Truck button */}
+          <button onClick={()=>setShowModal(true)} style={{ ...S.btn, display:'flex', alignItems:'center', gap:10, padding:'.75rem 1rem', borderRadius:14, background: truck ? 'rgba(79,152,163,.07)' : 'var(--surface)', borderColor: truck ? 'rgba(79,152,163,.28)' : 'var(--border)' }}>
+            <span style={{ fontSize:'1.35rem' }}>🚛</span>
+            <div style={{ textAlign:'left', flex:1, minWidth:0 }}>
+              <div style={{ fontSize:'var(--text-xs)', fontWeight:800, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                {truck ? truckLabel : 'Set up truck & trailer'}
+              </div>
+              <div style={{ fontSize:'.65rem', color:'var(--muted)', marginTop:1 }}>
+                {truck ? `${truck.trailerType} · ${truck.mpgLoaded} mpg · $${truck.fuelPrice}/gal` : 'Required for legal checks & fuel calc'}
+              </div>
+            </div>
+            <span style={{ fontSize:'var(--text-xs)', color:'var(--primary)', flexShrink:0 }}>⚙ Edit</span>
+          </button>
+
+          {/* Input tab bar */}
+          <div style={{ display:'flex', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:11, padding:3, gap:2 }}>
+            {(['form','paste','file','ai'] as InputTab[]).map(t => {
+              const isAI = t === 'ai'
+              return (
+                <button key={t} onClick={()=>setTab(t)} style={{ flex:1, padding:'.45rem', borderRadius:8, fontSize:'var(--text-xs)', fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', border: tab===t ? `1px solid ${isAI ? 'rgba(0,232,176,.35)' : 'var(--border)'}` : '1px solid transparent', background: tab===t ? (isAI ? 'rgba(0,232,176,.08)' : 'var(--surface-2)') : 'transparent', color: tab===t ? (isAI ? 'var(--primary)' : 'var(--text)') : 'var(--muted)', cursor:'pointer', boxShadow: tab===t ? '0 1px 4px rgba(0,0,0,.2)' : 'none' }}>
+                  {t==='form' ? '📋 Form' : t==='paste' ? '📝 Paste' : t==='file' ? '📂 File' : '🤖 AI'}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* ─ Form tab ─ */}
+          {tab === 'form' && (
+            <>
+              <div style={S.card}>
+                <div style={S.sec}>Route Details</div>
+                <div style={{ display:'grid', gap:'.75rem' }}>
+                  <div><label style={S.lbl}>Origin *</label><input style={S.inp} value={origin} onChange={e=>setOrigin(e.target.value)} placeholder="Amargosa Valley, NV" /></div>
+                  <div><label style={S.lbl}>Destination *</label><input style={S.inp} value={dest} onChange={e=>setDest(e.target.value)} placeholder="Walmart DC Sparks, NV" /></div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
+                    <div><label style={S.lbl}>Total miles *</label><input style={S.inp} type="number" value={miles} onChange={e=>setMiles(e.target.value)} placeholder="335" /></div>
+                    <div><label style={S.lbl}>Departure</label><input style={S.inp} type="time" value={depart} onChange={e=>setDepart(e.target.value)} /></div>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
+                    <div><label style={S.lbl}>Load # / Order</label><input style={S.inp} value={loadNum} onChange={e=>setLoadNum(e.target.value)} placeholder="0241482" /></div>
+                    <div><label style={S.lbl}>Broker / Carrier</label><input style={S.inp} value={broker} onChange={e=>setBroker(e.target.value)} placeholder="Walmart Fleet" /></div>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
+                    <div><label style={S.lbl}>Commodity</label><input style={S.inp} value={commodity} onChange={e=>setCommodity(e.target.value)} placeholder="General merchandise" /></div>
+                    <div><label style={S.lbl}>Load weight (lbs)</label><input style={S.inp} type="number" value={weight} onChange={e=>setWeight(e.target.value)} placeholder="42000" /></div>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
+                    <div><label style={S.lbl}>CPM rate ($)</label><input style={S.inp} type="number" step="0.01" value={cpm} onChange={e=>setCpm(e.target.value)} /></div>
+                    <div><label style={S.lbl}>Deadhead miles</label><input style={S.inp} type="number" value={deadhead} onChange={e=>setDeadhead(e.target.value)} placeholder="0" /></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Driver options */}
+              <div style={S.card}>
+                <div style={S.sec}>Driver Options</div>
+                {([['pet','🐾 Pet aboard — add breaks every 2h'],['team','👥 Team driving — split HOS'],['haz','⚠ Hazmat — restricted routes apply']] as [keyof TripOptions,string][]).map(([k,label]) => (
+                  <label key={k} onClick={()=>setOpts(p=>({...p,[k]:!p[k]}))} style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', fontSize:'var(--text-sm)', marginBottom:'.7rem' }}>
+                    <div style={{ width:40, height:22, background:opts[k]?'var(--primary)':'var(--border)', borderRadius:11, position:'relative', flexShrink:0, transition:'background .18s' }}>
+                      <div style={{ position:'absolute', top:3, left:opts[k]?20:3, width:16, height:16, borderRadius:'50%', background:'#fff', transition:'left .18s', boxShadow:'0 1px 4px rgba(0,0,0,.4)' }} />
+                    </div>
+                    {label}
+                  </label>
+                ))}
+              </div>
+
+              {/* Saved lanes */}
+              <div style={S.card}>
+                <div style={S.sec}>Saved Lanes</div>
+                {SAVED_LANES.map(l => (
+                  <button key={l.label} onClick={()=>{ setOrigin(l.origin); setDest(l.dest); setMiles(String(l.miles)) }} style={{ ...S.btn, display:'block', width:'100%', textAlign:'left', marginBottom:'.4rem', padding:'.6rem .85rem' }}>
+                    <strong style={{ fontSize:'var(--text-xs)' }}>{l.label}</strong>
+                    <span style={{ color:'var(--muted)', fontSize:'var(--text-xs)', marginLeft:8 }}>{l.miles} mi</span>
+                  </button>
+                ))}
+              </div>
+
+              <button onClick={runBuild} style={{ ...S.btnPri, width:'100%', padding:'.9rem', fontSize:'var(--text-sm)', textAlign:'center' }}>
+                🗺 Build trip plan
+              </button>
+            </>
+          )}
+
+          {/* ─ Paste tab ─ */}
+          {tab === 'paste' && (
+            <div style={S.card}>
+              <div style={S.sec}>Paste dispatch info</div>
+              <p style={{ fontSize:'var(--text-xs)', color:'var(--muted)', marginBottom:'.85rem', lineHeight:1.65 }}>
+                Paste anything — rate confirmation, load board text, broker email. Extracts origin, destination, miles, load #, and CPM automatically.
+              </p>
+              <textarea style={{ ...S.inp, resize:'vertical', minHeight:180, lineHeight:1.6 }} value={paste} onChange={e=>setPaste(e.target.value)}
+                placeholder={'Load #0241482\nPickup: Amargosa Valley, NV — 6:00 AM\nDeliver: Walmart DC Sparks, NV\n335 loaded miles\nRate: $0.55/mi'} />
+              <button onClick={()=>{ fill(parseText(paste)); setTab('form'); runBuild() }} style={{ ...S.btnPri, width:'100%', padding:'.75rem', marginTop:'.75rem' }}>
+                Parse &amp; build plan →
+              </button>
+            </div>
+          )}
+
+          {/* ─ File tab ─ */}
+          {tab === 'file' && (
+            <div style={S.card}>
+              <div style={S.sec}>Upload load file</div>
+              <input ref={fileRef} type="file" accept=".txt,.md,.csv" style={{ display:'none' }}
+                onChange={e=>{ const f=e.target.files?.[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>{ const p=parseText(ev.target?.result as string); setFileParsed(p); setFileName(f.name) }; r.readAsText(f) }} />
+              <div onClick={()=>fileRef.current?.click()} style={{ border:'2px dashed var(--border)', borderRadius:12, padding:'1.6rem', textAlign:'center', cursor:'pointer', background:'var(--surface-2)' }}>
+                <div style={{ fontSize:'2rem', marginBottom:'.5rem' }}>📂</div>
+                <div style={{ fontSize:'var(--text-xs)', color:'var(--muted)' }}>Drop or click to upload<br /><strong>.txt · .md · .csv</strong><br />Rate con, dispatch sheet, route notes</div>
+              </div>
+              {fileParsed && (
+                <div style={{ marginTop:'.75rem' }}>
+                  <div style={{ ...S.sec, marginBottom:'.6rem' }}>Extracted from {fileName}</div>
+                  {Object.entries({ Origin: fileParsed.origin, Destination: fileParsed.dest, Miles: fileParsed.miles, 'Load #': fileParsed.loadNum, CPM: fileParsed.cpm ? `$${fileParsed.cpm}` : undefined }).map(([k,v]) => (
+                    <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'.3rem 0', borderBottom:'1px solid var(--border)' }}>
+                      <span style={{ fontSize:'var(--text-xs)', color:'var(--muted)' }}>{k}</span>
+                      <span style={{ fontSize:'var(--text-xs)', fontWeight:700, color:v?'var(--text)':'var(--faint)' }}>{v||'Not found'}</span>
+                    </div>
+                  ))}
+                  <button onClick={()=>{ fill(fileParsed); setTab('form'); runBuild() }} style={{ ...S.btnPri, width:'100%', padding:'.75rem', marginTop:'.75rem' }}>
+                    Build plan from file →
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─ AI Load Prep tab ─ */}
+          {tab === 'ai' && (
+            <div style={{ display:'grid', gap:'.75rem' }}>
+              <div style={S.card}>
+                <div style={{ ...S.sec, color:'var(--primary)' }}>🤖 AI Load Prep</div>
+                <p style={{ fontSize:'var(--text-xs)', color:'var(--muted)', marginBottom:'.85rem', lineHeight:1.65 }}>
+                  Paste any load offer — rate confirmation, broker email, load board text. AI extracts fields, calculates net pay, checks your HOS &amp; legal limits, flags red flags, and gives a plain ACCEPT / DENY verdict.
+                </p>
+                <textarea
+                  style={{ ...S.inp, resize:'vertical', minHeight:200, lineHeight:1.6 }}
+                  value={aiText}
+                  onChange={e => setAiText(e.target.value)}
+                  placeholder={'Paste full load offer here...\n\nExample:\nLoad #0241482\nPickup: Amargosa Valley, NV — 6:00 AM\nDeliver: Walmart DC, Sparks, NV\n335 loaded miles\nRate: $0.55/mi\nWeight: 42,000 lbs\nCommodity: General merchandise\nBroker: Convoy'}
+                />
+                {aiError && (
+                  <div style={{ marginTop:'.6rem', padding:'.6rem .85rem', borderRadius:8, background:'rgba(232,64,0,.08)', border:'1px solid rgba(232,64,0,.2)', fontSize:'var(--text-xs)', color:'var(--error)' }}>
+                    ⚠ {aiError}
+                  </div>
+                )}
+                <button
+                  onClick={analyzeLoad}
+                  disabled={aiLoading || !aiText.trim()}
+                  style={{ ...S.btnPri, width:'100%', padding:'.85rem', marginTop:'.75rem', opacity: aiLoading || !aiText.trim() ? .55 : 1, fontSize:'var(--text-sm)' }}
+                >
+                  {aiLoading ? '⏳ Analyzing load...' : '🤖 Analyze load'}
+                </button>
+              </div>
+
+              {/* AI Result */}
+              {aiResult && (() => {
+                const rec = aiResult.recommendation
+                const recColor = rec === 'ACCEPT' ? 'var(--success)' : rec === 'DENY' ? 'var(--error)' : 'var(--warn)'
+                const recBg    = rec === 'ACCEPT' ? 'rgba(40,192,72,.1)' : rec === 'DENY' ? 'rgba(232,64,0,.1)' : 'rgba(245,194,0,.1)'
+                const recBorder= rec === 'ACCEPT' ? 'rgba(40,192,72,.25)' : rec === 'DENY' ? 'rgba(232,64,0,.25)' : 'rgba(245,194,0,.25)'
+                const confColor= aiResult.confidence === 'HIGH' ? 'var(--success)' : aiResult.confidence === 'MEDIUM' ? 'var(--warn)' : 'var(--error)'
+                const f = aiResult.financials
+                const p = aiResult.parsed
+                return (
+                  <>
+                    {/* Verdict banner */}
+                    <div style={{ background: recBg, border: `1px solid ${recBorder}`, borderRadius:16, padding:'1.1rem 1.3rem' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+                        <div style={{ fontSize:'2.2rem', lineHeight:1 }}>
+                          {rec === 'ACCEPT' ? '✅' : rec === 'DENY' ? '🚫' : '🔍'}
+                        </div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                            <span style={{ fontWeight:900, fontSize:'1.25rem', color:recColor, letterSpacing:'-.01em' }}>{rec}</span>
+                            <span style={{ fontSize:'var(--text-xs)', fontWeight:800, padding:'.2rem .5rem', borderRadius:5, background: recBg, color:recColor, border:`1px solid ${recBorder}`, textTransform:'uppercase', letterSpacing:'.06em' }}>
+                              {aiResult.confidence} confidence
+                            </span>
+                            <span style={{ fontSize:'var(--text-xs)', color:confColor, fontWeight:700 }}></span>
+                          </div>
+                          <div style={{ fontSize:'var(--text-sm)', color:'var(--text)', marginTop:5, lineHeight:1.5 }}>{aiResult.summary}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Parsed fields */}
+                    {(p.origin || p.dest || p.miles || p.cpm || p.weight || p.loadNum) && (
+                      <div style={S.card}>
+                        <div style={S.sec}>Extracted Fields</div>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.4rem .8rem' }}>
+                          {([
+                            ['Origin',    p.origin],
+                            ['Dest',      p.dest],
+                            ['Miles',     p.miles != null ? String(p.miles) : null],
+                            ['CPM',       p.cpm   != null ? `$${p.cpm.toFixed(3)}` : null],
+                            ['Weight',    p.weight != null ? `${p.weight.toLocaleString()} lbs` : null],
+                            ['Load #',    p.loadNum],
+                            ['Broker',    p.broker],
+                            ['Commodity', p.commodity],
+                            ['Total Pay', p.totalPay != null ? `$${p.totalPay.toLocaleString()}` : null],
+                          ] as [string, string|null][]).filter(([,v]) => v).map(([k,v]) => (
+                            <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'.3rem 0', borderBottom:'1px solid var(--border)' }}>
+                              <span style={{ fontSize:'var(--text-xs)', color:'var(--muted)' }}>{k}</span>
+                              <span style={{ fontSize:'var(--text-xs)', fontWeight:700, color:'var(--text)', maxWidth:160, textAlign:'right', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{v}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Financials */}
+                    {(f.grossPay != null || f.netPay != null) && (
+                      <div style={S.card}>
+                        <div style={S.sec}>Financials</div>
+                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(130px,100%),1fr))', gap:'.6rem' }}>
+                          {([
+                            ['Gross pay',  f.grossPay     != null ? `$${f.grossPay.toLocaleString(undefined,{minimumFractionDigits:2})}` : null, 'var(--success)'],
+                            ['Fuel cost',  f.fuelCost     != null ? `$${f.fuelCost.toLocaleString(undefined,{minimumFractionDigits:2})}` : null, 'var(--warn)'],
+                            ['Net pay',    f.netPay       != null ? `$${f.netPay.toLocaleString(undefined,{minimumFractionDigits:2})}`   : null, f.netPay != null && f.netPay > 0 ? 'var(--success)' : 'var(--error)'],
+                            ['CPM',        f.cpm          != null ? `$${f.cpm.toFixed(3)}`   : null, ''],
+                            ['Rate/mi',    f.ratePerMile  != null ? `$${f.ratePerMile.toFixed(3)}` : null, ''],
+                            ['Profit %',   `${Math.round(f.profitScore)}%`, f.profitScore > 60 ? 'var(--success)' : f.profitScore > 35 ? 'var(--warn)' : 'var(--error)'],
+                          ] as [string, string|null, string][]).filter(([,v]) => v).map(([label, val, col]) => (
+                            <div key={label} style={{ background:'var(--surface-2)', border:'1px solid var(--border)', borderRadius:10, padding:'.7rem' }}>
+                              <div style={{ fontSize:'var(--text-xs)', color:'var(--muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:'.07em', marginBottom:4 }}>{label}</div>
+                              <div style={{ fontSize:'1.1rem', fontWeight:900, fontVariantNumeric:'tabular-nums', color: col || 'var(--text)' }}>{val}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Profit score bar */}
+                        {(() => {
+                          const score = Math.min(100, Math.max(0, f.profitScore))
+                          const col = score > 60 ? 'var(--success)' : score > 35 ? 'var(--warn)' : 'var(--error)'
+                          return (
+                            <div style={{ marginTop:'.75rem' }}>
+                              <div style={{ height:8, borderRadius:4, background:'var(--surface-off)', overflow:'hidden' }}>
+                                <div style={{ height:'100%', width:`${score}%`, background:col, borderRadius:4, transition:'width .5s cubic-bezier(.16,1,.3,1)' }} />
+                              </div>
+                            </div>
+                          )
+                        })()}
+                      </div>
+                    )}
+
+                    {/* HOS check */}
+                    <div style={{ background: aiResult.hos.legal ? 'rgba(40,192,72,.07)' : 'rgba(232,64,0,.07)', border: `1px solid ${aiResult.hos.legal ? 'rgba(40,192,72,.2)' : 'rgba(232,64,0,.2)'}`, borderRadius:12, padding:'.85rem 1rem' }}>
+                      <div style={{ fontWeight:800, fontSize:'var(--text-xs)', color: aiResult.hos.legal ? 'var(--success)' : 'var(--error)', marginBottom:'.3rem' }}>
+                        {aiResult.hos.legal ? '✅ HOS — Legal' : '🚫 HOS — Exceeds Limit'}
+                      </div>
+                      {aiResult.hos.driveNeeded != null && (
+                        <div style={{ fontSize:'var(--text-xs)', color:'var(--muted)', marginBottom:'.2rem' }}>
+                          Drive needed: <strong style={{ color:'var(--text)' }}>{aiResult.hos.driveNeeded.toFixed(1)}h</strong>
+                          {aiResult.hos.driveAvailable != null && <> · Available: <strong style={{ color:'var(--text)' }}>{aiResult.hos.driveAvailable.toFixed(1)}h</strong></>}
+                        </div>
+                      )}
+                      <div style={{ fontSize:'var(--text-xs)', color:'var(--muted)', lineHeight:1.55 }}>{aiResult.hos.note}</div>
+                    </div>
+
+                    {/* Legal check */}
+                    {aiResult.legal.notes.length > 0 && (
+                      <div style={{ background:'rgba(245,194,0,.06)', border:'1px solid rgba(245,194,0,.18)', borderRadius:12, padding:'.85rem 1rem' }}>
+                        <div style={{ fontWeight:800, fontSize:'var(--text-xs)', color:'var(--warn)', marginBottom:'.4rem' }}>⚠ Legal Notes</div>
+                        {aiResult.legal.notes.map((n,i) => <div key={i} style={{ fontSize:'var(--text-xs)', color:'var(--muted)', lineHeight:1.6 }}>• {n}</div>)}
+                      </div>
+                    )}
+
+                    {/* Red / Green flags */}
+                    {(aiResult.redFlags.length > 0 || aiResult.greenFlags.length > 0) && (
+                      <div style={S.card}>
+                        <div style={S.sec}>Flags</div>
+                        {aiResult.greenFlags.length > 0 && (
+                          <div style={{ marginBottom: aiResult.redFlags.length ? '.75rem' : 0 }}>
+                            {aiResult.greenFlags.map((f,i) => (
+                              <div key={i} style={{ display:'flex', gap:8, alignItems:'start', marginBottom:'.4rem' }}>
+                                <span style={{ color:'var(--success)', flexShrink:0, fontSize:'var(--text-sm)', lineHeight:1.4 }}>✅</span>
+                                <span style={{ fontSize:'var(--text-xs)', color:'var(--text)', lineHeight:1.55 }}>{f}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {aiResult.redFlags.map((f,i) => (
+                          <div key={i} style={{ display:'flex', gap:8, alignItems:'start', marginBottom:'.4rem' }}>
+                            <span style={{ color:'var(--error)', flexShrink:0, fontSize:'var(--text-sm)', lineHeight:1.4 }}>🚩</span>
+                            <span style={{ fontSize:'var(--text-xs)', color:'var(--text)', lineHeight:1.55 }}>{f}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Reasons */}
+                    {aiResult.reasons.length > 0 && (
+                      <div style={S.card}>
+                        <div style={S.sec}>AI Reasoning</div>
+                        {aiResult.reasons.map((r,i) => (
+                          <div key={i} style={{ fontSize:'var(--text-xs)', color:'var(--muted)', lineHeight:1.65, marginBottom:'.35rem' }}>• {r}</div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Suggested broker reply */}
+                    {aiResult.suggestedReply && (
+                      <div style={{ ...S.card, border:'1px solid rgba(0,232,176,.15)', background:'rgba(0,232,176,.03)' }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'.6rem' }}>
+                          <div style={S.sec as React.CSSProperties}>💬 Suggested Reply to Broker</div>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(aiResult.suggestedReply)
+                              setCopiedReply(true)
+                              setTimeout(() => setCopiedReply(false), 2500)
+                            }}
+                            style={{ ...S.btn, padding:'.3rem .65rem', fontSize:'.65rem', background: copiedReply ? 'rgba(40,192,72,.1)' : 'var(--surface-2)', borderColor: copiedReply ? 'rgba(40,192,72,.35)' : 'var(--border)', color: copiedReply ? 'var(--success)' : 'var(--text)' }}
+                          >
+                            {copiedReply ? '✅ Copied!' : '📋 Copy'}
+                          </button>
+                        </div>
+                        <div style={{ fontSize:'var(--text-xs)', color:'var(--text)', lineHeight:1.7, whiteSpace:'pre-wrap', background:'var(--surface-2)', borderRadius:10, padding:'.75rem .9rem', border:'1px solid var(--border)' }}>
+                          {aiResult.suggestedReply}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* CTA buttons */}
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
+                      <button
+                        onClick={() => { fillFromAI(); setTimeout(runBuild, 50) }}
+                        disabled={!p.origin || !p.dest || !p.miles}
+                        style={{ ...S.btnPri, padding:'.8rem', textAlign:'center', fontSize:'var(--text-sm)', opacity: (!p.origin || !p.dest || !p.miles) ? .5 : 1 }}
+                      >
+                        🗺 Build plan from AI
+                      </button>
+                      <button onClick={() => { setAiResult(null); setAiText('') }} style={{ ...S.btn, padding:'.8rem', textAlign:'center', fontSize:'var(--text-sm)' }}>
+                        🔄 New analysis
+                      </button>
+                    </div>
+                  </>
+                )
+              })()}
+            </div>
+          )}
+        </div>
+
+        {/* ── RIGHT PANEL ── */}
+        <div>
+          {!plan ? (
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:480, gap:'1rem', color:'var(--muted)', textAlign:'center' }}>
+              <div style={{ fontSize:'3.5rem' }}>🗺</div>
+              <div style={{ fontSize:'var(--text-lg)', fontWeight:800, color:'var(--text)' }}>Plan your route</div>
+              <div style={{ fontSize:'var(--text-sm)', maxWidth:380, lineHeight:1.65 }}>
+                Enter route details or paste dispatch info. Builds a DOT-compliant timeline with HOS breaks, fuel stops, legal checks, and profit analysis.
+              </div>
+            </div>
+          ) : (
+            <div style={{ display:'grid', gap:'1.2rem' }}>
+
+              {/* Route header */}
+              <div style={{ ...S.card, background:'linear-gradient(135deg,var(--surface-2),var(--surface))' }}>
+                <div style={{ display:'flex', alignItems:'start', justifyContent:'space-between', gap:'1rem', flexWrap:'wrap' }}>
+                  <div>
+                    <div style={{ fontSize:'var(--text-xs)', color:'var(--muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:4 }}>
+                      {plan.loadNum ? `Load #${plan.loadNum} · ` : ''}{plan.broker}{plan.commodity ? ` · ${plan.commodity}` : ''}
+                    </div>
+                    <div style={{ fontWeight:900, fontSize:'var(--text-lg)', letterSpacing:'-.02em' }}>{plan.origin}</div>
+                    <div style={{ fontSize:'var(--text-sm)', color:'var(--muted)', margin:'.25rem 0' }}>↓ {plan.total_miles} mi · {plan.drive_time} drive · {plan.trip_time} total</div>
+                    <div style={{ fontWeight:900, fontSize:'var(--text-lg)', letterSpacing:'-.02em' }}>{plan.dest}</div>
+                  </div>
+                  <div style={{ textAlign:'right' }}>
+                    <div style={{ fontSize:'var(--text-xs)', color:'var(--muted)', fontWeight:700, textTransform:'uppercase', marginBottom:4 }}>ETA</div>
+                    <div style={{ fontSize:'1.5rem', fontWeight:900, color:'var(--primary)', fontVariantNumeric:'tabular-nums' }}>{plan.eta}</div>
+                    <div style={{ marginTop:6, padding:'.3rem .65rem', borderRadius:6, display:'inline-block', fontSize:'var(--text-xs)', fontWeight:800, background: plan.hos_compliant ? 'rgba(109,170,69,.12)' : 'rgba(221,105,116,.12)', color: plan.hos_compliant ? 'var(--success)' : 'var(--error)' }}>
+                      {plan.hos_compliant ? '✓ DOT Compliant' : '⚠ HOS Warnings'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* KPI chips */}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(140px,100%),1fr))', gap:'.7rem' }}>
+                {([
+                  ['Total miles',   String(plan.total_miles), ''],
+                  ['ETA',           plan.eta,                  'var(--primary)'],
+                  ['Est. pay',      money(plan.est_pay),       'var(--success)'],
+                  ['Fuel cost',     money(plan.fuel_cost),     'var(--warn)'],
+                  ...(plan.deadhead > 0 ? [['Deadhead cost', money(plan.deadheadCost), 'var(--warn)']] as [string,string,string][] : []),
+                  ['Net (fuel out)',money(plan.net),            plan.net>0?'var(--success)':'var(--error)'],
+                  ['CPM',          `$${plan.cpm.toFixed(3)}`,  ''],
+                  ['Drive time',    plan.drive_time,            ''],
+                ] as [string,string,string][]).map(([label,value,color]) => (
+                  <div key={label} style={{ background:'var(--surface-2)', border:'1px solid var(--border)', borderRadius:12, padding:'.85rem' }}>
+                    <div style={{ fontSize:'var(--text-xs)', color:'var(--muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:5 }}>{label}</div>
+                    <div style={{ fontSize:'1.2rem', fontWeight:900, fontVariantNumeric:'tabular-nums', color: color||'var(--text)' }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Profitability meter */}
+              {(() => {
+                const score = plan.est_pay > 0 ? Math.min(100, Math.max(0, plan.net / plan.est_pay * 100)) : 0
+                const col   = score > 70 ? 'var(--success)' : score > 40 ? 'var(--warn)' : 'var(--error)'
+                const lbl   = score > 70 ? '🟢 Strong' : score > 40 ? '🟡 Average' : '🔴 Thin margin'
+                return (
+                  <div style={S.card}>
+                    <div style={S.sec}>Profitability Score</div>
+                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+                      <span style={{ fontWeight:700, fontSize:'var(--text-sm)' }}>{lbl}</span>
+                      <span style={{ fontWeight:800, fontSize:'var(--text-sm)', color:col }}>{Math.round(score)}%</span>
+                    </div>
+                    <div style={{ height:10, borderRadius:5, background:'var(--surface-2)', overflow:'hidden' }}>
+                      <div style={{ height:'100%', width:`${score}%`, background:col, borderRadius:5, transition:'width .5s cubic-bezier(.16,1,.3,1)' }} />
+                    </div>
+                    <div style={{ fontSize:'var(--text-xs)', color:'var(--muted)', marginTop:'.6rem' }}>
+                      Net after fuel: {money(plan.net)} on {money(plan.est_pay)} gross
+                      {plan.deadhead > 0 ? ` · ${money(plan.deadheadCost)} deadhead cost` : ''}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* HOS warnings */}
+              {plan.warnings.length > 0 && (
+                <div style={{ background:'rgba(221,105,116,.08)', border:'1px solid rgba(221,105,116,.2)', borderRadius:12, padding:'.9rem 1rem' }}>
+                  <div style={{ fontWeight:800, fontSize:'var(--text-sm)', color:'var(--error)', marginBottom:'.4rem' }}>⚠ HOS Warnings</div>
+                  {plan.warnings.map((w,i) => <div key={i} style={{ fontSize:'var(--text-xs)', color:'var(--error)', opacity:.85, lineHeight:1.6 }}>• {w}</div>)}
+                </div>
+              )}
+
+              {/* Legal route check */}
+              {plan.legalChecks && (
+                <div style={S.card}>
+                  <div style={S.sec}>Legal Route Check</div>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(130px,100%),1fr))', gap:'.65rem' }}>
+                    {plan.legalChecks.map(c => (
+                      <div key={c.label} style={{ background: c.ok&&!c.warn?'rgba(109,170,69,.08)':c.warn?'rgba(253,171,67,.08)':'rgba(221,105,116,.08)', border:`1px solid ${c.ok&&!c.warn?'rgba(109,170,69,.2)':c.warn?'rgba(253,171,67,.2)':'rgba(221,105,116,.2)'}`, borderRadius:10, padding:'.75rem', textAlign:'center' }}>
+                        <div style={{ fontSize:'1.2rem', marginBottom:4 }}>{c.ok&&!c.warn?'✅':c.warn?'⚠️':'🚫'}</div>
+                        <div style={{ fontWeight:800, fontSize:'var(--text-sm)', color:c.ok&&!c.warn?'var(--success)':c.warn?'var(--warn)':'var(--error)' }}>{c.val}</div>
+                        <div style={{ fontSize:'var(--text-xs)', color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginTop:2 }}>{c.label}</div>
+                        <div style={{ fontSize:'var(--text-xs)', color:'var(--faint)', marginTop:2 }}>{c.legal}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* DOT timeline */}
+              <div style={S.card}>
+                <div style={S.sec}>DOT-Compliant Route Timeline</div>
+                {plan.stops.map((s,i) => (
+                  <div key={i} style={{ display:'grid', gridTemplateColumns:'76px 30px 1fr', gap:'.65rem', position:'relative' }}>
+                    <div style={{ textAlign:'right', paddingTop:2 }}>
+                      <div style={{ fontWeight:800, fontSize:'var(--text-xs)', fontVariantNumeric:'tabular-nums', color: ['rest10','break30'].includes(s.type) ? 'var(--error)' : 'var(--text)' }}>{s.eta}</div>
+                      {s.dur !== '—' && s.dur && <div style={{ fontSize:'.6rem', color:'var(--muted)' }}>{s.dur}</div>}
+                    </div>
+                    <div style={{ display:'flex', flexDirection:'column', alignItems:'center' }}>
+                      <div style={{ width:30, height:30, borderRadius:'50%', background:s.color, display:'grid', placeItems:'center', fontSize:'.85rem', flexShrink:0, boxShadow:`0 0 0 3px var(--bg,#0f0e0d)` }}>{s.icon}</div>
+                      {i < plan.stops.length-1 && <div style={{ width:2, flex:1, minHeight:14, background:s.color, opacity:.25, marginTop:3 }} />}
+                    </div>
+                    <div style={{ paddingBottom:'1.1rem', borderBottom: i < plan.stops.length-1 ? '1px solid var(--border)' : 'none' }}>
+                      <div style={{ fontWeight:800, fontSize:'var(--text-xs)', color: s.type==='rest10'||s.type==='break30' ? 'var(--error)' : s.type==='delivery' ? 'var(--success)' : 'var(--text)' }}>{s.label}</div>
+                      <div style={{ fontSize:'var(--text-xs)', color:'var(--primary)', margin:'2px 0 5px' }}>{s.location}</div>
+                      <div style={{ fontSize:'.68rem', color:'var(--muted)', lineHeight:1.55 }}>{s.note}</div>
+                      {s.tag && <span style={{ display:'inline-block', marginTop:5, padding:'.2rem .55rem', borderRadius:5, fontSize:'.62rem', fontWeight:700, background:'rgba(221,105,116,.1)', color:'var(--error)', border:'1px solid rgba(221,105,116,.2)' }}>{s.tag}</span>}
+                      <div style={{ fontSize:'.62rem', color:'var(--faint)', marginTop:5 }}>HOS: {s.hosStr} · Mile {s.mi}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Trucker's Path / GPS plan */}
+              {plan.gpsStops.length > 0 && (
+                <div style={{ ...S.card, border:'1px solid rgba(79,152,163,.22)', background:'linear-gradient(135deg,rgba(79,152,163,.04),var(--surface))' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', paddingBottom:'.5rem', borderBottom:'1px solid var(--border)', marginBottom:'.9rem' }}>
+                    <div style={S.sec as React.CSSProperties}>🗺 Trucker&#39;s Path / GPS Plan</div>
+                    <button onClick={copyGPS} style={{ ...S.btn, padding:'.35rem .75rem', fontSize:'.65rem', background: copiedGPS ? 'rgba(109,170,69,.1)' : 'var(--surface-2)', borderColor: copiedGPS ? 'rgba(109,170,69,.4)' : 'var(--border)', color: copiedGPS ? 'var(--success)' : 'var(--text)' }}>
+                      {copiedGPS ? '✅ Copied!' : '📋 Copy for GPS'}
+                    </button>
+                  </div>
+                  <p style={{ fontSize:'var(--text-xs)', color:'var(--muted)', marginBottom:'.85rem', lineHeight:1.55 }}>
+                    Tap &ldquo;Copy for GPS&rdquo; to paste addresses into Trucker&#39;s Path, Google Maps, or any nav app. Stretch breaks excluded.
+                  </p>
+                  <div style={{ display:'grid', gap:'.5rem' }}>
+                    {plan.gpsStops.map(s => (
+                      <div key={s.order} style={{ display:'grid', gridTemplateColumns:'32px 1fr', gap:'.6rem', alignItems:'start', background:'var(--surface-2)', borderRadius:10, padding:'.65rem .85rem', border: s.tag ? '1px solid rgba(221,105,116,.2)' : '1px solid var(--border)' }}>
+                        <div style={{ width:32, height:32, borderRadius:'50%', background: s.typeLabel==='DESTINATION'?'var(--success)':s.typeLabel==='ORIGIN'?'var(--primary)':s.typeLabel.includes('REST')?'var(--error)':s.typeLabel.includes('BREAK')?'rgba(221,105,116,.7)':'var(--warn)', display:'grid', placeItems:'center', fontSize:'.85rem', flexShrink:0 }}>{s.icon}</div>
+                        <div>
+                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:'.5rem', marginBottom:2 }}>
+                            <div>
+                              <span style={{ fontSize:'.58rem', fontWeight:800, textTransform:'uppercase', letterSpacing:'.07em', color:'var(--muted)', marginRight:5 }}>Stop {s.order}</span>
+                              <span style={{ fontSize:'.62rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color: s.typeLabel==='DESTINATION'?'var(--success)':s.typeLabel==='ORIGIN'?'var(--primary)':s.tag?'var(--error)':'var(--text)' }}>{s.typeLabel}</span>
+                            </div>
+                            <span style={{ fontSize:'.6rem', color:'var(--muted)', fontVariantNumeric:'tabular-nums', flexShrink:0 }}>{s.eta} · mi {s.mi}</span>
+                          </div>
+                          <div style={{ fontWeight:700, fontSize:'var(--text-xs)', lineHeight:1.4 }}>{s.name}</div>
+                          {s.address && <div style={{ fontSize:'.65rem', color:'var(--primary)', marginTop:2, fontStyle:'italic' }}>{s.address}</div>}
+                          {s.tag && <span style={{ display:'inline-block', marginTop:4, padding:'.18rem .5rem', borderRadius:4, fontSize:'.58rem', fontWeight:700, background:'rgba(221,105,116,.1)', color:'var(--error)', border:'1px solid rgba(221,105,116,.2)' }}>{s.tag}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ marginTop:'.75rem', padding:'.5rem .75rem', background:'rgba(79,152,163,.05)', borderRadius:8, fontSize:'.65rem', color:'var(--muted)', lineHeight:1.6 }}>
+                    💡 Addresses are real NV corridor stops. Verify availability before departure. Live fuel prices &amp; shower status via API integration coming soon.
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
+                <button onClick={acceptLoad} style={{ ...S.btnPri, padding:'.9rem', textAlign:'center', background:'var(--success)', borderColor:'var(--success)', boxShadow:'0 3px 12px rgba(109,170,69,.3)', fontSize:'var(--text-sm)' }}>
+                  ✅ Accept — push to Load Log
+                </button>
+                <button onClick={copyFullPlan} style={{ ...S.btn, padding:'.9rem', textAlign:'center', fontSize:'var(--text-sm)' }}>
+                  📋 Copy full plan
+                </button>
+              </div>
+
+            </div>
+          )}
+        </div>
+      </main>
+    </>
+  )
+}
