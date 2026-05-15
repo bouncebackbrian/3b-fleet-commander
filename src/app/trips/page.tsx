@@ -608,6 +608,266 @@ export default function TripPlanner() {
     setTimeout(() => setCopiedGPS(false), 2500)
   }
 
+  // ── Summary Sheet ─────────────────────────────────────────────────────────
+  const generateSummaryHTML = (p: Plan, t: Truck | null): string => {
+    const now = new Date().toLocaleString('en-US', { dateStyle:'long', timeStyle:'short' })
+    const hosStatus = p.hos_compliant ? '✓ DOT COMPLIANT' : '⚠ HOS WARNINGS — SEE TIMELINE'
+    const hosColor  = p.hos_compliant ? '#1a7c3e' : '#b91c1c'
+    const profitPct = p.est_pay > 0 ? Math.round(p.net / p.est_pay * 100) : 0
+    const profitColor = profitPct > 60 ? '#1a7c3e' : profitPct > 35 ? '#92700a' : '#b91c1c'
+
+    const stopRows = p.stops.map(s => `
+      <tr style="border-bottom:1px solid #e5e7eb;">
+        <td style="padding:6px 8px;font-size:11px;white-space:nowrap;color:#6b7280;">${s.eta}</td>
+        <td style="padding:6px 8px;font-size:11px;text-align:center;">${s.icon}</td>
+        <td style="padding:6px 8px;font-size:11px;font-weight:700;color:${s.type==='rest10'||s.type==='break30'?'#b91c1c':s.type==='delivery'?'#1a7c3e':'#111'}">${s.label}</td>
+        <td style="padding:6px 8px;font-size:11px;color:#2563eb;">${s.location}</td>
+        <td style="padding:6px 8px;font-size:11px;color:#6b7280;text-align:right;">mi ${s.mi}</td>
+      </tr>`).join('')
+
+    const legalRows = p.legalChecks ? p.legalChecks.map(c => `
+      <tr>
+        <td style="padding:5px 8px;font-size:11px;color:#374151;">${c.label}</td>
+        <td style="padding:5px 8px;font-size:11px;font-weight:700;">${c.val}</td>
+        <td style="padding:5px 8px;font-size:11px;color:#6b7280;">${c.legal}</td>
+        <td style="padding:5px 8px;font-size:12px;text-align:center;">${c.ok&&!c.warn?'✅':c.warn?'⚠️':'🚫'}</td>
+      </tr>`).join('') : ''
+
+    const truckLine = t
+      ? `${[t.year,t.make,t.model].filter(Boolean).join(' ')||'Truck'} #${t.truckNum||'—'} · Trailer: ${t.trailerNum||'—'} (${t.trailerType}) · ${t.mpgLoaded} MPG · $${t.fuelPrice}/gal`
+      : 'No truck configured'
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Trip Summary — ${p.loadNum ? 'Load #'+p.loadNum+' · ' : ''}${p.origin} → ${p.dest}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;color:#111;font-size:13px;line-height:1.5}
+    .page{max-width:820px;margin:0 auto;padding:28px 32px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:16px;border-bottom:3px solid #00b88a;margin-bottom:20px}
+    .brand{display:flex;flex-direction:column}
+    .brand-name{font-size:18px;font-weight:900;color:#00b88a;letter-spacing:-.02em}
+    .brand-sub{font-size:9px;font-weight:700;color:#888;letter-spacing:.12em;text-transform:uppercase;margin-top:2px}
+    .gen-date{font-size:10px;color:#888;text-align:right;line-height:1.6}
+    .verdict{display:inline-block;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:800;letter-spacing:.04em;margin-bottom:4px}
+    h2{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#00b88a;margin-bottom:10px;padding-bottom:5px;border-bottom:1px solid #e5e7eb}
+    .section{margin-bottom:20px}
+    .route-box{background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px 18px;margin-bottom:6px}
+    .route-origin{font-size:16px;font-weight:900;color:#111}
+    .route-arrow{font-size:12px;color:#6b7280;margin:4px 0}
+    .route-dest{font-size:16px;font-weight:900;color:#111}
+    .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:6px}
+    .kpi{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;text-align:center}
+    .kpi-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;margin-bottom:4px}
+    .kpi-val{font-size:16px;font-weight:900;font-variant-numeric:tabular-nums}
+    .profit-bar{height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin:8px 0}
+    .profit-fill{height:100%;border-radius:4px}
+    table{width:100%;border-collapse:collapse}
+    .timeline-table td{vertical-align:top}
+    .legal-table td{vertical-align:middle}
+    .warn-box{background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:11px;color:#92700a}
+    .hos-box{border-radius:8px;padding:10px 14px;font-size:12px;font-weight:700}
+    .notes-section{margin-top:24px;border-top:1px solid #e5e7eb;padding-top:16px}
+    .notes-lines{margin-top:8px}
+    .note-line{border-bottom:1px solid #e5e7eb;height:24px;margin-bottom:4px}
+    .footer{margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
+    .truck-line{font-size:10px;color:#6b7280;margin-top:6px;padding:6px 10px;background:#f9fafb;border-radius:5px;border:1px solid #e5e7eb}
+    @media print{
+      body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      .no-print{display:none!important}
+      .page{padding:16px 20px}
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="brand">
+      <div class="brand-name">3B FLEET COMMANDER</div>
+      <div class="brand-sub">Mileage Intelligence System</div>
+      <div style="margin-top:6px;font-size:11px;color:#374151;">
+        <strong>TRIP SUMMARY SHEET</strong>${p.loadNum ? ' — Load #'+p.loadNum : ''}
+      </div>
+    </div>
+    <div class="gen-date">
+      Generated: ${now}<br/>
+      ${p.hos_compliant
+        ? '<span style="color:#1a7c3e;font-weight:800;">✓ DOT COMPLIANT</span>'
+        : '<span style="color:#b91c1c;font-weight:800;">⚠ HOS WARNINGS</span>'}
+    </div>
+  </div>
+
+  <!-- Route -->
+  <div class="section">
+    <h2>Route</h2>
+    <div class="route-box">
+      <div class="route-origin">📍 ${p.origin}</div>
+      <div class="route-arrow">↓ ${p.total_miles} miles · Drive ${p.drive_time} · Total ${p.trip_time}</div>
+      <div class="route-dest">🏁 ${p.dest}</div>
+      <div style="display:flex;gap:20px;margin-top:8px;font-size:11px;color:#374151;">
+        <span>🕐 Depart: <strong>${p.depart_display}</strong></span>
+        <span>🏁 ETA: <strong style="color:#00b88a">${p.eta}</strong></span>
+        ${p.loadNum   ? `<span>Load #: <strong>${p.loadNum}</strong></span>` : ''}
+        ${p.broker    ? `<span>Broker: <strong>${p.broker}</strong></span>` : ''}
+        ${p.commodity ? `<span>Commodity: <strong>${p.commodity}</strong></span>` : ''}
+        ${p.weight    ? `<span>Weight: <strong>${p.weight.toLocaleString()} lbs</strong></span>` : ''}
+        ${p.deadhead  ? `<span>Deadhead: <strong>${p.deadhead} mi</strong></span>` : ''}
+      </div>
+    </div>
+    <div class="truck-line">🚛 ${truckLine}</div>
+  </div>
+
+  <!-- Financials -->
+  <div class="section">
+    <h2>Financials</h2>
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="kpi-label">Gross Pay</div>
+        <div class="kpi-val" style="color:#1a7c3e">${money(p.est_pay)}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Fuel Cost</div>
+        <div class="kpi-val" style="color:#92700a">${money(p.fuel_cost)}</div>
+      </div>
+      ${p.deadhead > 0 ? `<div class="kpi">
+        <div class="kpi-label">Deadhead Cost</div>
+        <div class="kpi-val" style="color:#92700a">${money(p.deadheadCost)}</div>
+      </div>` : ''}
+      <div class="kpi">
+        <div class="kpi-label">Net Pay</div>
+        <div class="kpi-val" style="color:${p.net>0?'#1a7c3e':'#b91c1c'}">${money(p.net)}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">CPM Rate</div>
+        <div class="kpi-val">$${p.cpm.toFixed(3)}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Profit Score</div>
+        <div class="kpi-val" style="color:${profitColor}">${profitPct}%</div>
+      </div>
+    </div>
+    <div class="profit-bar"><div class="profit-fill" style="width:${Math.min(100,Math.max(0,profitPct))}%;background:${profitColor}"></div></div>
+    <div style="font-size:10px;color:#6b7280">Net after fuel: ${money(p.net)} on ${money(p.est_pay)} gross${p.deadhead>0?' · '+money(p.deadheadCost)+' deadhead':''}</div>
+  </div>
+
+  <!-- HOS & Legal -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+    <div>
+      <h2>HOS Status</h2>
+      <div class="hos-box" style="background:${p.hos_compliant?'#f0fdf4':'#fef2f2'};border:1px solid ${p.hos_compliant?'#86efac':'#fca5a5'}">
+        <div style="color:${hosColor};margin-bottom:4px;">${hosStatus}</div>
+        <div style="font-size:10px;font-weight:400;color:#374151;">Drive: ${p.drive_time} est. · FMCSA §395.3 limits applied</div>
+      </div>
+      ${p.warnings.length > 0 ? `<div class="warn-box" style="margin-top:6px;">⚠ ${p.warnings.join(' · ')}</div>` : ''}
+    </div>
+    ${legalRows ? `<div>
+      <h2>Legal Check</h2>
+      <table class="legal-table">
+        <tbody>${legalRows}</tbody>
+      </table>
+    </div>` : '<div></div>'}
+  </div>
+
+  <!-- Timeline -->
+  <div class="section">
+    <h2>DOT-Compliant Timeline</h2>
+    <table class="timeline-table">
+      <thead>
+        <tr style="border-bottom:2px solid #e5e7eb;">
+          <th style="padding:5px 8px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;text-align:left">ETA</th>
+          <th style="padding:5px 8px;"></th>
+          <th style="padding:5px 8px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;text-align:left">Stop</th>
+          <th style="padding:5px 8px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;text-align:left">Location</th>
+          <th style="padding:5px 8px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;text-align:right">Mile</th>
+        </tr>
+      </thead>
+      <tbody>${stopRows}</tbody>
+    </table>
+  </div>
+
+  <!-- Notes -->
+  <div class="notes-section">
+    <h2>Driver Notes / Dispatch Instructions</h2>
+    <div class="notes-lines">
+      ${Array.from({length:5}).map(()=>'<div class="note-line"></div>').join('')}
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <span>3B Fleet Commander · fleet.bouncebackbrian.com · Mileage Intelligence System</span>
+    <span>Generated ${now}</span>
+  </div>
+
+  <!-- Print button (hidden when printing) -->
+  <div class="no-print" style="margin-top:20px;display:flex;gap:10px;justify-content:center">
+    <button onclick="window.print()" style="padding:10px 28px;background:#00b88a;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">🖨 Print / Save as PDF</button>
+    <button onclick="window.close()" style="padding:10px 20px;background:#f3f4f6;color:#111;border:1px solid #d1d5db;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">✕ Close</button>
+  </div>
+
+</div>
+</body>
+</html>`
+  }
+
+  const printSummary = () => {
+    if (!plan) return
+    const html = generateSummaryHTML(plan, truck)
+    const w = window.open('', '_blank', 'width=900,height=800,scrollbars=yes')
+    if (!w) { alert('Please allow pop-ups for this site to open the Summary Sheet.'); return }
+    w.document.write(html)
+    w.document.close()
+  }
+
+  const emailSummary = () => {
+    if (!plan) return
+    const subject = encodeURIComponent(`Trip Summary${plan.loadNum ? ' — Load #'+plan.loadNum : ''}: ${plan.origin} → ${plan.dest}`)
+    const body = encodeURIComponent([
+      '3B FLEET COMMANDER — TRIP SUMMARY',
+      '═'.repeat(42),
+      '',
+      `ROUTE: ${plan.origin} → ${plan.dest}`,
+      `Miles: ${plan.total_miles} loaded`,
+      plan.loadNum   ? `Load #: ${plan.loadNum}`         : '',
+      plan.broker    ? `Broker: ${plan.broker}`           : '',
+      plan.commodity ? `Commodity: ${plan.commodity}`     : '',
+      plan.weight    ? `Weight: ${plan.weight.toLocaleString()} lbs` : '',
+      '',
+      `SCHEDULE`,
+      `─`.repeat(20),
+      `Depart: ${plan.depart_display}`,
+      `Drive time: ${plan.drive_time}`,
+      `Total time: ${plan.trip_time}`,
+      `ETA: ${plan.eta}`,
+      '',
+      `FINANCIALS`,
+      `─`.repeat(20),
+      `Gross pay:  ${money(plan.est_pay)}`,
+      `Fuel cost:  ${money(plan.fuel_cost)}`,
+      plan.deadhead > 0 ? `Deadhead:   ${money(plan.deadheadCost)}` : '',
+      `Net pay:    ${money(plan.net)}`,
+      `CPM rate:   $${plan.cpm.toFixed(3)}`,
+      `Profit:     ${plan.est_pay>0?Math.round(plan.net/plan.est_pay*100):0}%`,
+      '',
+      `HOS STATUS: ${plan.hos_compliant ? '✓ DOT Compliant' : '⚠ Warnings — see timeline'}`,
+      '',
+      'TIMELINE',
+      '─'.repeat(20),
+      ...plan.stops.map(s => `  ${s.eta.padEnd(10)} ${s.label.padEnd(36)} ${s.location}`),
+      '',
+      plan.warnings.length ? 'WARNINGS:\n' + plan.warnings.map(w=>'  ⚠ '+w).join('\n') : '',
+      '',
+      '─'.repeat(42),
+      'Generated by 3B Fleet Commander',
+      'fleet.bouncebackbrian.com',
+    ].filter(l => l !== undefined && l !== null).join('\n'))
+    window.location.href = `mailto:?subject=${subject}&body=${body}`
+  }
+
   const copyFullPlan = () => {
     if (!plan) return
     const text = [
@@ -1225,14 +1485,20 @@ export default function TripPlanner() {
               )}
 
               {/* Actions */}
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
-                <button onClick={acceptLoad} style={{ ...S.btnPri, padding:'.9rem', textAlign:'center', background:'var(--success)', borderColor:'var(--success)', boxShadow:'0 3px 12px rgba(109,170,69,.3)', fontSize:'var(--text-sm)' }}>
-                  ✅ Accept — push to Load Log
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'.65rem' }}>
+                <button onClick={acceptLoad} style={{ ...S.btnPri, padding:'.85rem .5rem', textAlign:'center', background:'var(--success)', borderColor:'var(--success)', boxShadow:'0 3px 12px rgba(40,192,72,.25)', fontSize:'var(--text-xs)' }}>
+                  ✅ Accept → Load Log
                 </button>
-                <button onClick={copyFullPlan} style={{ ...S.btn, padding:'.9rem', textAlign:'center', fontSize:'var(--text-sm)' }}>
-                  📋 Copy full plan
+                <button onClick={printSummary} style={{ ...S.btnPri, padding:'.85rem .5rem', textAlign:'center', fontSize:'var(--text-xs)', background:'linear-gradient(135deg,#0ea5e9,#0284c7)', borderColor:'#0284c7', boxShadow:'0 3px 12px rgba(14,165,233,.25)' }}>
+                  📄 Summary / PDF
+                </button>
+                <button onClick={emailSummary} style={{ ...S.btnPri, padding:'.85rem .5rem', textAlign:'center', fontSize:'var(--text-xs)', background:'linear-gradient(135deg,#8b5cf6,#6d28d9)', borderColor:'#6d28d9', boxShadow:'0 3px 12px rgba(109,40,217,.25)' }}>
+                  ✉ Email Summary
                 </button>
               </div>
+              <button onClick={copyFullPlan} style={{ ...S.btn, padding:'.65rem', textAlign:'center', fontSize:'var(--text-xs)', width:'100%' }}>
+                📋 Copy full plan to clipboard
+              </button>
 
             </div>
           )}
