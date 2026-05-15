@@ -5,6 +5,7 @@ import LoadBadge from '@/components/ui/LoadBadge'
 import KpiCard from '@/components/ui/KpiCard'
 import { supabase } from '@/lib/supabase'
 import { SAMPLE_LOADS, classify, calcMetrics } from '@/lib/store'
+import { loadSettings } from '@/lib/settings'
 import type { Load, MoveType, LoadStatus } from '@/types'
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
@@ -115,7 +116,11 @@ export default function Loads() {
   const unpaid = Math.max(n('actualMiles') - n('paidMiles'), 0)
   const payGap = Math.max(estPay - n('settlementPay'), 0)
 
-  function openAdd() { setForm(BLANK); setEditId(null); setPanelOpen(true) }
+  function openAdd() {
+    const cfg = loadSettings()
+    setForm({ ...BLANK, dispatcher: cfg.dispatcher || BLANK.dispatcher, cpmRate: cfg.defaultCpm.toString() })
+    setEditId(null); setPanelOpen(true)
+  }
   function openEdit(l: Load) { setForm(toForm(l)); setEditId(l.id); setPanelOpen(true) }
   function closePanel() { setPanelOpen(false); setEditId(null); setForm(BLANK) }
 

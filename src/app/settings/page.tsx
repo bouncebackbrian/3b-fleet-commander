@@ -1,60 +1,113 @@
 'use client'
+import { useState, useEffect } from 'react'
 import TopBar from '@/components/layout/TopBar'
+import { loadSettings, persistSettings, DEFAULT_SETTINGS, type AppSettings } from '@/lib/settings'
+
+const inp: React.CSSProperties = { width: '100%', padding: '.8rem 1rem', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface-2)', outline: 'none', fontSize: 'var(--text-sm)' }
+const lbl: React.CSSProperties = { display: 'block', fontSize: 'var(--text-xs)', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 5 }
+
 export default function Settings() {
+  const [s, setS] = useState<AppSettings>(DEFAULT_SETTINGS)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => { setS(loadSettings()) }, [])
+
+  function set(k: keyof AppSettings, v: string) {
+    setS(prev => ({ ...prev, [k]: typeof prev[k] === 'number' ? Number(v) || 0 : v }))
+    setSaved(false)
+  }
+
+  function handleSave(e: React.FormEvent) {
+    e.preventDefault()
+    persistSettings(s)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2500)
+  }
+
+  function handleReset() {
+    setS(DEFAULT_SETTINGS)
+    persistSettings(DEFAULT_SETTINGS)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2500)
+  }
+
   return (
     <>
-      <TopBar title="Settings" module="sys" subtitle="Supabase connection · CPM defaults · driver profile"/>
-      <main style={{padding:'1.4rem',display:'grid',gap:'1.4rem',maxWidth:640}}>
-        <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:20,padding:'1.8rem',display:'grid',gap:'1.2rem'}}>
-          <h2 style={{fontSize:'var(--text-lg)',fontWeight:800}}>Supabase connection</h2>
-          <p style={{fontSize:'var(--text-sm)',color:'var(--muted)'}}>Add these to your <code>.env.local</code> file (Vercel → Settings → Environment Variables).</p>
-          {[['NEXT_PUBLIC_SUPABASE_URL','https://xxxx.supabase.co'],['NEXT_PUBLIC_SUPABASE_ANON_KEY','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...']].map(([k,v])=>(
-            <div key={k}><label style={{display:'block',fontSize:'var(--text-xs)',color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:5}}>{k}</label>
-            <div style={{padding:'.8rem 1rem',borderRadius:12,border:'1px solid var(--border)',background:'var(--surface-2)',fontFamily:'ui-monospace,monospace',fontSize:'var(--text-xs)',color:'var(--faint)',wordBreak:'break-all'}}>{v}</div></div>
-          ))}
-          <div style={{padding:'1rem',borderRadius:14,background:'rgba(85,145,199,.08)',border:'1px solid rgba(85,145,199,.15)',color:'var(--blue)',fontSize:'var(--text-sm)'}}>
-            Get your keys at <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" style={{color:'var(--primary)',fontWeight:700}}>supabase.com/dashboard</a> → Project Settings → API
+      <TopBar title="Settings" module="sys" subtitle="Driver profile · pay defaults · CPM rates" />
+      <main style={{ padding: '1.4rem', display: 'grid', gap: '1.4rem', maxWidth: 640 }}>
+        <form onSubmit={handleSave} style={{ display: 'grid', gap: '1.4rem' }}>
+
+          {/* Driver profile */}
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 20, padding: '1.8rem', display: 'grid', gap: '1rem' }}>
+            <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 800 }}>Driver profile</h2>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)', marginTop: -4 }}>Used in dashboard headers and dispute scripts.</p>
+            <div>
+              <label style={lbl}>Driver / company name</label>
+              <input value={s.driverName} onChange={e => set('driverName', e.target.value)} placeholder="e.g. 3B Transport" style={inp} />
+            </div>
+            <div>
+              <label style={lbl}>Dispatcher name</label>
+              <input value={s.dispatcher} onChange={e => set('dispatcher', e.target.value)} placeholder="e.g. Trev" style={inp} />
+            </div>
           </div>
-        </div>
-        <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:20,padding:'1.8rem',display:'grid',gap:'1rem'}}>
-          <h2 style={{fontSize:'var(--text-lg)',fontWeight:800}}>CPM defaults</h2>
-          {[['Default CPM rate','0.55'],['Low CPM threshold','0.45'],['Detention rate ($/hr)','50.00']].map(([l,v])=>(
-            <div key={l}><label style={{display:'block',fontSize:'var(--text-xs)',color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:5}}>{l}</label>
-            <input defaultValue={v} type="number" step="0.01" style={{width:'100%',padding:'.8rem 1rem',borderRadius:12,border:'1px solid var(--border)',background:'var(--surface-2)',outline:'none',fontSize:'var(--text-sm)'}}/></div>
-          ))}
-        </div>
-        <div style={{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:20,padding:'1.8rem',display:'grid',gap:'1rem'}}>
-          <h2 style={{fontSize:'var(--text-lg)',fontWeight:800}}>Supabase schema</h2>
-          <p style={{fontSize:'var(--text-sm)',color:'var(--muted)'}}>Run this SQL in your Supabase SQL editor to create the fleet tables:</p>
-          <pre style={{overflowX:'auto',padding:'1.2rem',borderRadius:12,background:'var(--surface-2)',border:'1px solid var(--border)',fontSize:'var(--text-xs)',color:'var(--text)',lineHeight:1.7}}>{`create table loads (
-  id uuid primary key default gen_random_uuid(),
-  date date, load_number text, dispatcher text,
-  broker text, trailer text, move_type text,
-  origin text, destination text, status text,
-  dispatch_miles int, actual_miles int, deadhead_miles int,
-  paid_miles int, cpm_rate numeric(5,3), fuel_cost numeric(10,2),
-  wait_hours numeric(6,2), detention_hours numeric(6,2),
-  detention_pay numeric(10,2), settlement_pay numeric(10,2),
-  notes text, proof_saved boolean default false,
-  created_at timestamptz default now()
-);
-create table delays (
-  id uuid primary key default gen_random_uuid(),
-  load_number text, trailer text, delay_type text,
-  location text, total_hours numeric(6,2),
-  billable text, detention_rate numeric(8,2),
-  dispatcher_notified boolean default false,
-  notes text, created_at timestamptz default now()
-);
-create table fuel (
-  id uuid primary key default gen_random_uuid(),
-  date date, location text, fuel_type text,
-  gallons numeric(8,3), price_per_gal numeric(7,3),
-  total_cost numeric(10,2), load_number text,
-  receipt_saved boolean default false,
-  notes text, created_at timestamptz default now()
-);`}</pre>
-        </div>
+
+          {/* CPM defaults */}
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 20, padding: '1.8rem', display: 'grid', gap: '1rem' }}>
+            <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 800 }}>CPM &amp; pay defaults</h2>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)', marginTop: -4 }}>These drive the pay analysis on the dashboard and default rate when logging new loads.</p>
+            <div>
+              <label style={lbl}>Default CPM rate</label>
+              <input value={s.defaultCpm} onChange={e => set('defaultCpm', e.target.value)} type="number" step="0.001" style={inp} />
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)', marginTop: 4 }}>Pre-filled on every new load entry</div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div>
+                <label style={lbl}>Pay analysis — low CPM</label>
+                <input value={s.cpmLow} onChange={e => set('cpmLow', e.target.value)} type="number" step="0.001" style={inp} />
+              </div>
+              <div>
+                <label style={lbl}>Pay analysis — high CPM</label>
+                <input value={s.cpmHigh} onChange={e => set('cpmHigh', e.target.value)} type="number" step="0.001" style={inp} />
+              </div>
+            </div>
+            <div style={{ padding: '.75rem 1rem', borderRadius: 12, background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>
+              Dashboard pay analysis will show: <strong style={{ color: 'var(--text)' }}>@ ${s.cpmLow.toFixed(3)} CPM</strong> and <strong style={{ color: 'var(--text)' }}>@ ${s.cpmHigh.toFixed(3)} CPM</strong>
+            </div>
+            <div>
+              <label style={lbl}>Detention rate ($/hr)</label>
+              <input value={s.detentionRate} onChange={e => set('detentionRate', e.target.value)} type="number" step="0.01" style={inp} />
+            </div>
+          </div>
+
+          {/* Supabase connection (read-only reference) */}
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 20, padding: '1.8rem', display: 'grid', gap: '1rem' }}>
+            <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 800 }}>Supabase connection</h2>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>Set these in Vercel → Settings → Environment Variables (not editable here).</p>
+            {(['NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'] as const).map(k => (
+              <div key={k}>
+                <label style={lbl}>{k}</label>
+                <div style={{ padding: '.8rem 1rem', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface-2)', fontFamily: 'ui-monospace,monospace', fontSize: 'var(--text-xs)', color: 'var(--faint)', wordBreak: 'break-all' }}>
+                  {typeof window !== 'undefined' && process.env[k] ? process.env[k] : '(set in Vercel)'}
+                </div>
+              </div>
+            ))}
+            <div style={{ padding: '1rem', borderRadius: 14, background: 'rgba(85,145,199,.08)', border: '1px solid rgba(85,145,199,.15)', color: 'var(--blue)', fontSize: 'var(--text-sm)' }}>
+              Get your keys at <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 700 }}>supabase.com/dashboard</a> &rarr; Project Settings &rarr; API
+            </div>
+          </div>
+
+          {/* Save bar */}
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', alignItems: 'center' }}>
+            <button type="button" onClick={handleReset}
+              style={{ padding: '.8rem 1.2rem', borderRadius: 12, background: 'var(--surface-off)', border: '1px solid var(--border)', fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>
+              Reset to defaults
+            </button>
+            <button type="submit"
+              style={{ padding: '.8rem 2rem', borderRadius: 12, background: saved ? 'var(--success)' : 'var(--primary)', color: 'white', fontWeight: 700, fontSize: 'var(--text-sm)', transition: '200ms' }}>
+              {saved ? 'Saved!' : 'Save settings'}
+            </button>
+          </div>
+        </form>
       </main>
     </>
   )

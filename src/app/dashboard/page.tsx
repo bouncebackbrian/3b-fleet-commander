@@ -6,6 +6,7 @@ import LoadBadge from '@/components/ui/LoadBadge'
 import RedFlag from '@/components/ui/RedFlag'
 import { supabase } from '@/lib/supabase'
 import { SAMPLE_LOADS, SAMPLE_DELAYS, SAMPLE_FUEL, classify, calcMetrics } from '@/lib/store'
+import { loadSettings, DEFAULT_SETTINGS, type AppSettings } from '@/lib/settings'
 import type { Load, MoveType, LoadStatus, DelayEntry, FuelEntry } from '@/types'
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
@@ -55,6 +56,9 @@ export default function Dashboard() {
   const [delays, setDelays] = useState<DelayEntry[]>([])
   const [fuel, setFuel] = useState<FuelEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [cfg, setCfg] = useState<AppSettings>(DEFAULT_SETTINGS)
+
+  useEffect(() => { setCfg(loadSettings()) }, [])
 
   useEffect(() => {
     if (!supabase) {
@@ -95,7 +99,7 @@ export default function Dashboard() {
   return (
     <>
       <TopBar title="Fleet Dashboard" module="mis"
-        subtitle={loading ? 'Loading…' : `${today} · ${m.totalLoads} loads · Dispatcher: Trev`}
+        subtitle={loading ? 'Loading…' : `${today} · ${m.totalLoads} loads${cfg.dispatcher ? ` · Dispatcher: ${cfg.dispatcher}` : ''}`}
         onExport={handleExport} />
       <main style={{ padding: '1.4rem', display: 'grid', gap: '1.4rem' }}>
         <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(210px,100%),1fr))', gap: '1rem' }}>
@@ -163,10 +167,10 @@ export default function Dashboard() {
             <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 18, padding: '1.2rem', display: 'grid', gap: '.8rem' }}>
               <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 800 }}>Pay analysis</h2>
               {[
-                ['@ $0.50 CPM', fmtM(m.dispatchMiles * 0.50)],
-                ['@ $0.55 CPM', fmtM(m.dispatchMiles * 0.55)],
+                [`@ $${cfg.cpmLow.toFixed(3)} CPM`, fmtM(m.dispatchMiles * cfg.cpmLow)],
+                [`@ $${cfg.cpmHigh.toFixed(3)} CPM`, fmtM(m.dispatchMiles * cfg.cpmHigh)],
                 ['Fuel (fuel log)', '− ' + fmtM(totalFuel)],
-                ['Net @ .55', fmtM(m.dispatchMiles * 0.55 - totalFuel)],
+                [`Net @ ${cfg.cpmHigh.toFixed(3)}`, fmtM(m.dispatchMiles * cfg.cpmHigh - totalFuel)],
               ].map(([l, v]) => (
                 <div key={l} style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '.8rem', borderBottom: '1px solid var(--border)' }}>
                   <span style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>{l}</span>
