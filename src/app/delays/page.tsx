@@ -5,6 +5,7 @@ import LoadBadge from '@/components/ui/LoadBadge'
 import KpiCard from '@/components/ui/KpiCard'
 import { supabase } from '@/lib/supabase'
 import { SAMPLE_DELAYS } from '@/lib/store'
+import Attachments from '@/components/ui/Attachments'
 import type { DelayEntry } from '@/types'
 
 const DELAY_TYPES = ['Traffic','Gate','Shipper Wait','Receiver Wait','No receiving driver','Dispatch Delay','Paperwork','Scale/Fuel','Other']
@@ -36,6 +37,7 @@ export default function Delays() {
   const [form, setForm] = useState<F>(BLANK)
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<DelayEntry | null>(null)
+  const [attachTarget, setAttachTarget] = useState<DelayEntry | null>(null)
 
   useEffect(() => {
     if (!supabase) { setEntries(SAMPLE_DELAYS); setLoading(false); return }
@@ -127,10 +129,16 @@ export default function Delays() {
                       </td>
                       <td style={{ padding: '.85rem 1rem', fontSize: 'var(--text-xs)', color: 'var(--muted)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.notes || '—'}</td>
                       <td style={{ padding: '.85rem 1rem' }}>
-                        <button onClick={() => setDeleteTarget(e)}
-                          style={{ padding: '.3rem .6rem', borderRadius: 8, border: '1px solid var(--border)', color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>
-                          x
-                        </button>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button onClick={() => setAttachTarget(e)}
+                            style={{ padding: '.3rem .6rem', borderRadius: 8, border: '1px solid var(--border)', color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>
+                            Evidence
+                          </button>
+                          <button onClick={() => setDeleteTarget(e)}
+                            style={{ padding: '.3rem .6rem', borderRadius: 8, border: '1px solid var(--border)', color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>
+                            x
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}</tbody>
@@ -168,6 +176,26 @@ export default function Delays() {
             </button>
           </form>
         </div>
+
+        {/* Attachments slide-out */}
+        {attachTarget && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex' }} onClick={() => setAttachTarget(null)}>
+            <div style={{ flex: 1, background: 'rgba(0,0,0,.5)', backdropFilter: 'blur(3px)' }} />
+            <div onClick={e => e.stopPropagation()}
+              style={{ width: 'min(400px,100vw)', background: 'var(--surface)', borderLeft: '1px solid var(--border)', height: '100%', overflow: 'auto', padding: '1.8rem', display: 'grid', gap: '1rem', alignContent: 'start', boxShadow: 'var(--shadow-lg)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 800 }}>Evidence</h2>
+                <button onClick={() => setAttachTarget(null)} style={{ fontSize: '1.2rem', color: 'var(--muted)', lineHeight: 1 }}>x</button>
+              </div>
+              <div style={{ background: 'var(--surface-2)', borderRadius: 12, padding: '1rem', border: '1px solid var(--border)', display: 'grid', gap: '.3rem' }}>
+                <div style={{ fontWeight: 700 }}>Load {attachTarget.loadNumber} &middot; {attachTarget.delayType}</div>
+                <div style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>{attachTarget.location}</div>
+                <div style={{ fontSize: 'var(--text-sm)', color: attachTarget.totalHours > 1 ? 'var(--warn)' : 'var(--muted)' }}>{attachTarget.totalHours}h &middot; Billable: {attachTarget.billable}</div>
+              </div>
+              <Attachments entityType="delay" entityId={attachTarget.id} />
+            </div>
+          </div>
+        )}
 
         {deleteTarget && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(4px)', zIndex: 60, display: 'grid', placeItems: 'center', padding: '1rem' }}>

@@ -6,6 +6,7 @@ import KpiCard from '@/components/ui/KpiCard'
 import { supabase } from '@/lib/supabase'
 import { SAMPLE_LOADS, classify, calcMetrics } from '@/lib/store'
 import { loadSettings } from '@/lib/settings'
+import Attachments from '@/components/ui/Attachments'
 import type { Load, MoveType, LoadStatus } from '@/types'
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
@@ -274,6 +275,11 @@ export default function Loads() {
                   <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3}
                     style={{ ...inp, resize: 'vertical' }} />
                 </div>
+                {editId && (
+                  <div style={{ gridColumn: '1/-1', padding: '1rem', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+                    <Attachments entityType="load" entityId={editId} />
+                  </div>
+                )}
                 <div style={{ gridColumn: '1/-1', display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 4 }}>
                   <button type="button" onClick={closePanel}
                     style={{ padding: '.8rem 1.4rem', borderRadius: 12, background: 'var(--surface-off)', border: '1px solid var(--border)', fontWeight: 600, fontSize: 'var(--text-sm)' }}>
