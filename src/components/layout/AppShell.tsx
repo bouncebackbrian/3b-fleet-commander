@@ -1,5 +1,6 @@
 import Sidebar from './Sidebar'
 import BottomNav from './BottomNav'
+import InstallBanner from '@/components/pwa/InstallBanner'
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -9,6 +10,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {children}
       </div>
       <BottomNav />
+      <InstallBanner />
     </div>
   )
 }

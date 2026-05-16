@@ -1,0 +1,62 @@
+{
+  "name": "3B Fleet Commander",
+  "short_name": "3B Fleet",
+  "description": "Mileage Intelligence System for owner-operators — trip planning, HOS tracking, expenses, dispatch.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#061210",
+  "theme_color": "#061210",
+  "categories": ["productivity", "utilities", "business"],
+  "lang": "en-US",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192-mask.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512-mask.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Trip Planner",
+      "short_name": "Trips",
+      "description": "Plan your next load",
+      "url": "/trips",
+      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Log Expense",
+      "short_name": "Expenses",
+      "description": "Add a road expense",
+      "url": "/expenses",
+      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Dispatch",
+      "short_name": "Dispatch",
+      "description": "Send a message",
+      "url": "/dispatch",
+      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96" }]
+    }
+  ]
+}
