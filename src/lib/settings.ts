@@ -5,6 +5,8 @@ export type AppSettings = {
   cpmLow: number
   cpmHigh: number
   detentionRate: number
+  mpg: number
+  fuelPrice: number
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -14,6 +16,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   cpmLow: 0.50,
   cpmHigh: 0.55,
   detentionRate: 50,
+  mpg: 6.5,
+  fuelPrice: 4.00,
 }
 
 const KEY = '3b-fleet-settings'
