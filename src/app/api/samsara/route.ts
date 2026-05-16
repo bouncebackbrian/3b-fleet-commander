@@ -20,8 +20,9 @@ function startOfDayISO() {
   return d.toISOString()
 }
 
-export async function GET() {
-  const token = process.env.SAMSARA_API_TOKEN
+export async function GET(request: Request) {
+  // Accept token from env var (server-side, preferred) OR x-samsara-token header (user-entered in Settings)
+  const token = process.env.SAMSARA_API_TOKEN || request.headers.get('x-samsara-token')
   if (!token) return NextResponse.json({ error: 'not_configured' }, { status: 503 })
 
   try {

@@ -170,7 +170,12 @@ export default function Dashboard() {
     if (eldMode !== 'samsara') return
     const poll = async () => {
       setSamsaraLoad(true)
-      try { const res = await fetch('/api/samsara'); setSamsara(await res.json()) }
+      try {
+        const tok = localStorage.getItem('samsara-api-token') ?? ''
+        const headers: HeadersInit = tok ? { 'x-samsara-token': tok } : {}
+        const res = await fetch('/api/samsara', { headers })
+        setSamsara(await res.json())
+      }
       catch { /* ignore */ } finally { setSamsaraLoad(false) }
     }
     poll()

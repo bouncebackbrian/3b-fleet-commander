@@ -33,16 +33,17 @@ const badge = (text: string, color = 'teal') => (
   </div>
 )
 
-type Tab = 'personal' | 'vehicle' | 'pay' | 'fuel'
+type Tab = 'personal' | 'vehicle' | 'pay' | 'fuel' | 'system'
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'personal', label: 'Personal',  icon: '👤' },
   { id: 'vehicle',  label: 'Vehicle',   icon: '🚛' },
   { id: 'pay',      label: 'Pay & CPM', icon: '💵' },
   { id: 'fuel',     label: 'Fuel',      icon: '⛽' },
+  { id: 'system',   label: 'System',    icon: '⚙️' },
 ]
 
-type Profile = { full_name: string; role: string; three_b_id: string; three_b_biz_id: string }
-const EMPTY_PROFILE: Profile = { full_name: '', role: '', three_b_id: '', three_b_biz_id: '' }
+type Profile = { full_name: string; role: string; three_b_id: string; three_b_biz_id: string; cdl_number: string; cdl_state: string; phone: string }
+const EMPTY_PROFILE: Profile = { full_name: '', role: '', three_b_id: '', three_b_biz_id: '', cdl_number: '', cdl_state: '', phone: '' }
 
 export default function Settings() {
   const [tab,         setTab]         = useState<Tab>('personal')
@@ -54,9 +55,20 @@ export default function Settings() {
   const [profLoading, setProfLoading] = useState(false)
   const [fuelLoading, setFuelLoading] = useState(false)
   const [fuelMsg,     setFuelMsg]     = useState('')
+  // System tab
+  const [samsaraToken,    setSamsaraToken]    = useState('')
+  const [showToken,       setShowToken]       = useState(false)
+  const [tokenSaved,      setTokenSaved]      = useState(false)
+  const [tokenTesting,    setTokenTesting]    = useState(false)
+  const [tokenTestMsg,    setTokenTestMsg]    = useState('')
+  const [clearTarget,     setClearTarget]     = useState('')
+  const [clearConfirm,    setClearConfirm]    = useState(false)
   const supabase = createClient()
 
-  useEffect(() => { setS(loadSettings()) }, [])
+  useEffect(() => {
+    setS(loadSettings())
+    setSamsaraToken(localStorage.getItem('samsara-api-token') ?? '')
+  }, [])
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -69,6 +81,9 @@ export default function Settings() {
         role:           prof.role           ?? '',
         three_b_id:     prof.three_b_id     ?? '',
         three_b_biz_id: prof.three_b_biz_id ?? '',
+        cdl_number:     (prof as Record<string, string>).cdl_number ?? '',
+        cdl_state:      (prof as Record<string, string>).cdl_state  ?? '',
+        phone:          (prof as Record<string, string>).phone       ?? '',
       })
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -117,6 +132,9 @@ export default function Settings() {
       role:           profile.role           || null,
       three_b_id:     profile.three_b_id     || null,
       three_b_biz_id: profile.three_b_biz_id || null,
+      cdl_number:     profile.cdl_number     || null,
+      cdl_state:      profile.cdl_state      || null,
+      phone:          profile.phone          || null,
       updated_at:     new Date().toISOString(),
     })
     setProfLoading(false)
@@ -158,6 +176,76 @@ export default function Settings() {
       setFuelLoading(false)
     }, { enableHighAccuracy: false, timeout: 10000 })
   }, [])
+
+  // ── Samsara token save + test ──────────────────────────────────────────────
+  const saveSamsaraToken = () => {
+    localStorage.setItem('samsara-api-token', samsaraToken.trim())
+    setTokenSaved(true); setTokenTestMsg('')
+    setTimeout(() => setTokenSaved(false), 2000)
+  }
+  const testSamsaraToken = async () => {
+    const tok = samsaraToken.trim()
+    if (!tok) { setTokenTestMsg('Enter your token first.'); return }
+    setTokenTesting(true); setTokenTestMsg('')
+    try {
+      const res = await fetch('/api/samsara', { headers: { 'x-samsara-token': tok } })
+      const data = await res.json()
+      if (data.error === 'not_configured') setTokenTestMsg('❌ Token not accepted by the server.')
+      else if (data.error)                  setTokenTestMsg(`❌ API error: ${data.error}`)
+      else                                  setTokenTestMsg(`✅ Connected! Driver: ${data.hos?.driverName ?? 'unknown'}`)
+    } catch { setTokenTestMsg('❌ Could not reach server.') }
+    finally { setTokenTesting(false) }
+  }
+
+  // ── Data export / clear ────────────────────────────────────────────────────
+  const DATA_STORES = [
+    { key: '3b-expenses',    label: 'Expenses',     emoji: '💵' },
+    { key: '3b-active-trip', label: 'Active trip',  emoji: '🗺' },
+    { key: '3b-hos-data',    label: 'HOS data',     emoji: '⏱' },
+    { key: '3b-fleet-settings', label: 'Local settings', emoji: '⚙️' },
+    { key: '3b-vehicle',     label: 'Vehicle data', emoji: '🚛' },
+  ]
+
+  const exportAllData = () => {
+    const out: Record<string, unknown> = {}
+    DATA_STORES.forEach(({ key }) => {
+      try { const v = localStorage.getItem(key); if (v) out[key] = JSON.parse(v) }
+      catch { /* ignore */ }
+    })
+    const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `3b-fleet-backup-${new Date().toISOString().slice(0,10)}.json`
+    a.click()
+  }
+
+  const exportExpensesCSV = () => {
+    try {
+      const raw = localStorage.getItem('3b-expenses')
+      if (!raw) return
+      const expenses = JSON.parse(raw) as Array<Record<string, unknown>>
+      const rows = [
+        ['Date','Category','Amount','Deduct%','Deductible$','Description','Location','Load#'],
+        ...expenses.map(e => [
+          e.date, e.category, String(e.amount),
+          String(e.deductPct),
+          String(((e.amount as number) * (e.deductPct as number) / 100).toFixed(2)),
+          String(e.description ?? ''), String(e.location ?? ''), String(e.loadNumber ?? ''),
+        ])
+      ]
+      const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n')
+      const blob = new Blob([csv], { type: 'text/csv' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `3b-expenses-${new Date().toISOString().slice(0,10)}.csv`
+      a.click()
+    } catch { /* ignore */ }
+  }
+
+  const clearData = (key: string) => {
+    localStorage.removeItem(key)
+    setClearTarget(''); setClearConfirm(false)
+  }
 
   // ── field components (defined outside render to avoid focus loss) ──────────
   const Inp = ({ k, type = 'text', ph, step }: { k: keyof AppSettings; type?: string; ph?: string; step?: string }) => (
@@ -218,6 +306,18 @@ export default function Settings() {
                   <div style={{ gridColumn: '1 / -1' }}>
                     <label style={lbl}>3B Business ID</label>
                     <input style={inp} value={profile.three_b_biz_id} onChange={e => setP('three_b_biz_id', e.target.value)} placeholder="3BBIZ-001" />
+                  </div>
+                  <div>
+                    <label style={lbl}>CDL number</label>
+                    <input style={inp} value={profile.cdl_number} onChange={e => setP('cdl_number', e.target.value)} placeholder="License number" />
+                  </div>
+                  <div>
+                    <label style={lbl}>CDL state</label>
+                    <input style={inp} maxLength={2} value={profile.cdl_state} onChange={e => setP('cdl_state', e.target.value.toUpperCase())} placeholder="TX" />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={lbl}>Phone (for dispatch messages)</label>
+                    <input style={inp} type="tel" value={profile.phone} onChange={e => setP('phone', e.target.value)} placeholder="+1 (555) 000-0000" />
                   </div>
                 </div>
 
@@ -494,6 +594,143 @@ export default function Settings() {
               </button>
             </div>
           </form>
+        )}
+
+        {/* ══ SYSTEM TAB ══════════════════════════════════════════════════════ */}
+        {tab === 'system' && (
+          <div style={{ display: 'grid', gap: '1rem' }}>
+
+            {/* ── Samsara / ELD Integration ── */}
+            <div style={card}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 'var(--text-base)' }}>Samsara ELD Integration</div>
+                  <div style={{ fontSize: '.7rem', color: 'var(--muted)', marginTop: 2 }}>Live HOS, GPS location, and today&apos;s miles on the Command Center.</div>
+                </div>
+                {badge('📡 Live')}
+              </div>
+
+              {secHead('Personal API Token')}
+              <div style={{ fontSize: '.7rem', color: 'var(--muted)', lineHeight: 1.6, padding: '.6rem .8rem', borderRadius: 9, background: 'rgba(0,232,176,.04)', border: '1px solid rgba(0,232,176,.1)' }}>
+                <strong style={{ color: 'var(--text)' }}>How to get your token:</strong><br />
+                1. Log in to <strong>cloud.samsara.com</strong><br />
+                2. Go to <strong>Settings → API Tokens → Personal API Tokens</strong><br />
+                3. Create a token with <em>read:fleet</em> scope<br />
+                4. Paste it below — stored locally on this device only
+              </div>
+
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  type={showToken ? 'text' : 'password'}
+                  placeholder="samsara_api_…"
+                  value={samsaraToken}
+                  onChange={e => { setSamsaraToken(e.target.value); setTokenSaved(false); setTokenTestMsg('') }}
+                  style={{ ...inp, flex: 1, fontFamily: showToken ? 'inherit' : 'monospace', fontSize: '.78rem' }}
+                />
+                <button onClick={() => setShowToken(v => !v)}
+                  style={{ padding: '.6rem .8rem', borderRadius: 9, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '.75rem' }}>
+                  {showToken ? '🙈' : '👁'}
+                </button>
+              </div>
+
+              {tokenTestMsg && (
+                <div style={{ fontSize: '.72rem', padding: '.45rem .7rem', borderRadius: 8, background: tokenTestMsg.startsWith('✅') ? 'rgba(40,192,72,.08)' : 'rgba(232,64,0,.07)', border: `1px solid ${tokenTestMsg.startsWith('✅') ? 'rgba(40,192,72,.2)' : 'rgba(232,64,0,.2)'}`, color: tokenTestMsg.startsWith('✅') ? 'var(--success)' : 'var(--error)' }}>
+                  {tokenTestMsg}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button onClick={testSamsaraToken} disabled={tokenTesting || !samsaraToken}
+                  style={{ padding: '.6rem 1.1rem', borderRadius: 9, border: '1px solid rgba(0,232,176,.3)', background: 'rgba(0,232,176,.06)', color: 'var(--primary)', fontWeight: 700, fontSize: '.78rem', cursor: tokenTesting ? 'wait' : 'pointer', opacity: !samsaraToken ? .5 : 1 }}>
+                  {tokenTesting ? '📡 Testing…' : '📡 Test connection'}
+                </button>
+                <button onClick={saveSamsaraToken} disabled={!samsaraToken}
+                  style={{ padding: '.6rem 1.4rem', borderRadius: 9, border: 'none', background: tokenSaved ? 'var(--success)' : 'var(--primary)', color: '#061210', fontWeight: 800, fontSize: '.78rem', cursor: 'pointer', opacity: !samsaraToken ? .5 : 1 }}>
+                  {tokenSaved ? '✓ Saved!' : 'Save token'}
+                </button>
+                {samsaraToken && (
+                  <button onClick={() => { setSamsaraToken(''); localStorage.removeItem('samsara-api-token') }}
+                    style={{ padding: '.6rem .9rem', borderRadius: 9, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', fontWeight: 600, fontSize: '.78rem', cursor: 'pointer' }}>
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {secHead('Server-side token (Vercel env)')}
+              <div style={{ fontSize: '.7rem', color: 'var(--muted)', lineHeight: 1.6 }}>
+                For a permanent setup (all devices), add <code style={{ background: 'rgba(0,232,176,.08)', padding: '.1rem .3rem', borderRadius: 4, color: 'var(--primary)' }}>SAMSARA_API_TOKEN</code> to your Vercel project environment variables. The server-side token takes priority over the personal token above.
+              </div>
+            </div>
+
+            {/* ── Data Management ── */}
+            <div style={card}>
+              <div style={{ fontWeight: 800, fontSize: 'var(--text-base)' }}>Data Management</div>
+
+              {secHead('Export')}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button onClick={exportAllData}
+                  style={{ padding: '.65rem 1.1rem', borderRadius: 9, border: '1px solid rgba(0,232,176,.3)', background: 'rgba(0,232,176,.06)', color: 'var(--primary)', fontWeight: 700, fontSize: '.78rem', cursor: 'pointer' }}>
+                  📦 Export all data (JSON)
+                </button>
+                <button onClick={exportExpensesCSV}
+                  style={{ padding: '.65rem 1.1rem', borderRadius: 9, border: '1px solid rgba(0,232,176,.2)', background: 'transparent', color: 'var(--primary)', fontWeight: 700, fontSize: '.78rem', cursor: 'pointer' }}>
+                  📊 Export expenses (CSV)
+                </button>
+              </div>
+              <div style={{ fontSize: '.65rem', color: 'var(--muted)' }}>
+                JSON backup includes all local data — expenses, settings, vehicle, active trip, HOS. Import coming soon.
+              </div>
+
+              {secHead('Clear individual data')}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {DATA_STORES.map(({ key, label, emoji }) => (
+                  <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '.5rem .7rem', borderRadius: 9, background: 'rgba(0,0,0,.15)', gap: 8 }}>
+                    <span style={{ fontSize: '.78rem', fontWeight: 600 }}>{emoji} {label}</span>
+                    {clearTarget === key && !clearConfirm ? (
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => { setClearConfirm(true) }}
+                          style={{ padding: '.28rem .7rem', borderRadius: 6, border: '1px solid rgba(232,64,0,.4)', background: 'rgba(232,64,0,.1)', color: 'var(--error)', fontWeight: 700, fontSize: '.68rem', cursor: 'pointer' }}>
+                          Confirm clear
+                        </button>
+                        <button onClick={() => setClearTarget('')}
+                          style={{ padding: '.28rem .6rem', borderRadius: 6, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', fontSize: '.68rem', cursor: 'pointer' }}>
+                          Cancel
+                        </button>
+                      </div>
+                    ) : clearTarget === key && clearConfirm ? (
+                      <button onClick={() => clearData(key)}
+                        style={{ padding: '.28rem .7rem', borderRadius: 6, border: 'none', background: 'var(--error)', color: '#fff', fontWeight: 800, fontSize: '.68rem', cursor: 'pointer' }}>
+                        ⚠️ Clear now
+                      </button>
+                    ) : (
+                      <button onClick={() => { setClearTarget(key); setClearConfirm(false) }}
+                        style={{ padding: '.28rem .65rem', borderRadius: 6, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', fontWeight: 600, fontSize: '.68rem', cursor: 'pointer' }}>
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── App Info ── */}
+            <div style={{ ...card, gap: '.6rem' }}>
+              <div style={{ fontWeight: 800, fontSize: 'var(--text-base)' }}>App Info</div>
+              {[
+                ['App', '3B Fleet Commander'],
+                ['Version', '1.0.0 (PWA)'],
+                ['Mode', typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches ? '📱 Installed (standalone)' : '🌐 Browser'],
+                ['Data', 'localStorage + Supabase cloud'],
+                ['Offline', 'Service worker active'],
+              ].map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '.75rem', borderBottom: '1px solid var(--border)', paddingBottom: '.4rem' }}>
+                  <span style={{ color: 'var(--muted)', fontWeight: 600 }}>{k}</span>
+                  <span style={{ fontWeight: 700, color: 'var(--text)' }}>{v}</span>
+                </div>
+              ))}
+            </div>
+
+          </div>
         )}
 
       </main>
