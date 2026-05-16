@@ -2,14 +2,20 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Truck, FileCheck, Clock, Fuel, Settings, ChevronLeft, ChevronRight, MapPin, MessageSquare, LogOut } from 'lucide-react'
+import { Gauge, BarChart2, Truck, FileCheck, Clock, Fuel, Settings, ChevronLeft, ChevronRight, MapPin, MessageSquare, LogOut } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
 
 const MODULES = [
   {
+    group: 'Command',
+    items: [
+      {href:'/dashboard', label:'Dashboard',        icon:Gauge},
+    ]
+  },
+  {
     group: 'Mileage Intelligence',
     items: [
-      {href:'/dashboard', label:'Dashboard',        icon:LayoutDashboard},
+      {href:'/mis',       label:'MIS Overview',     icon:BarChart2},
       {href:'/loads',     label:'Load Log',         icon:Truck},
       {href:'/audit',     label:'Settlement Audit', icon:FileCheck},
     ]
