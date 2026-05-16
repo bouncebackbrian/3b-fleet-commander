@@ -1,8 +1,12 @@
 'use client'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import TopBar from '@/components/layout/TopBar'
 import { loadSettings } from '@/lib/settings'
+
+// Leaflet must be client-side only
+const RouteMap = dynamic(() => import('@/components/map/RouteMap'), { ssr: false })
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type InputTab  = 'form' | 'paste' | 'file' | 'ai'
@@ -1037,6 +1041,11 @@ export default function TripPlanner() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
+      <style>{`
+        @media (max-width: 768px) {
+          .trips-main { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
       {showModal && (
         <TruckModal
           form={truckForm}
@@ -1052,7 +1061,7 @@ export default function TripPlanner() {
         subtitle={truckLabel ?? 'Set up your truck for legal & fuel checks'}
       />
 
-      <main style={{ display:'grid', gridTemplateColumns:'minmax(0,420px) 1fr', gap:'1.4rem', padding:'1.4rem', alignItems:'start' }}>
+      <main className="trips-main" style={{ display:'grid', gridTemplateColumns:'minmax(0,420px) 1fr', gap:'1.4rem', padding:'1.4rem', alignItems:'start' }}>
 
         {/* ── LEFT PANEL ── */}
         <div style={{ display:'grid', gap:'.75rem' }}>
@@ -1601,6 +1610,21 @@ export default function TripPlanner() {
                   </div>
                 </div>
               )}
+
+              {/* Route Map */}
+              <RouteMap
+                origin={plan.origin}
+                dest={plan.dest}
+                stops={plan.stops.map(s => ({
+                  type:     s.type,
+                  label:    s.label,
+                  location: s.location,
+                  address:  s.address,
+                  mi:       s.mi,
+                  eta:      s.eta,
+                }))}
+                totalMiles={plan.total_miles}
+              />
 
               {/* Actions */}
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'.65rem' }}>
