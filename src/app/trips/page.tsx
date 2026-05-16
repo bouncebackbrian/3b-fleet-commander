@@ -366,18 +366,28 @@ const S = {
 
 const money = (n: number) => '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 })
 
-// ─── Truck Setup Modal ────────────────────────────────────────────────────────
-function TruckModal({ form, onChange, onSave, onClose }: {
-  form: Truck; onChange: (k: keyof Truck, v: string | number) => void
-  onSave: () => void; onClose: () => void
+// ─── Truck field — defined OUTSIDE modal to prevent focus-loss on re-render ───
+function TruckField({ label, k, form, onChange, type='text', step, ph }: {
+  label:string; k:keyof Truck; form:Truck; onChange:(k:keyof Truck,v:string|number)=>void
+  type?:string; step?:string; ph?:string
 }) {
-  const Field = ({ label, k, type='text', step, ph }: { label:string; k:keyof Truck; type?:string; step?:string; ph?:string }) => (
+  return (
     <div>
       <label style={S.lbl}>{label}</label>
       <input style={S.inp} type={type} step={step} placeholder={ph}
         value={String(form[k])}
         onChange={e => onChange(k, type === 'number' ? (parseFloat(e.target.value) || 0) : e.target.value)} />
     </div>
+  )
+}
+
+// ─── Truck Setup Modal ────────────────────────────────────────────────────────
+function TruckModal({ form, onChange, onSave, onClose }: {
+  form: Truck; onChange: (k: keyof Truck, v: string | number) => void
+  onSave: () => void; onClose: () => void
+}) {
+  const Field = ({ label, k, type='text', step, ph }: { label:string; k:keyof Truck; type?:string; step?:string; ph?:string }) => (
+    <TruckField label={label} k={k} form={form} onChange={onChange} type={type} step={step} ph={ph} />
   )
   return (
     <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:100, background:'rgba(0,0,0,.65)', backdropFilter:'blur(8px)', display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
@@ -505,8 +515,37 @@ export default function TripPlanner() {
 
   useEffect(() => {
     try {
+      // Try 3b-vehicle first (set by Trip Planner or Settings), then fall back to fleet-settings
       const raw = localStorage.getItem('3b-vehicle')
-      if (raw) { const v = JSON.parse(raw); setTruck(v); setTruckForm(v) }
+      if (raw) {
+        const v = JSON.parse(raw)
+        setTruck(v); setTruckForm(prev => ({ ...prev, ...v }))
+      } else {
+        // Pull from Settings if no dedicated vehicle entry yet
+        const sRaw = localStorage.getItem('3b-fleet-settings')
+        if (sRaw) {
+          const sv = JSON.parse(sRaw)
+          const mapped = {
+            truckNum: sv.truckNum || '', year: sv.year || '', make: sv.make || '',
+            model: sv.model || '', vin: sv.vin || '', hp: sv.hp || '',
+            mpgLoaded: sv.mpgLoaded || DEFAULT_TRUCK.mpgLoaded,
+            mpgEmpty:  sv.mpgEmpty  || DEFAULT_TRUCK.mpgEmpty,
+            tankGal:   sv.tankGal   || DEFAULT_TRUCK.tankGal,
+            fuelPrice: sv.fuelPrice || DEFAULT_TRUCK.fuelPrice,
+            truckHeight:   sv.truckHeight   || DEFAULT_TRUCK.truckHeight,
+            trailerNum:    sv.trailerNum    || '',
+            trailerType:   sv.trailerType   || DEFAULT_TRUCK.trailerType,
+            trailerLen:    sv.trailerLen    || DEFAULT_TRUCK.trailerLen,
+            trailerHeight: sv.trailerHeight || DEFAULT_TRUCK.trailerHeight,
+            axles:      sv.axles      || DEFAULT_TRUCK.axles,
+            maxWeight:  sv.maxWeight  || DEFAULT_TRUCK.maxWeight,
+            gvwr:       sv.gvwr       || DEFAULT_TRUCK.gvwr,
+            cdlClass:   sv.cdlClass   || DEFAULT_TRUCK.cdlClass,
+            endorsements: sv.endorsements || '',
+          }
+          setTruck(mapped); setTruckForm(mapped)
+        }
+      }
     } catch { /* ignore */ }
   }, [])
 
