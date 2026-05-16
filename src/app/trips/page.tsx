@@ -9,7 +9,7 @@ import { loadSettings } from '@/lib/settings'
 const RouteMap = dynamic(() => import('@/components/map/RouteMap'), { ssr: false })
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type InputTab  = 'form' | 'paste' | 'file' | 'ai'
+type InputTab  = 'form' | 'paste' | 'file' | 'ai' | 'playbooks' | 'scale'
 
 type AIResult = {
   recommendation: 'ACCEPT' | 'DENY' | 'REVIEW'
@@ -400,6 +400,527 @@ function CountdownTimer({ targetISO, label }: { targetISO: string; label: string
       </div>
       <div style={{ fontSize: '.6rem', color: 'var(--muted)', marginTop: 6 }}>
         {new Date(targetISO).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Scale / Weight checker ───────────────────────────────────────────────────
+const AXLE_LIMITS = {
+  steer:  { label: 'Steer',          max: 12000,  warn: 11500 },
+  drives: { label: 'Drive tandem',   max: 34000,  warn: 33000 },
+  trail:  { label: 'Trailer tandem', max: 34000,  warn: 33000 },
+  gross:  { label: 'Gross',          max: 80000,  warn: 79000 },
+}
+type AxleKey = keyof typeof AXLE_LIMITS
+
+function axleColor(val: number, key: AxleKey) {
+  const { max, warn } = AXLE_LIMITS[key]
+  if (val > max)  return 'var(--error)'
+  if (val >= warn) return 'var(--warn)'
+  return 'var(--success)'
+}
+function axleIcon(val: number, key: AxleKey) {
+  const { max, warn } = AXLE_LIMITS[key]
+  if (val > max)  return '🚫'
+  if (val >= warn) return '⚠️'
+  return '✅'
+}
+
+function ScaleWeightTab({ truck, origin, dest }: { truck: Truck | null; origin: string; dest: string }) {
+  const [mode,   setMode]   = useState<'simple'|'detail'>('simple')
+  const [steer,  setSteer]  = useState('')
+  const [d1,     setD1]     = useState('')
+  const [d2,     setD2]     = useState('')
+  const [t1,     setT1]     = useState('')
+  const [t2,     setT2]     = useState('')
+  const [gross,  setGross]  = useState('')
+  const [result, setResult] = useState<null | {
+    steer: number; drives: number; trail: number; gross: number
+    recs: string[]; alerts: string[]
+  }>(null)
+
+  const analyze = () => {
+    const s   = parseFloat(steer)  || 0
+    const drv = mode === 'detail'
+      ? (parseFloat(d1) || 0) + (parseFloat(d2) || 0)
+      : parseFloat(d1) || 0
+    const tr  = mode === 'detail'
+      ? (parseFloat(t1) || 0) + (parseFloat(t2) || 0)
+      : parseFloat(t1) || 0
+    const g   = parseFloat(gross) || (s + drv + tr)
+
+    const recs: string[] = []
+    const alerts: string[] = []
+
+    // Overweight flags
+    if (g > AXLE_LIMITS.gross.max) {
+      alerts.push(`🚨 GROSS OVERWEIGHT by ${(g - 80000).toLocaleString()} lbs — load must be reduced before moving. No tandem adjustment will fix this.`)
+    }
+
+    // Drive tandem over
+    if (drv > AXLE_LIMITS.drives.max) {
+      const over = drv - 34000
+      const holesNeeded = Math.ceil(over / 400)   // ~400 lbs per 4" hole
+      if (tr + over <= 34000) {
+        recs.push(`🔁 Drive tandem over by ${over.toLocaleString()} lbs → slide trailer tandems BACKWARD ~${holesNeeded} hole${holesNeeded > 1 ? 's' : ''} (${holesNeeded * 4}") to transfer ~${(holesNeeded * 400).toLocaleString()} lbs to trailer axle.`)
+        recs.push(`   After adjustment: drives ~${(drv - holesNeeded * 400).toLocaleString()} lbs · trailer ~${(tr + holesNeeded * 400).toLocaleString()} lbs`)
+      } else {
+        recs.push(`🔁 Drive tandem over by ${over.toLocaleString()} lbs. Slide trailer tandem backward but note trailer will also approach limit.`)
+        recs.push(`   May need to reduce overall load weight.`)
+      }
+      if (s + Math.ceil(over / 2) <= 12000) {
+        recs.push(`   Also consider: slide 5th wheel FORWARD ~${Math.ceil(over / 200)}" to shift some weight from drives to steer (if steer has capacity).`)
+      }
+    }
+
+    // Steer over
+    if (s > AXLE_LIMITS.steer.max) {
+      const over = s - 12000
+      const inchesNeeded = Math.ceil(over / 150)
+      recs.push(`🔁 Steer axle over by ${over.toLocaleString()} lbs → slide 5th wheel BACKWARD ~${inchesNeeded}" to shift weight from steer to drive tandem.`)
+      recs.push(`   After: steer ~${(s - inchesNeeded * 150).toLocaleString()} lbs · drives ~${(drv + inchesNeeded * 150).toLocaleString()} lbs`)
+      if (drv + inchesNeeded * 150 > 34000) {
+        recs.push(`   ⚠️ Drives may then exceed limit — verify drives can absorb the transfer before sliding.`)
+      }
+    }
+
+    // Trailer over
+    if (tr > AXLE_LIMITS.trail.max) {
+      const over = tr - 34000
+      const holesNeeded = Math.ceil(over / 400)
+      if (drv + over <= 34000) {
+        recs.push(`🔁 Trailer tandem over by ${over.toLocaleString()} lbs → slide trailer tandems FORWARD ~${holesNeeded} hole${holesNeeded > 1 ? 's' : ''} to transfer weight to drive tandem.`)
+        recs.push(`   After: drives ~${(drv + holesNeeded * 400).toLocaleString()} lbs · trailer ~${(tr - holesNeeded * 400).toLocaleString()} lbs`)
+      } else {
+        recs.push(`🔁 Trailer over by ${over.toLocaleString()} lbs but drives are near limit. Reduce load weight.`)
+      }
+    }
+
+    // Steer too light (risk of floating steer)
+    if (s < 10000 && s > 0) {
+      recs.push(`💡 Steer axle is light (${s.toLocaleString()} lbs). Slide 5th wheel FORWARD to increase steer weight — helps stability and steering response.`)
+    }
+
+    // Bridge formula note for long loads
+    if (recs.length === 0 && alerts.length === 0 && g > 0) {
+      alerts.push('✅ All axle groups within federal limits. Verify state-specific limits along your route.')
+    }
+
+    // Route-specific state notes
+    const routeText = `${origin} ${dest}`.toLowerCase()
+    if (routeText.includes('california') || routeText.includes(', ca')) {
+      alerts.push('📋 California: Some state routes limited to 65,000 lbs. Verify your route via CA DMV.')
+    }
+
+    setResult({ steer: s, drives: drv, trail: tr, gross: g, recs, alerts })
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: '.75rem' }}>
+      {/* CAT Scale info */}
+      <div style={{ ...S.card, border: '1px solid rgba(245,194,0,.2)', background: 'rgba(245,194,0,.04)' }}>
+        <div style={{ ...S.sec, color: 'var(--warn)' }}>⚖️ Scale Weight Checker</div>
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)', marginBottom: '.75rem', lineHeight: 1.6 }}>
+          Enter your weigh ticket data to check axle limits and get tandem slide recommendations.
+          <br /><br />
+          <strong style={{ color: 'var(--text)' }}>CAT Scale:</strong> No public API — use the <strong>Weigh My Truck</strong> app (by CAT Scale) for digital tickets, then enter your numbers here. Scale receipt cost → log in{' '}
+          <a href="/expenses" style={{ color: 'var(--primary)', fontWeight: 700 }}>Expense Tracker</a>.
+        </p>
+
+        {/* Mode toggle */}
+        <div style={{ display: 'flex', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 9, padding: 3, gap: 2, marginBottom: '.85rem' }}>
+          {(['simple', 'detail'] as const).map(m => (
+            <button key={m} onClick={() => setMode(m)} style={{ flex: 1, padding: '.4rem', borderRadius: 7, fontSize: 'var(--text-xs)', fontWeight: 700, border: mode === m ? '1px solid var(--border)' : '1px solid transparent', background: mode === m ? 'var(--surface)' : 'transparent', color: mode === m ? 'var(--text)' : 'var(--muted)', cursor: 'pointer' }}>
+              {m === 'simple' ? '3-Group (Steer/Drives/Trailer)' : '5-Axle Individual'}
+            </button>
+          ))}
+        </div>
+
+        {/* Weight inputs */}
+        <div style={{ display: 'grid', gap: '.65rem', marginBottom: '.85rem' }}>
+          <div>
+            <label style={S.lbl}>Steer Axle (lbs) — max 12,000</label>
+            <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="number" value={steer} onChange={e => setSteer(e.target.value)} placeholder="e.g. 11200" />
+          </div>
+          {mode === 'simple' ? (
+            <>
+              <div>
+                <label style={S.lbl}>Drive Tandem Total (lbs) — max 34,000</label>
+                <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="number" value={d1} onChange={e => setD1(e.target.value)} placeholder="e.g. 33600" />
+              </div>
+              <div>
+                <label style={S.lbl}>Trailer Tandem Total (lbs) — max 34,000</label>
+                <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="number" value={t1} onChange={e => setT1(e.target.value)} placeholder="e.g. 31800" />
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.65rem' }}>
+                <div>
+                  <label style={S.lbl}>Drive Axle 1 (lbs)</label>
+                  <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="number" value={d1} onChange={e => setD1(e.target.value)} placeholder="e.g. 16800" />
+                </div>
+                <div>
+                  <label style={S.lbl}>Drive Axle 2 (lbs)</label>
+                  <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="number" value={d2} onChange={e => setD2(e.target.value)} placeholder="e.g. 16800" />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.65rem' }}>
+                <div>
+                  <label style={S.lbl}>Trailer Axle 1 (lbs)</label>
+                  <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="number" value={t1} onChange={e => setT1(e.target.value)} placeholder="e.g. 15900" />
+                </div>
+                <div>
+                  <label style={S.lbl}>Trailer Axle 2 (lbs)</label>
+                  <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="number" value={t2} onChange={e => setT2(e.target.value)} placeholder="e.g. 15900" />
+                </div>
+              </div>
+            </>
+          )}
+          <div>
+            <label style={S.lbl}>Gross (lbs) — max 80,000 <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(auto-calc if blank)</span></label>
+            <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="number" value={gross} onChange={e => setGross(e.target.value)} placeholder="leave blank to calculate" />
+          </div>
+        </div>
+
+        <button onClick={analyze} style={{ ...S.btnPri, width: '100%', padding: '.85rem', textAlign: 'center', background: 'var(--warn)', borderColor: 'transparent', color: '#1a0f00' }}>
+          ⚖️ Analyze Weights
+        </button>
+      </div>
+
+      {/* Results */}
+      {result && (
+        <div style={S.card}>
+          <div style={S.sec}>Analysis Results</div>
+
+          {/* Axle gauges */}
+          <div style={{ display: 'grid', gap: '.5rem', marginBottom: '.9rem' }}>
+            {(Object.entries(AXLE_LIMITS) as [AxleKey, typeof AXLE_LIMITS[AxleKey]][]).map(([key, lim]) => {
+              const val = result[key]
+              if (val === 0) return null
+              const pct = Math.min(100, Math.round(val / lim.max * 100))
+              const col = axleColor(val, key)
+              return (
+                <div key={key} style={{ background: 'var(--surface-2)', border: `1px solid ${val > lim.max ? 'rgba(232,64,0,.25)' : 'var(--border)'}`, borderRadius: 10, padding: '.65rem .8rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text)' }}>
+                      {axleIcon(val, key)} {lim.label}
+                    </span>
+                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 900, color: col, fontVariantNumeric: 'tabular-nums' }}>
+                      {val.toLocaleString()} / {lim.max.toLocaleString()} lbs
+                    </span>
+                  </div>
+                  <div style={{ height: 8, borderRadius: 4, background: 'var(--surface-off)', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, background: col, borderRadius: 4, transition: 'width .4s cubic-bezier(.16,1,.3,1)' }} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
+                    <span style={{ fontSize: '.6rem', color: 'var(--faint)' }}>{pct}% of limit</span>
+                    {val > lim.max
+                      ? <span style={{ fontSize: '.6rem', color: 'var(--error)', fontWeight: 800 }}>OVER by {(val - lim.max).toLocaleString()} lbs</span>
+                      : <span style={{ fontSize: '.6rem', color: 'var(--success)' }}>{(lim.max - val).toLocaleString()} lbs remaining</span>
+                    }
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Alerts & recommendations */}
+          {result.alerts.map((a, i) => (
+            <div key={i} style={{ marginBottom: '.5rem', padding: '.6rem .8rem', borderRadius: 9, background: a.startsWith('✅') ? 'rgba(40,192,72,.07)' : a.startsWith('🚨') ? 'rgba(232,64,0,.08)' : 'rgba(79,152,163,.07)', border: `1px solid ${a.startsWith('✅') ? 'rgba(40,192,72,.2)' : a.startsWith('🚨') ? 'rgba(232,64,0,.2)' : 'rgba(79,152,163,.2)'}`, fontSize: 'var(--text-xs)', color: a.startsWith('✅') ? 'var(--success)' : a.startsWith('🚨') ? 'var(--error)' : 'var(--text)', lineHeight: 1.55 }}>
+              {a}
+            </div>
+          ))}
+
+          {result.recs.length > 0 && (
+            <div style={{ marginTop: '.5rem' }}>
+              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 800, color: 'var(--warn)', marginBottom: '.5rem' }}>⚙️ Recommended Adjustments</div>
+              {result.recs.map((r, i) => (
+                <div key={i} style={{ fontSize: 'var(--text-xs)', color: r.startsWith('   ') ? 'var(--faint)' : 'var(--text)', lineHeight: 1.65, marginBottom: '.3rem', paddingLeft: r.startsWith('   ') ? '1rem' : 0 }}>
+                  {r.trim()}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Tandem slide cheat sheet */}
+          <div style={{ marginTop: '.9rem', padding: '.65rem .8rem', background: 'rgba(0,232,176,.04)', border: '1px solid rgba(0,232,176,.15)', borderRadius: 10 }}>
+            <div style={{ fontSize: '.62rem', fontWeight: 800, color: 'var(--primary)', marginBottom: '.4rem' }}>📐 Tandem Slide Quick Reference</div>
+            <div style={{ fontSize: '.62rem', color: 'var(--muted)', lineHeight: 1.7 }}>
+              <strong style={{ color: 'var(--text)' }}>Trailer tandem BACKWARD</strong> → less weight on drives, more on trailer<br />
+              <strong style={{ color: 'var(--text)' }}>Trailer tandem FORWARD</strong> → more weight on drives, less on trailer<br />
+              <strong style={{ color: 'var(--text)' }}>5th wheel BACKWARD</strong> → less weight on steer, more on drives<br />
+              <strong style={{ color: 'var(--text)' }}>5th wheel FORWARD</strong> → more weight on steer, less on drives<br />
+              <span style={{ color: 'var(--faint)' }}>Rule of thumb: ~400 lbs per tandem hole (4") · ~150 lbs per inch of 5th wheel</span>
+            </div>
+          </div>
+
+          {/* Log expense link */}
+          <a href="/expenses?category=parking&desc=CAT+Scale+weigh+ticket" style={{ display: 'block', marginTop: '.75rem', padding: '.6rem .85rem', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 9, fontSize: 'var(--text-xs)', color: 'var(--muted)', textDecoration: 'none', textAlign: 'center', fontWeight: 700 }}>
+            🧾 Log scale receipt → Expense Tracker
+          </a>
+        </div>
+      )}
+
+      {/* Federal limits reference */}
+      <div style={{ ...S.card, padding: '.85rem' }}>
+        <div style={{ fontSize: '.62rem', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '.5rem' }}>Federal Axle Limits (5-Axle Semi)</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.3rem .8rem', fontSize: '.65rem', color: 'var(--muted)', lineHeight: 1.8 }}>
+          <span>Steer axle: <strong style={{ color: 'var(--text)' }}>12,000 lbs</strong></span>
+          <span>Single drive: <strong style={{ color: 'var(--text)' }}>20,000 lbs</strong></span>
+          <span>Drive tandem: <strong style={{ color: 'var(--text)' }}>34,000 lbs</strong></span>
+          <span>Trailer tandem: <strong style={{ color: 'var(--text)' }}>34,000 lbs</strong></span>
+          <span>Gross vehicle: <strong style={{ color: 'var(--text)' }}>80,000 lbs</strong></span>
+          <span>Width: <strong style={{ color: 'var(--text)' }}>102" (8'6")</strong></span>
+        </div>
+        <div style={{ marginTop: '.5rem', fontSize: '.6rem', color: 'var(--faint)', lineHeight: 1.5 }}>
+          Bridge formula applies to axle spacing. Some states allow higher weights with permits. Always verify with state DOT for your route.
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Playbooks tab ─────────────────────────────────────────────────────────────
+type PlaybookAlert = { icon: string; level: 'info'|'warn'|'critical'; text: string }
+
+function detectAlerts(plan: Plan | null, origin: string, dest: string): PlaybookAlert[] {
+  const alerts: PlaybookAlert[] = []
+  const route = `${origin} ${dest}`.toLowerCase()
+
+  const hasState = (...names: string[]) => names.some(n => route.includes(n))
+
+  if (hasState('wyoming', ', wy', ' wy ')) {
+    alerts.push({ icon: '💨', level: 'warn', text: 'Wyoming I-80 crosswind corridor on route. Winds regularly exceed 40–60 mph. Check WYDOT 511.wyo.gov before departure.' })
+  }
+  if (hasState('colorado', ', co', 'montana', ', mt', 'oregon', ', or', 'idaho', ', id', 'washington', ', wa')) {
+    alerts.push({ icon: '⛓️', level: 'warn', text: 'Mountain route detected. Chain laws may be active on passes. Carry chains Oct–Apr. Check state DOT before crossing.' })
+  }
+  if (plan?.warnings && plan.warnings.length > 0) {
+    alerts.push({ icon: '⏱️', level: 'critical', text: `${plan.warnings.length} HOS warning${plan.warnings.length > 1 ? 's' : ''}: ${plan.warnings[0]}` })
+  }
+  if (plan?.stops.some(s => s.type === 'rest10')) {
+    alerts.push({ icon: '🛑', level: 'warn', text: 'Mandatory 10-hour rest stop in plan. Pre-identify 2–3 parking locations along route. Lots fill by 4 PM.' })
+  }
+  if (plan) {
+    const etaMatch = plan.eta.match(/(\d+):(\d+)\s*(AM|PM)/i)
+    if (etaMatch) {
+      let h = parseInt(etaMatch[1])
+      if (etaMatch[3].toUpperCase() === 'PM' && h < 12) h += 12
+      if (h >= 20 || h <= 4) alerts.push({ icon: '🅿️', level: 'warn', text: `Late arrival ETA (${plan.eta}) — truck parking fills by 4 PM in most corridors. Plan parking now.` })
+    }
+  }
+  if (plan && plan.total_miles > 500) {
+    alerts.push({ icon: '😴', level: 'info', text: `Long haul ${plan.total_miles} mi. Monitor fatigue. Build 1-hour buffers. Watch for 2–6 AM low-energy window.` })
+  }
+  return alerts
+}
+
+const PLAYBOOKS = [
+  {
+    id: 'crosswind', icon: '💨', title: 'Crosswind', trigger: 'Winds >25 mph sustained or >40 mph gusts',
+    levels: [
+      { n: 1, action: 'Reduce speed 10–15 mph below posted limit. Move to right lane. Increase following distance.' },
+      { n: 2, action: 'Seek sheltered parking if gusts >35 mph. Notify dispatch of delay.' },
+      { n: 3, action: 'Emergency stop at protected location. Secure vehicle. Do not resume until gusts <35 mph.' },
+      { n: 4, action: 'Route abandonment. Full safety shutdown. Contact dispatch for alternate routing.' },
+    ],
+    msgs: {
+      driver:   'High crosswinds. Reduce speed to [X mph], move right. Stop at first sheltered location if worse.',
+      dispatch: 'Crosswind conditions. Speed reduced, monitoring for safe parking. ETA adjusted ~[X hrs].',
+      customer: 'High wind safety protocols active. Delivery delayed ~[X hrs]. Vehicle stability is priority.',
+    },
+  },
+  {
+    id: 'chain', icon: '⛓️', title: 'Chain Control', trigger: 'Snow/ice on pass, chain law active, chain inspection point ahead',
+    levels: [
+      { n: 1, action: 'Monitor chain law status. Prepare chains. Allow 30–45 min for installation.' },
+      { n: 2, action: 'Stop at designated chain-up area. Install chains. Call dispatch.' },
+      { n: 3, action: 'If unable to chain, seek safe parking and wait for conditions.' },
+      { n: 4, action: 'Reroute to avoid chain requirements if legal bypass exists.' },
+    ],
+    msgs: {
+      driver:   'Chain control active in [area]. Stop at [facility] for installation. Allow 30–45 min. Call if issues.',
+      dispatch: 'Chain requirements encountered. Chaining at [location]. Additional delay: [X hrs]. HOS monitored.',
+      customer: 'Chain control law requires equipment installation. Delivery delayed [X hrs] for safety compliance.',
+    },
+  },
+  {
+    id: 'parking', icon: '🅿️', title: 'Parking Full', trigger: 'All spots within 50 mi >95% capacity, HOS running low',
+    levels: [
+      { n: 1, action: 'Search 3 backup locations (have them pre-identified). Check Truckstop.com / 511 apps.' },
+      { n: 2, action: 'Contact dispatch for parking priority. Consider early delivery if customer allows.' },
+      { n: 3, action: 'Emergency parking declaration. Safe shoulder parking if HOS is critical.' },
+      { n: 4, action: 'Load rebooking consideration. Do NOT violate HOS for any delivery.' },
+    ],
+    msgs: {
+      driver:   'Parking full. Check emergency network at [coordinates]. If unavailable, find safe location and call.',
+      dispatch: 'Parking crisis. Driver unable to secure spot. HOS remaining: [time]. Need immediate assistance.',
+      customer: 'Unprecedented parking congestion. Delivery delayed [X hrs]. Safety protocols require secure parking.',
+    },
+  },
+  {
+    id: 'receiver', icon: '⏳', title: 'Receiver Delay', trigger: 'Facility not ready, dock delay >30 min, no receiving personnel',
+    levels: [
+      { n: 1, action: 'Document arrival time. Contact receiver. Assess HOS impact. Start detention clock at 2h.' },
+      { n: 2, action: 'Notify dispatch. Explore rebooking. Take first 2-hr sleeper break if HOS allows.' },
+      { n: 3, action: 'Full load hold. Emergency parking at facility or nearby.' },
+      { n: 4, action: 'Reject load. Return to shipper with documentation.' },
+    ],
+    msgs: {
+      driver:   'Document all wait times. Do not leave without dispatch approval.',
+      dispatch: 'Receiver unable to accept. Wait time: [X hrs]. HOS: [time]. Need rebooking or diversion.',
+      customer: 'Arrived on time. Facility not ready. Wait time: [X hrs]. Detention clock running. Please advise.',
+    },
+  },
+  {
+    id: 'winter', icon: '❄️', title: 'Winter Shutdown', trigger: 'Temp <−10°F, snow >2", visibility <¼ mile, ice formation',
+    levels: [
+      { n: 1, action: 'Monitor conditions. Adjust ETA +2–4 hrs. Carry emergency weather supplies.' },
+      { n: 2, action: 'Secure parking. Winterization check. Notify customer of 12–24 hr delay.' },
+      { n: 3, action: 'Equipment shutdown. Full load rebooking. Stay with truck.' },
+      { n: 4, action: 'Emergency declaration. Safety first. Do not move until roads treated and visibility >¼ mile.' },
+    ],
+    msgs: {
+      driver:   'Conditions require shutdown. Find secure parking immediately. Do not move until visibility >¼ mi.',
+      dispatch: 'Winter shutdown at [location]. HOS: [remaining]. Customer notified. Awaiting improvement.',
+      customer: 'Severe winter conditions in [location]. Safety protocols active. ETA extended [X hrs].',
+    },
+  },
+  {
+    id: 'metro', icon: '🌆', title: 'Overnight Metro', trigger: 'Metro delivery after 6 PM, no overnight parking at facility',
+    levels: [
+      { n: 1, action: 'Adjust arrival to business hours. Reserve metro parking in advance.' },
+      { n: 2, action: 'Coordinate with local partners. Confirm parking reservation.' },
+      { n: 3, action: 'Emergency parking search. Delay delivery. Notify customer.' },
+      { n: 4, action: 'Load rejection. Return to origin if no viable parking solution.' },
+    ],
+    msgs: {
+      driver:   'Metro overnight delivery. Confirm parking at [location] before proceeding.',
+      dispatch: 'Metro delivery planned. Parking secured at [location]. HOS reset available.',
+      customer: 'Metro parking constraints — delivery rescheduled for business hours tomorrow.',
+    },
+  },
+]
+
+const PATTERNS = [
+  { icon: '⛽', title: 'Fuel Optimization', tips: ['Fuel prices vary >$0.50/gal regionally — use apps before stopping', 'First station you see is rarely best price', 'Plan stops at Love\'s, TA, Pilot on your specific route', 'Keep emergency fuel reserve — never below ¼ tank in remote areas'] },
+  { icon: '😴', title: 'Fatigue Signals', tips: ['2–6 AM: natural low-energy window — most dangerous hours', 'Response time >30 min is a fatigue signal', 'Take breaks BEFORE mandatory, not at the limit', 'Missing check-in times = early warning sign'] },
+  { icon: '🔀', title: 'Split Sleeper Strategy', tips: ['Works best: long haul >400 mi with receiver delay', 'Take first 2-hr break immediately on arrival at facility', 'Calculate exact timing before starting — don\'t wing it', 'Know your state-specific split sleeper rules'] },
+]
+
+function PlaybooksTab({ plan, origin, dest }: { plan: Plan | null; origin: string; dest: string }) {
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [copiedMsg, setCopiedMsg] = useState<string | null>(null)
+  const alerts = detectAlerts(plan, origin, dest)
+
+  const copyMsg = (id: string, text: string) => {
+    navigator.clipboard.writeText(text)
+    setCopiedMsg(id); setTimeout(() => setCopiedMsg(null), 2000)
+  }
+
+  const alertColor = (level: PlaybookAlert['level']) =>
+    level === 'critical' ? 'rgba(232,64,0,' : level === 'warn' ? 'rgba(245,194,0,' : 'rgba(79,152,163,'
+
+  return (
+    <div style={{ display: 'grid', gap: '.75rem' }}>
+      {/* Context alerts */}
+      {alerts.length > 0 && (
+        <div style={S.card}>
+          <div style={{ ...S.sec, color: 'var(--warn)' }}>⚠️ Route Alerts for This Trip</div>
+          {alerts.map((a, i) => (
+            <div key={i} style={{ marginBottom: '.5rem', padding: '.6rem .8rem', borderRadius: 9, background: `${alertColor(a.level)}.07)`, border: `1px solid ${alertColor(a.level)}.2)`, fontSize: 'var(--text-xs)', color: a.level === 'info' ? 'var(--muted)' : a.level === 'warn' ? 'var(--warn)' : 'var(--error)', lineHeight: 1.55 }}>
+              <span style={{ marginRight: 6 }}>{a.icon}</span>{a.text}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!plan && (
+        <div style={{ padding: '.75rem 1rem', background: 'rgba(79,152,163,.07)', border: '1px solid rgba(79,152,163,.2)', borderRadius: 12, fontSize: 'var(--text-xs)', color: 'var(--muted)', lineHeight: 1.6 }}>
+          💡 Build a trip plan first to see route-specific alerts. All playbooks are always available below as a reference library.
+        </div>
+      )}
+
+      {/* Playbooks */}
+      <div style={S.card}>
+        <div style={S.sec}>📋 Operational Playbooks</div>
+        <div style={{ display: 'grid', gap: '.5rem' }}>
+          {PLAYBOOKS.map(pb => (
+            <div key={pb.id} style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+              <button onClick={() => setExpanded(expanded === pb.id ? null : pb.id)}
+                style={{ width: '100%', padding: '.75rem .9rem', background: expanded === pb.id ? 'rgba(0,232,176,.06)' : 'var(--surface-2)', border: 'none', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text)' }}>
+                <span style={{ fontWeight: 800, fontSize: 'var(--text-xs)' }}>{pb.icon} {pb.title}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: '.6rem', color: 'var(--faint)' }}>{pb.trigger}</span>
+                  <span style={{ color: 'var(--muted)', fontSize: '.7rem' }}>{expanded === pb.id ? '▲' : '▼'}</span>
+                </div>
+              </button>
+
+              {expanded === pb.id && (
+                <div style={{ padding: '.75rem .9rem', borderTop: '1px solid var(--border)', background: 'var(--surface)' }}>
+                  {/* Escalation levels */}
+                  <div style={{ marginBottom: '.75rem' }}>
+                    <div style={{ fontSize: '.6rem', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '.4rem' }}>Escalation Steps</div>
+                    {pb.levels.map(lv => (
+                      <div key={lv.n} style={{ display: 'flex', gap: 8, marginBottom: '.4rem', alignItems: 'start' }}>
+                        <div style={{ width: 20, height: 20, borderRadius: '50%', background: lv.n === 4 ? 'rgba(232,64,0,.15)' : lv.n === 3 ? 'rgba(245,194,0,.12)' : 'rgba(0,232,176,.1)', border: `1px solid ${lv.n === 4 ? 'rgba(232,64,0,.3)' : lv.n === 3 ? 'rgba(245,194,0,.25)' : 'rgba(0,232,176,.25)'}`, display: 'grid', placeItems: 'center', fontSize: '.58rem', fontWeight: 900, color: lv.n === 4 ? 'var(--error)' : lv.n === 3 ? 'var(--warn)' : 'var(--primary)', flexShrink: 0, marginTop: 1 }}>
+                          {lv.n}
+                        </div>
+                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text)', lineHeight: 1.55 }}>{lv.action}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Copy-ready messages */}
+                  <div style={{ fontSize: '.6rem', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '.4rem' }}>Ready-to-send Messages</div>
+                  {Object.entries(pb.msgs).map(([role, text]) => (
+                    <div key={role} style={{ marginBottom: '.45rem', background: 'var(--surface-2)', borderRadius: 8, padding: '.5rem .7rem', border: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                        <span style={{ fontSize: '.58rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--muted)' }}>→ {role}</span>
+                        <button onClick={() => copyMsg(`${pb.id}-${role}`, text)}
+                          style={{ padding: '.15rem .5rem', borderRadius: 5, border: '1px solid var(--border)', background: copiedMsg === `${pb.id}-${role}` ? 'rgba(40,192,72,.1)' : 'var(--surface)', color: copiedMsg === `${pb.id}-${role}` ? 'var(--success)' : 'var(--muted)', fontSize: '.55rem', fontWeight: 700, cursor: 'pointer' }}>
+                          {copiedMsg === `${pb.id}-${role}` ? '✅' : '📋 Copy'}
+                        </button>
+                      </div>
+                      <div style={{ fontSize: '.65rem', color: 'var(--text)', lineHeight: 1.55 }}>{text}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Patterns & signals */}
+      <div style={S.card}>
+        <div style={S.sec}>📊 Operational Patterns</div>
+        <div style={{ display: 'grid', gap: '.5rem' }}>
+          {PATTERNS.map(p => (
+            <div key={p.title} style={{ background: 'var(--surface-2)', borderRadius: 10, padding: '.65rem .85rem', border: '1px solid var(--border)' }}>
+              <div style={{ fontWeight: 800, fontSize: 'var(--text-xs)', color: 'var(--text)', marginBottom: '.4rem' }}>{p.icon} {p.title}</div>
+              {p.tips.map((t, i) => <div key={i} style={{ fontSize: '.65rem', color: 'var(--muted)', lineHeight: 1.65, marginBottom: '.2rem' }}>• {t}</div>)}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Learned from postmortems */}
+      <div style={{ ...S.card, border: '1px solid rgba(79,152,163,.2)', background: 'rgba(79,152,163,.03)' }}>
+        <div style={{ ...S.sec, color: 'rgba(79,152,163,1)' }}>📖 Lessons from the Road</div>
+        {[
+          { title: 'Blizzard Denver — Late Load', lesson: 'No advance weather intel delayed the decision. Weather monitoring should have triggered load postponement before departure. Communicate hourly during shutdowns.' },
+          { title: 'Wyoming I-80 Parking Failure', lesson: 'Original parking intelligence was outdated. Always have 2–3 backups per stop. Real-time apps (511, Truckstop.com) are the only reliable source during peak season.' },
+          { title: 'Receiver Delay — Split Sleeper Win', lesson: 'Took first 2-hr sleeper break immediately on arrival delay. Used remaining time productively. Completed delivery same day. Split sleeper is the move during facility waits.' },
+        ].map(({ title, lesson }) => (
+          <div key={title} style={{ marginBottom: '.6rem', paddingBottom: '.6rem', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ fontWeight: 800, fontSize: 'var(--text-xs)', color: 'var(--text)', marginBottom: 3 }}>📌 {title}</div>
+            <div style={{ fontSize: '.65rem', color: 'var(--muted)', lineHeight: 1.65 }}>{lesson}</div>
+          </div>
+        ))}
+        <div style={{ fontSize: '.6rem', color: 'var(--faint)', lineHeight: 1.5 }}>Based on driver postmortems and scenario analysis from 3B Fleet operational history.</div>
       </div>
     </div>
   )
@@ -1080,13 +1601,32 @@ export default function TripPlanner() {
             <span style={{ fontSize:'var(--text-xs)', color:'var(--primary)', flexShrink:0 }}>⚙ Edit</span>
           </button>
 
-          {/* Input tab bar */}
+          {/* Input tab bar — row 1: planning tabs */}
           <div style={{ display:'flex', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:11, padding:3, gap:2 }}>
-            {(['form','paste','file','ai'] as InputTab[]).map(t => {
+            {([
+              ['form',      '📋',  'Form'],
+              ['paste',     '📝',  'Paste'],
+              ['file',      '📂',  'File'],
+              ['ai',        '🤖',  'AI'],
+            ] as [InputTab, string, string][]).map(([t, emoji, label]) => {
               const isAI = t === 'ai'
               return (
-                <button key={t} onClick={()=>setTab(t)} style={{ flex:1, padding:'.45rem', borderRadius:8, fontSize:'var(--text-xs)', fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', border: tab===t ? `1px solid ${isAI ? 'rgba(0,232,176,.35)' : 'var(--border)'}` : '1px solid transparent', background: tab===t ? (isAI ? 'rgba(0,232,176,.08)' : 'var(--surface-2)') : 'transparent', color: tab===t ? (isAI ? 'var(--primary)' : 'var(--text)') : 'var(--muted)', cursor:'pointer', boxShadow: tab===t ? '0 1px 4px rgba(0,0,0,.2)' : 'none' }}>
-                  {t==='form' ? '📋 Form' : t==='paste' ? '📝 Paste' : t==='file' ? '📂 File' : '🤖 AI'}
+                <button key={t} onClick={()=>setTab(t)} style={{ flex:1, padding:'.45rem .2rem', borderRadius:8, fontSize:'.6rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.04em', border: tab===t ? `1px solid ${isAI ? 'rgba(0,232,176,.35)' : 'var(--border)'}` : '1px solid transparent', background: tab===t ? (isAI ? 'rgba(0,232,176,.08)' : 'var(--surface-2)') : 'transparent', color: tab===t ? (isAI ? 'var(--primary)' : 'var(--text)') : 'var(--muted)', cursor:'pointer', boxShadow: tab===t ? '0 1px 4px rgba(0,0,0,.2)' : 'none' }}>
+                  {emoji} {label}
+                </button>
+              )
+            })}
+          </div>
+          {/* Row 2: ops tabs */}
+          <div style={{ display:'flex', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:11, padding:3, gap:2 }}>
+            {([
+              ['scale',     '⚖️',  'Scales'],
+              ['playbooks', '📋',  'Playbooks'],
+            ] as [InputTab, string, string][]).map(([t, emoji, label]) => {
+              const isScale = t === 'scale'
+              return (
+                <button key={t} onClick={()=>setTab(t)} style={{ flex:1, padding:'.45rem .2rem', borderRadius:8, fontSize:'.6rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'.04em', border: tab===t ? `1px solid ${isScale ? 'rgba(245,194,0,.35)' : 'rgba(79,152,163,.35)'}` : '1px solid transparent', background: tab===t ? (isScale ? 'rgba(245,194,0,.08)' : 'rgba(79,152,163,.08)') : 'transparent', color: tab===t ? (isScale ? 'var(--warn)' : 'rgba(79,152,163,1)') : 'var(--muted)', cursor:'pointer', boxShadow: tab===t ? '0 1px 4px rgba(0,0,0,.2)' : 'none' }}>
+                  {emoji} {label}
                 </button>
               )
             })}
@@ -1427,6 +1967,13 @@ export default function TripPlanner() {
               })()}
             </div>
           )}
+
+          {/* ─ Scale / Weight tab ─ */}
+          {tab === 'scale' && <ScaleWeightTab truck={truck} origin={origin} dest={dest} />}
+
+          {/* ─ Playbooks tab ─ */}
+          {tab === 'playbooks' && <PlaybooksTab plan={plan} origin={origin} dest={dest} />}
+
         </div>
 
         {/* ── RIGHT PANEL ── */}

@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Gauge, BarChart2, Truck, FileCheck, Clock, Fuel, Settings, ChevronLeft, ChevronRight, MapPin, MessageSquare, LogOut } from 'lucide-react'
+import { Gauge, BarChart2, Truck, FileCheck, Clock, Fuel, Settings, ChevronLeft, ChevronRight, MapPin, MessageSquare, LogOut, Receipt } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
 
 const MODULES = [
@@ -25,6 +25,7 @@ const MODULES = [
     items: [
       {href:'/trips',    label:'Trip Planner',      icon:MapPin},
       {href:'/dispatch', label:'Dispatch Messages', icon:MessageSquare},
+      {href:'/expenses', label:'Expense Tracker',   icon:Receipt},
       {href:'/delays',   label:'Delay & Detention', icon:Clock},
       {href:'/fuel',     label:'Fuel Log',          icon:Fuel},
     ]

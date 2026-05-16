@@ -68,3 +68,82 @@ create policy "profiles_self" on public.profiles
 -- ── Loads: scope by user when multi-driver is needed ────────
 -- alter table public.loads add column if not exists user_id uuid references auth.users;
 -- (uncomment when you're ready for per-driver load isolation)
+
+-- ── Expenses: Tax-deductible road expense tracking ───────────
+-- Mirrors the localStorage 3b-expenses schema for cloud sync.
+-- Run this when you're ready to add Supabase-backed expense sync.
+create table if not exists public.expenses (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid references auth.users on delete cascade not null,
+
+  -- Core fields
+  date          date           not null default current_date,
+  category      text           not null,                        -- fuel | parking | meals | lodging | ...
+  amount        numeric(10,2)  not null check (amount > 0),
+  description   text,
+  location      text,
+  load_number   text,
+
+  -- IRS deductibility
+  deduct_pct    int            not null default 100 check (deduct_pct between 0 and 100),
+  deduct_amount numeric(10,2)  generated always as (amount * deduct_pct / 100.0) stored,
+  is_deductible boolean        not null default true,
+
+  -- Axle weight ticket (optional — filled from Scale Checker)
+  scale_gross   int,           -- lbs
+  scale_steer   int,
+  scale_drives  int,
+  scale_trailer int,
+  scale_ok      boolean,       -- true = all axles within legal limits
+
+  created_at    timestamptz    default now()
+);
+
+alter table public.expenses enable row level security;
+
+drop policy if exists "expenses_self" on public.expenses;
+create policy "expenses_self" on public.expenses
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Index for common queries
+create index if not exists expenses_user_date on public.expenses(user_id, date desc);
+create index if not exists expenses_user_category on public.expenses(user_id, category);
+
+-- ── Scale weight checks (standalone — can be linked to expenses) ─
+-- Stores weigh ticket data independent of expense records.
+-- Optional: use when driver wants to log weight check without a cost.
+create table if not exists public.scale_checks (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid references auth.users on delete cascade not null,
+  checked_at    timestamptz    default now(),
+  origin        text,
+  destination   text,
+  load_number   text,
+
+  -- Axle weights (lbs)
+  gross         int,
+  steer         int,
+  drives        int,
+  trailer       int,
+
+  -- Per-axle if 5-axle detail mode
+  drive1        int,
+  drive2        int,
+  trail1        int,
+  trail2        int,
+
+  -- Analysis result
+  all_legal     boolean,
+  violations    text[],        -- e.g. ARRAY['drives','gross']
+  recommendations jsonb,       -- free-form JSON from the analyzer
+
+  expense_id    uuid references public.expenses(id) on delete set null
+);
+
+alter table public.scale_checks enable row level security;
+
+drop policy if exists "scale_checks_self" on public.scale_checks;
+create policy "scale_checks_self" on public.scale_checks
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create index if not exists scale_checks_user on public.scale_checks(user_id, checked_at desc);

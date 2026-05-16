@@ -1,14 +1,14 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Gauge, BarChart2, MapPin, Truck, MoreHorizontal } from 'lucide-react'
+import { Gauge, MapPin, Truck, MessageSquare, Receipt } from 'lucide-react'
 
 const NAV = [
-  { href: '/dashboard', label: 'Command',  icon: Gauge     },
-  { href: '/mis',       label: 'MIS',      icon: BarChart2 },
-  { href: '/trips',     label: 'Trips',    icon: MapPin    },
-  { href: '/loads',     label: 'Loads',    icon: Truck     },
-  { href: '/settings',  label: 'More',     icon: MoreHorizontal },
+  { href: '/dashboard', label: 'Command',  icon: Gauge         },
+  { href: '/trips',     label: 'Trips',    icon: MapPin        },
+  { href: '/dispatch',  label: 'Dispatch', icon: MessageSquare },
+  { href: '/expenses',  label: 'Expenses', icon: Receipt       },
+  { href: '/loads',     label: 'Loads',    icon: Truck         },
 ]
 
 export default function BottomNav() {
