@@ -27,6 +27,19 @@ button{cursor:pointer;border:none;background:none}
 img,svg{display:block;max-width:100%}
 h1,h2,h3{text-wrap:balance;line-height:1.15}
 :focus-visible{outline:2px solid var(--primary);outline-offset:3px;border-radius:var(--radius-sm)}
+
+/* ── Mobile utilities ── */
+.hide-xs { display: inline; }
+@media (max-width: 480px) { .hide-xs { display: none; } }
+
+/* ── Mobile shell ── */
+.app-sidebar { flex-shrink: 0; }
+.app-bottom-nav { display: none; }
+@media (max-width: 768px) {
+  .app-sidebar { display: none !important; }
+  .app-bottom-nav { display: flex; }
+  .app-content { padding-bottom: 68px; }
+}
 table{border-collapse:collapse;width:100%}
 code{font-family:ui-monospace,monospace;font-size:.88em;background:var(--surface-off);padding:.15em .4em;border-radius:4px}
 pre code{background:none;padding:0}

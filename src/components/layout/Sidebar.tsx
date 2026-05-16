@@ -78,7 +78,7 @@ export default function Sidebar() {
   const displayName = profile?.full_name || profile?.email || ''
   const initial     = displayName[0]?.toUpperCase() ?? '?'
   return (
-    <aside style={{width:col?68:268,transition:'width 220ms cubic-bezier(0.16,1,0.3,1)',background:'linear-gradient(180deg,#081a16 0%,#050f0d 100%)',borderRight:'1px solid rgba(0,232,176,.13)',position:'sticky',top:0,height:'100dvh',display:'flex',flexDirection:'column',flexShrink:0,overflow:'hidden',zIndex:20}}>
+    <aside className="app-sidebar" style={{width:col?68:268,transition:'width 220ms cubic-bezier(0.16,1,0.3,1)',background:'linear-gradient(180deg,#081a16 0%,#050f0d 100%)',borderRight:'1px solid rgba(0,232,176,.13)',position:'sticky',top:0,height:'100dvh',display:'flex',flexDirection:'column',flexShrink:0,overflow:'hidden',zIndex:20}}>
 
       {/* Logo */}
       <div style={{padding:col?'.75rem .5rem':'.75rem 1rem',display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid var(--border)',flexShrink:0,background:'rgba(0,230,118,.03)'}}>
