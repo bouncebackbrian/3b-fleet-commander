@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import TopBar from '@/components/layout/TopBar'
+import { loadSettings } from '@/lib/settings'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type InputTab  = 'form' | 'paste' | 'file' | 'ai'
@@ -365,6 +366,40 @@ const S = {
 }
 
 const money = (n: number) => '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 })
+
+// ─── Countdown Timer ─────────────────────────────────────────────────────────
+function CountdownTimer({ targetISO, label }: { targetISO: string; label: string }) {
+  const [diff, setDiff] = useState(0)
+  useEffect(() => {
+    const target = new Date(targetISO).getTime()
+    const tick = () => setDiff(target - Date.now())
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [targetISO])
+
+  const past = diff < 0
+  const abs  = Math.abs(diff)
+  const hh   = Math.floor(abs / 3600000)
+  const mm   = Math.floor((abs % 3600000) / 60000)
+  const ss   = Math.floor((abs % 60000) / 1000)
+  const fmt  = `${hh}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`
+  const color = past ? 'var(--error)' : hh < 1 ? 'var(--warn)' : 'var(--primary)'
+
+  return (
+    <div style={{ background: past ? 'rgba(232,64,0,.07)' : 'rgba(0,232,176,.05)', border: `1px solid ${past ? 'rgba(232,64,0,.2)' : 'rgba(0,232,176,.18)'}`, borderRadius: 14, padding: '1rem 1.2rem', textAlign: 'center' }}>
+      <div style={{ fontSize: '.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: 'var(--muted)', marginBottom: 6 }}>
+        {past ? `⏰ ${label} — PAST DUE` : `⏳ Time until ${label}`}
+      </div>
+      <div style={{ fontSize: '2.4rem', fontWeight: 900, fontVariantNumeric: 'tabular-nums', letterSpacing: '-.02em', color, lineHeight: 1, fontFamily: 'ui-monospace,monospace' }}>
+        {past ? '+' : ''}{fmt}
+      </div>
+      <div style={{ fontSize: '.6rem', color: 'var(--muted)', marginTop: 6 }}>
+        {new Date(targetISO).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+      </div>
+    </div>
+  )
+}
 
 // ─── Truck field — defined OUTSIDE modal to prevent focus-loss on re-render ───
 function TruckField({ label, k, form, onChange, type='text', step, ph }: {
@@ -1114,7 +1149,7 @@ export default function TripPlanner() {
               </p>
               <textarea style={{ ...S.inp, resize:'vertical', minHeight:180, lineHeight:1.6 }} value={paste} onChange={e=>setPaste(e.target.value)}
                 placeholder={'Load #0241482\nPickup: Amargosa Valley, NV — 6:00 AM\nDeliver: Walmart DC Sparks, NV\n335 loaded miles\nRate: $0.55/mi'} />
-              <button onClick={()=>{ fill(parseText(paste)); setTab('form'); runBuild() }} style={{ ...S.btnPri, width:'100%', padding:'.75rem', marginTop:'.75rem' }}>
+              <button onClick={()=>{ fill(parseText(paste)); setTab('form'); setTimeout(runBuild, 80) }} style={{ ...S.btnPri, width:'100%', padding:'.75rem', marginTop:'.75rem' }}>
                 Parse &amp; build plan →
               </button>
             </div>
@@ -1354,6 +1389,30 @@ export default function TripPlanner() {
                         🔄 New analysis
                       </button>
                     </div>
+                    {/* Export AI → Log Load (auto-populate as much as possible) */}
+                    {(p.origin || p.dest || p.loadNum || p.miles) && (
+                      <button
+                        onClick={() => {
+                          const cfg = loadSettings()
+                          const params = new URLSearchParams()
+                          if (p.origin)    params.set('origin',        p.origin)
+                          if (p.dest)      params.set('destination',   p.dest)
+                          if (p.loadNum)   params.set('loadNumber',    p.loadNum)
+                          if (p.broker)    params.set('broker',        p.broker)
+                          if (p.miles)     params.set('dispatchMiles', String(p.miles))
+                          if (p.weight)    params.set('weight',        String(p.weight))
+                          if (p.commodity) params.set('commodity',     p.commodity)
+                          const cpmToUse = p.cpm ?? cfg.cpmReceived ?? cfg.defaultCpm
+                          if (cpmToUse)   params.set('cpmRate',        String(cpmToUse))
+                          if (f.grossPay) params.set('totalPay',       String(f.grossPay))
+                          params.set('new', '1')
+                          router.push(`/loads?${params}`)
+                        }}
+                        style={{ ...S.btnPri, width:'100%', padding:'.8rem', textAlign:'center', fontSize:'var(--text-sm)', background:'linear-gradient(135deg,#f5c200,#d4a017)', borderColor:'#d4a017', color:'#1a0f00', boxShadow:'0 3px 12px rgba(245,194,0,.25)' }}
+                      >
+                        📦 Export AI → Log Load
+                      </button>
+                    )}
                   </>
                 )
               })()}
@@ -1395,6 +1454,21 @@ export default function TripPlanner() {
                 </div>
               </div>
 
+              {/* Countdown timer to departure */}
+              {plan.depart_display && (() => {
+                const today = new Date().toISOString().slice(0,10)
+                const [h,m] = (() => {
+                  const match = plan.depart_display.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i)
+                  if (!match) return [6, 0]
+                  let hr = parseInt(match[1]); const mn = parseInt(match[2])
+                  if (match[3].toUpperCase() === 'PM' && hr < 12) hr += 12
+                  if (match[3].toUpperCase() === 'AM' && hr === 12) hr = 0
+                  return [hr, mn]
+                })()
+                const iso = `${today}T${String(h).padStart(2,'00')}:${String(m).padStart(2,'00')}:00`
+                return <CountdownTimer targetISO={iso} label="Pickup" />
+              })()}
+
               {/* KPI chips */}
               <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(140px,100%),1fr))', gap:'.7rem' }}>
                 {([
@@ -1406,6 +1480,11 @@ export default function TripPlanner() {
                   ['Net (fuel out)',money(plan.net),            plan.net>0?'var(--success)':'var(--error)'],
                   ['CPM',          `$${plan.cpm.toFixed(3)}`,  ''],
                   ['Drive time',    plan.drive_time,            ''],
+                  ...(() => {
+                    const cfg = loadSettings()
+                    const myPay = Math.round(plan.total_miles * cfg.cpmReceived * 100) / 100
+                    return cfg.cpmReceived > 0 ? [['Pay @ my CPM', `$${myPay.toFixed(2)}`, myPay > plan.est_pay ? 'var(--success)' : myPay < plan.est_pay ? 'var(--error)' : 'var(--text)']] as [string,string,string][] : []
+                  })(),
                 ] as [string,string,string][]).map(([label,value,color]) => (
                   <div key={label} style={{ background:'var(--surface-2)', border:'1px solid var(--border)', borderRadius:12, padding:'.85rem' }}>
                     <div style={{ fontSize:'var(--text-xs)', color:'var(--muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:5 }}>{label}</div>
