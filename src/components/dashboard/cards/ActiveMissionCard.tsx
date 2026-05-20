@@ -40,8 +40,8 @@ export default function ActiveMissionCard({ mission, missionScore, missionFuel, 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.8rem', flexWrap: 'wrap', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
           {mission && <div style={{ width: 9, height: 9, borderRadius: '50%', background: 'var(--primary)', boxShadow: '0 0 10px var(--primary)', animation: 'pulse 2s infinite', flexShrink: 0 }} />}
-          <span style={{ fontWeight: 800, fontSize: '1.15rem' }}>{mission ? 'Active Load' : 'No Active Load'}</span>
-          {mission?.loadNumber && <span style={{ fontWeight: 900, fontSize: '1.05rem', color: 'var(--primary)', fontVariantNumeric: 'tabular-nums' }}>{mission.loadNumber}</span>}
+          <span style={{ fontWeight: 900, fontSize: 'var(--cc-card-title)' }}>{mission ? 'Active Load' : 'No Active Load'}</span>
+          {mission?.loadNumber && <span style={{ fontWeight: 900, fontSize: 'var(--cc-card-title)', color: 'var(--primary)', fontVariantNumeric: 'tabular-nums' }}>{mission.loadNumber}</span>}
           {mission && <SyncBadge state={syncState} />}
           {mission?.date && <span style={{ fontSize: '.65rem', color: 'var(--muted)', fontWeight: 600 }}>{mission.date}</span>}
         </div>
@@ -94,7 +94,7 @@ export default function ActiveMissionCard({ mission, missionScore, missionFuel, 
           )}
 
           {/* Load meta */}
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', fontSize: '.83rem', color: 'var(--muted)' }}>
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', fontSize: 'var(--cc-label)', color: 'var(--muted)', fontWeight: 600 }}>
             {mission.pickup    && <span>📅 Pickup: <strong style={{ color: 'var(--text)' }}>{mission.pickup}</strong></span>}
             {mission.delivery  && <span>📦 Delivery: <strong style={{ color: 'var(--text)' }}>{mission.delivery}</strong></span>}
             {mission.commodity && <span>🔧 {mission.commodity}</span>}

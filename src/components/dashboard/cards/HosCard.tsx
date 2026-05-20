@@ -26,11 +26,11 @@ export default function HosCard({
     <div className="cc-card" style={{ border: `1px solid ${hosDisplay ? 'rgba(0,232,176,.2)' : 'var(--border)'}` }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.75rem', flexWrap: 'wrap', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontWeight: 800, fontSize: '1.1rem' }}>HOS Status</span>
+          <span style={{ fontWeight: 900, fontSize: 'var(--cc-card-title)' }}>HOS Status</span>
           {statusLabel && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '.2rem .65rem', borderRadius: 6, background: `${statusColor}15`, border: `1px solid ${statusColor}30` }}>
               <div style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, boxShadow: `0 0 6px ${statusColor}` }} />
-              <span style={{ fontSize: '.72rem', fontWeight: 800, color: statusColor }}>{statusLabel}</span>
+              <span style={{ fontSize: 'var(--cc-label)', fontWeight: 800, color: statusColor }}>{statusLabel}</span>
             </div>
           )}
           {hosDisplay?.source === 'samsara' && (
@@ -65,21 +65,21 @@ export default function HosCard({
         <div style={{ display: 'grid', gap: '.75rem' }}>
           <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
             <div>
-              <div style={{ fontSize: '.58rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: driveColor, marginBottom: 2 }}>Drive</div>
-              <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 900, fontSize: 'clamp(2rem,5vw,2.8rem)', lineHeight: 1, color: driveColor, textShadow: `0 0 20px ${driveColor}40` }}>
+              <div style={{ fontSize: 'var(--cc-meta)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: driveColor, marginBottom: 2 }}>Drive</div>
+              <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 900, fontSize: 'var(--cc-number-xl)', lineHeight: 1, color: driveColor, textShadow: `0 0 20px ${driveColor}40` }}>
                 {hosDisplay.driveRem.toFixed(1)}<span style={{ fontSize: '.9rem', fontWeight: 700, marginLeft: 2 }}>h</span>
               </div>
             </div>
             <div>
-              <div style={{ fontSize: '.58rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: shiftColor, marginBottom: 2 }}>Shift</div>
-              <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 900, fontSize: 'clamp(1.5rem,3.5vw,2rem)', lineHeight: 1, color: shiftColor }}>
+              <div style={{ fontSize: 'var(--cc-meta)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: shiftColor, marginBottom: 2 }}>Shift</div>
+              <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 900, fontSize: 'clamp(1.6rem,3.5vw,2.2rem)', lineHeight: 1, color: shiftColor }}>
                 {hosDisplay.shiftRem.toFixed(1)}<span style={{ fontSize: '.78rem', fontWeight: 700, marginLeft: 2 }}>h</span>
               </div>
             </div>
             {hosDisplay.cycleRem != null && (
               <div>
-                <div style={{ fontSize: '.58rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: 'var(--muted)', marginBottom: 2 }}>70h Cycle</div>
-                <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700, fontSize: '1.15rem', lineHeight: 1, color: 'var(--text)' }}>
+                <div style={{ fontSize: 'var(--cc-meta)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: 'var(--muted)', marginBottom: 2 }}>70h Cycle</div>
+                <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700, fontSize: 'clamp(1.15rem,2.5vw,1.4rem)', lineHeight: 1, color: 'var(--text)' }}>
                   {hosDisplay.cycleRem.toFixed(1)}<span style={{ fontSize: '.7rem', fontWeight: 600, marginLeft: 2 }}>h</span>
                 </div>
               </div>
@@ -89,14 +89,14 @@ export default function HosCard({
           <HOSBar label={`On-duty — ${hosDisplay.shiftUsed.toFixed(1)}h of 14h`} used={hosDisplay.shiftUsed} total={14} color={shiftColor} />
           {hosDisplay.breakIn != null && (
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '.55rem .85rem', borderRadius: 10, background: hosDisplay.breakIn < 1 ? 'rgba(232,64,0,.1)' : 'rgba(245,194,0,.07)', border: `1px solid ${hosDisplay.breakIn < 1 ? 'rgba(232,64,0,.25)' : 'rgba(245,194,0,.2)'}` }}>
-              <span style={{ fontSize: '.82rem', color: hosDisplay.breakIn < 1 ? 'var(--error)' : 'var(--warn)', fontWeight: 700 }}>⏸ Break due in</span>
-              <span style={{ fontWeight: 900, fontSize: '.9rem', color: hosDisplay.breakIn < 1 ? 'var(--error)' : 'var(--warn)', fontVariantNumeric: 'tabular-nums' }}>{hosDisplay.breakIn.toFixed(1)}h</span>
+              <span style={{ fontSize: 'var(--cc-label)', color: hosDisplay.breakIn < 1 ? 'var(--error)' : 'var(--warn)', fontWeight: 700 }}>⏸ Break due in</span>
+              <span style={{ fontWeight: 900, fontSize: 'var(--cc-label)', color: hosDisplay.breakIn < 1 ? 'var(--error)' : 'var(--warn)', fontVariantNumeric: 'tabular-nums' }}>{hosDisplay.breakIn.toFixed(1)}h</span>
             </div>
           )}
           {eldMode === 'samsara' && samsara?.location?.address && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '.35rem', borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: 4 }}>
-              <span style={{ fontSize: '.75rem', color: 'var(--muted)', fontWeight: 600 }}>📍 {samsara.location.address}</span>
-              {samsara.location.speedMph != null && <span style={{ fontSize: '.75rem', fontWeight: 800 }}>{Math.round(samsara.location.speedMph)} mph</span>}
+              <span style={{ fontSize: 'var(--cc-label)', color: 'var(--muted)', fontWeight: 600 }}>📍 {samsara.location.address}</span>
+              {samsara.location.speedMph != null && <span style={{ fontSize: 'var(--cc-label)', fontWeight: 900 }}>{Math.round(samsara.location.speedMph)} mph</span>}
             </div>
           )}
         </div>

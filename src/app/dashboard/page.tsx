@@ -138,7 +138,7 @@ export default function Dashboard() {
   }) // no deps — fires after every render
 
   // ── Hooks
-  const { weather, weatherLoading, wx } = useWeather()
+  const { weather, weatherLoading, wx, lastUpdated: weatherUpdated, refresh: refreshWeather } = useWeather()
   const { mission, missionScore, missionFuel, saveMission, missionSaveError, syncState } = useMission()
   const {
     breakActive, breakSecs, showBreakModal, setShowBreakModal,
@@ -403,7 +403,7 @@ export default function Dashboard() {
               onScanClick={() => hosInputRef.current?.click()}
               onClearHos={() => { localStorage.removeItem('3b-hos-data'); setHos(null); setSamsara(null) }}
             />
-            <FuelWeatherRow missionFuel={missionFuel} weather={weather} wx={wx} weatherLoading={weatherLoading} />
+            <FuelWeatherRow missionFuel={missionFuel} weather={weather} wx={wx} weatherLoading={weatherLoading} lastUpdated={weatherUpdated} onRefresh={refreshWeather} />
             <ExpensesCard />
 
             {/* MIS footer */}
