@@ -248,6 +248,8 @@ export default function Loads() {
   const [briefErr,     setBriefErr]     = useState<string | null>(null)
   const [saveErr,      setSaveErr]      = useState<string | null>(null)
   const [packet,       setPacket]       = useState<DriverPacket | null>(null)
+  const [packetCopied, setPacketCopied] = useState(false)
+  const [packetCopyErr,setPacketCopyErr]= useState(false)
 
   // Load data
   useEffect(() => {
@@ -654,6 +656,83 @@ ${p.brief ? `<div class="sec">
 </div>
 </body>
 </html>`
+  }
+
+  function generatePacketText(p: DriverPacket): string {
+    const SEP = '═'.repeat(50)
+    const sec = (title: string) => '─── ' + title + ' ' + '─'.repeat(Math.max(2, 45 - title.length))
+    const f   = (label: string, value: string) => `  ${(label + ':').padEnd(15)} ${value}`
+    const cur = (n: number) => n !== 0 ? '$' + Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '$0'
+    const rig = p.rigType === 'hotshot' ? 'Hotshot Dually' : p.rigType === 'semi-team' ? 'Class 8 Semi (Team)' : 'Class 8 Semi (Solo)'
+    const pFmt = (dt: string) => { try { return dt ? new Date(dt).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' }) : '—' } catch { return '—' } }
+
+    const out: string[] = [
+      SEP,
+      '  3B FLEET COMMANDER — DRIVER PACKET',
+      `  Load #${p.loadNumber}   ${p.date}`,
+      `  Generated: ${p.generatedAt}`,
+      SEP,
+      '',
+      `ROUTE:  ${p.origin.split(',')[0]}  →  ${p.destination.split(',')[0]}`,
+      ...(p.broker !== '—' ? [`BROKER: ${p.broker}`] : []),
+      '',
+      sec('LOAD IDENTITY'),
+      f('Origin',      p.origin),
+      f('Destination', p.destination),
+      f('Pickup Appt', pFmt(p.pickup)),
+      f('Delivery',    pFmt(p.delivery)),
+      f('Broker',      p.broker),
+      f('Rig',         `${rig} · ${p.driverMode}`),
+      '',
+      sec('CARGO'),
+      f('Commodity',   p.commodity),
+      f('Weight',      p.weight ? `${p.weight} lbs` : '—'),
+      f('Load Type',   p.loadType),
+      '',
+      sec('FINANCIALS'),
+      f('Gross Rate',   cur(p.grossRate)),
+      f('Net RPM',      p.netRpm > 0 ? `$${p.netRpm.toFixed(2)}/mi` : '—'),
+      f('Fuel Est',     cur(p.fuelEst)),
+      f('Net Est',      `${p.netEst < 0 ? '-' : ''}${cur(p.netEst)}`),
+      f('Loaded Miles', `${fmt(p.dispatchMiles)} mi`),
+      f('Deadhead',     `${fmt(p.deadheadMiles)} mi`),
+      f('Total Miles',  `${fmt(p.dispatchMiles + p.deadheadMiles)} mi`),
+    ]
+
+    if (p.score !== null) {
+      out.push('', sec('SCORE ANALYSIS'))
+      out.push(`  Score: ${p.score}/12   Verdict: ${p.verdict ?? '—'}   Margin: ${p.marginFlag ?? '—'}`)
+    }
+
+    if (p.brief) {
+      out.push('', sec('AI DISPATCH BRIEF'))
+      out.push(p.brief)
+    }
+
+    out.push('', sec('DRIVER NOTES'))
+    out.push(p.driverNotes ? `  ${p.driverNotes}` : '  (none)')
+    out.push('', sec('DISPATCH NOTES'))
+    out.push('', '')
+    out.push(SEP)
+    out.push(`  Generated: ${p.generatedAt}`)
+    out.push('  3B Fleet Commander — Driver Packet')
+    out.push(SEP)
+
+    return out.join('\n')
+  }
+
+  async function copyPacketText() {
+    if (!packet) return
+    const text = generatePacketText(packet)
+    try {
+      await navigator.clipboard.writeText(text)
+      setPacketCopied(true);  setPacketCopyErr(false)
+      setTimeout(() => setPacketCopied(false), 2500)
+    } catch {
+      // Clipboard API blocked (non-HTTPS, permissions) — show failure state
+      setPacketCopyErr(true); setPacketCopied(false)
+      setTimeout(() => setPacketCopyErr(false), 3000)
+    }
   }
 
   function printPacket() {
@@ -1144,7 +1223,8 @@ ${p.brief ? `<div class="sec">
                             : 'Load data + score — generate a brief first for full packet'}
                         </div>
                       </div>
-                      <button type="button" onClick={() => setPacket(buildPacket())}
+                      <button type="button"
+                        onClick={() => { setPacketCopied(false); setPacketCopyErr(false); setPacket(buildPacket()) }}
                         style={{ padding:'.6rem 1rem', borderRadius:10, background:'rgba(0,232,176,.1)', border:'1px solid rgba(0,232,176,.25)', color:'var(--primary)', fontWeight:800, fontSize:'var(--text-xs)', whiteSpace:'nowrap' }}>
                         {packet ? '🔄 Rebuild' : '📋 Build Packet'}
                       </button>
@@ -1191,14 +1271,24 @@ ${p.brief ? `<div class="sec">
                           <div style={{ fontSize:'.62rem', color:'var(--faint)' }}>Built {packet.generatedAt}</div>
                         </div>
 
-                        {/* Print / Save as PDF */}
-                        <button type="button" onClick={printPacket}
-                          style={{ width:'100%', padding:'.9rem', borderRadius:12, background:'var(--primary)', color:'#061210', fontWeight:800, fontSize:'var(--text-sm)', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-                          🖨️ Print / Save as PDF
-                        </button>
-                        <div style={{ fontSize:'.63rem', color:'var(--faint)', textAlign:'center', lineHeight:1.5 }}>
-                          Opens print dialog — choose <strong style={{ color:'var(--muted)' }}>Save as PDF</strong> to download.
-                          On mobile, use the share sheet → Save to Files.
+                        {/* Action row: Print + Copy Text */}
+                        <div style={{ display:'flex', gap:8 }}>
+                          <button type="button" onClick={printPacket}
+                            style={{ flex:1, padding:'.85rem .5rem', borderRadius:12, background:'var(--primary)', color:'#061210', fontWeight:800, fontSize:'var(--text-xs)', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                            🖨️ Print / PDF
+                          </button>
+                          <button type="button" onClick={copyPacketText}
+                            style={{ flex:1, padding:'.85rem .5rem', borderRadius:12, fontWeight:800, fontSize:'var(--text-xs)', display:'flex', alignItems:'center', justifyContent:'center', gap:6, transition:'background .15s, border-color .15s',
+                              background:  packetCopied ? 'rgba(40,192,72,.12)'  : packetCopyErr ? 'rgba(232,64,0,.1)'   : 'var(--surface-2)',
+                              border:     `1px solid ${packetCopied ? 'rgba(40,192,72,.3)' : packetCopyErr ? 'rgba(232,64,0,.3)' : 'var(--border)'}`,
+                              color:       packetCopied ? 'var(--success)'        : packetCopyErr ? 'var(--error)'        : 'var(--text)',
+                            }}>
+                            {packetCopied ? '✅ Copied!' : packetCopyErr ? '❌ Copy failed' : '📋 Copy Text'}
+                          </button>
+                        </div>
+                        <div style={{ fontSize:'.63rem', color:'var(--faint)', textAlign:'center', lineHeight:1.6 }}>
+                          <strong style={{ color:'var(--muted)' }}>Print</strong> → Save as PDF &nbsp;·&nbsp;
+                          <strong style={{ color:'var(--muted)' }}>Copy</strong> → paste into messages, email, or notes
                         </div>
                       </>
                     )}
