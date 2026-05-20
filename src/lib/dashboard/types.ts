@@ -1,0 +1,111 @@
+import type { RigType } from '@/lib/scoreLoad'
+
+export type EldMode = 'screenshot' | 'samsara'
+
+export type VehicleSetup = {
+  truckNum?: string; trailerNum?: string; year?: string
+  make?: string; model?: string; trailerType?: string
+}
+
+export type HOSData = {
+  status: string | null
+  driveRemainingHrs: number | null; shiftRemainingHrs: number | null
+  breakInHrs: number | null; cycleRemainingHrs: number | null
+  driveUsedHrs: number | null; onDutyUsedHrs: number | null
+  lastBreakHrs: number | null; notes: string | null
+  scannedAt: string
+}
+
+export type SamsaraData = {
+  hos: {
+    driverName: string | null; status: string | null; statusSince: string | null
+    driveRemainingHrs: number; shiftRemainingHrs: number
+    breakInHrs: number | null; cycleRemainingHrs: number
+  } | null
+  location: {
+    lat: number | null; lng: number | null; speedMph: number | null
+    address: string | null; updatedAt: string | null; vehicleName: string | null
+  } | null
+  todayMiles: number | null; updatedAt: string; error?: string
+}
+
+export type ActiveTrip = {
+  origin: { query: string; lat?: number; lon?: number; lng?: number }
+  destination: { query: string; lat?: number; lon?: number; lng?: number }
+  totalMiles: number; departTime: string; estArrival: string; estDriveHours: string
+  loadNumber: string | null
+  stops: {
+    name: string; city: string; state: string; miFromOrigin: number; eta: string
+    stopType: string; diesel: number | null
+    showers: { available: number; total: number } | null; recommended: boolean
+  }[]
+}
+
+export type Expense = {
+  id: string; date: string; category: string; amount: number
+  description: string; location: string; loadNumber: string
+  deductPct: number; isDeductible: boolean; createdAt: string
+}
+
+export type WeatherData = {
+  temp: number; windSpeed: number; code: number; precip: number; lat: number; lng: number
+}
+
+export type LoadMission = {
+  id: string; loadNumber: string; broker?: string
+  origin: string; destination: string; date: string
+  dispatchMiles: number; deadheadMiles: number
+  grossRate: number; fuelPrice: number; rigType: RigType
+  waitHours: number; reloadKnown: boolean; reloadAreaStrength: 1 | 2 | 3
+  hasOvernightParking: boolean; loadType: string
+  pickup?: string; delivery?: string; commodity?: string
+}
+
+export type HOSDisplay = {
+  driveUsed: number; driveRem: number
+  shiftUsed: number; shiftRem: number
+  cycleRem: number | null; breakIn: number | null
+  status: string | null; source: 'samsara' | 'screenshot'
+}
+
+export type WeatherInfo = {
+  label: string; emoji: string; severe: boolean; color: string
+}
+
+// ── Sync State ───────────────────────────────────────────────────────────────
+// Tracks the cloud-sync lifecycle for any write operation.
+//   idle       — no pending write
+//   saving     — write in flight
+//   saved      — last write succeeded (shown briefly then returns to idle)
+//   failed     — last write failed (localStorage copy is safe)
+//   local_only — Supabase not configured; all data is localStorage-only
+export type SyncState = 'idle' | 'saving' | 'saved' | 'failed' | 'local_only'
+
+// ── Operational Memory ────────────────────────────────────────────────────────
+export type EventType =
+  | 'detention'
+  | 'weather_delay'
+  | 'fuel_issue'
+  | 'receiver_delay'
+  | 'parking_issue'
+  | 'breakdown'
+  | 'route_problem'
+  | 'successful_delivery'
+  | 'scale_issue'
+  | 'traffic_delay'
+
+export type EventSeverity = 'info' | 'warn' | 'critical'
+
+export type OperationalEvent = {
+  id:          string
+  missionId:   string | null
+  loadNumber:  string
+  origin:      string
+  destination: string
+  eventType:   EventType
+  severity:    EventSeverity
+  notes:       string | null
+  location:    string | null
+  createdBy:   string | null
+  createdAt:   string
+}

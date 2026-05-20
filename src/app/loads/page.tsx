@@ -6,7 +6,7 @@ import LoadBadge from '@/components/ui/LoadBadge'
 import { supabase } from '@/lib/supabase'
 import { SAMPLE_LOADS } from '@/lib/store'
 import { loadSettings } from '@/lib/settings'
-import { scoreLoad, getDieselPrice, getMpgDefault } from '@/lib/scoreLoad'
+import { scoreLoad, getDieselPrice, getMpgDefault, fuelIntel } from '@/lib/scoreLoad'
 import type { Load, MoveType } from '@/types'
 import type { RigType, MarginFlag, ScoreVerdict } from '@/lib/scoreLoad'
 
@@ -310,6 +310,25 @@ export default function Loads() {
   }, [form.dispatchMiles, form.deadheadMiles, form.loadType, form.waitHours,
       form.reloadKnown, form.reloadAreaStrength, form.hasOvernightParking,
       form.grossRate, form.rigType, form.fuelPrice])
+
+  // ── Fuel intelligence ────────────────────────────────────────────────────
+  const fuelIntelResult = useMemo(() => {
+    const miles = n('dispatchMiles')
+    const dh    = n('deadheadMiles')
+    if (!miles && !dh) return null
+    return fuelIntel({
+      origin:        form.origin,
+      destination:   form.destination,
+      loadedMiles:   miles,
+      deadheadMiles: dh,
+      rigType:       form.rigType,
+      mpg:           getMpgDefault(form.rigType),
+      fuelPrice:     parseFloat(form.fuelPrice) || undefined,
+      grossRate:     n('grossRate') || undefined,
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.origin, form.destination, form.dispatchMiles, form.deadheadMiles,
+      form.rigType, form.fuelPrice, form.grossRate])
 
   // ── Panel handlers ────────────────────────────────────────────────────────
   function openAdd() {
@@ -1127,6 +1146,89 @@ ${p.brief ? `<div class="sec">
                                 💬 <strong>Counter-Offer:</strong> {scoreResult.counterOffer}
                               </div>
                             )}
+                          </div>
+                        )}
+
+                        {/* ── Fuel Intelligence ─────────────────────────── */}
+                        {fuelIntelResult && fuelIntelResult.totalMiles > 0 && (
+                          <div style={{ background:'var(--surface-2)', border:'1px solid var(--border)', borderRadius:12, padding:'.9rem', display:'grid', gap:'.6rem' }}>
+
+                            {/* Header */}
+                            <div style={{ display:'flex', flexWrap:'wrap', justifyContent:'space-between', alignItems:'center', gap:4 }}>
+                              <div style={{ fontSize:'.65rem', fontWeight:800, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.08em' }}>⛽ Fuel Intelligence</div>
+                              <div style={{ fontSize:'.68rem', fontWeight:700, color:'var(--primary)' }}>{fuelIntelResult.summaryLine}</div>
+                            </div>
+
+                            {/* Key metrics — auto-fit so tiles wrap on narrow panels */}
+                            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(80px,1fr))', gap:6 }}>
+                              {[
+                                { label:'Est. Gallons', value:`${fuelIntelResult.gallonsNeeded} gal` },
+                                { label:'Fuel Cost',    value:`$${Math.round(fuelIntelResult.fuelCostTotal)}` },
+                                { label:'$/Mile (fuel)',value:`$${fuelIntelResult.costPerMile.toFixed(3)}` },
+                              ].map(m => (
+                                <div key={m.label} style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:8, padding:'.45rem .5rem', textAlign:'center' }}>
+                                  <div style={{ fontSize:'.57rem', color:'var(--muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:'.04em' }}>{m.label}</div>
+                                  <div style={{ fontSize:'.78rem', fontWeight:800, color:'var(--text)', marginTop:2 }}>{m.value}</div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* MPG + price row */}
+                            <div style={{ fontSize:'.65rem', color:'var(--muted)', display:'flex', gap:10, flexWrap:'wrap', lineHeight:1.5 }}>
+                              <span>MPG: <strong style={{ color:'var(--text)' }}>{fuelIntelResult.mpgUsed}</strong></span>
+                              <span>·</span>
+                              <span>
+                                Price: <strong style={{ color:'var(--text)' }}>${fuelIntelResult.priceUsed.toFixed(2)}/gal</strong>
+                                {fuelIntelResult.priceIsDefault && <span style={{ color:'var(--warn)' }}> (est. — verify)</span>}
+                              </span>
+                              <span>·</span>
+                              <span>Reserve: <strong style={{ color:'var(--text)' }}>{fuelIntelResult.reserveGal} gal</strong></span>
+                            </div>
+
+                            {/* Fuel stops */}
+                            {fuelIntelResult.stops.length > 0 && (
+                              <div>
+                                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:'.35rem', flexWrap:'wrap', gap:4 }}>
+                                  <div style={{ fontSize:'.6rem', fontWeight:800, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.07em' }}>Possible Stops Along Route</div>
+                                  <div style={{ fontSize:'.58rem', color:'var(--muted)', fontStyle:'italic' }}>based on origin/dest states</div>
+                                </div>
+                                <div style={{ display:'grid', gap:'.3rem' }}>
+                                  {fuelIntelResult.stops.map((s, i) => (
+                                    <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'.4rem .5rem', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:8, gap:8, flexWrap:'wrap' }}>
+                                      <div style={{ minWidth:0 }}>
+                                        <span style={{ fontSize:'.68rem', fontWeight:700, color:'var(--primary)' }}>⛽ {s.name}</span>
+                                        <span style={{ fontSize:'.6rem', color:'var(--muted)', marginLeft:6 }}>{s.corridor}</span>
+                                      </div>
+                                      <div style={{ fontSize:'.65rem', fontWeight:700, color:'var(--text)', flexShrink:0 }}>
+                                        ~{s.estGal} gal · ~${Math.round(s.estCost)}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Fuel risks */}
+                            {fuelIntelResult.risks.length > 0 && (
+                              <div style={{ display:'grid', gap:'.3rem' }}>
+                                {fuelIntelResult.risks.map((r, i) => (
+                                  <div key={i} style={{
+                                    fontSize:'.65rem', padding:'.45rem .6rem', borderRadius:8,
+                                    background: r.level === 'HIGH' ? 'rgba(232,64,0,.07)' : r.level === 'MODERATE' ? 'rgba(245,194,0,.07)' : 'rgba(0,232,176,.05)',
+                                    border: `1px solid ${r.level === 'HIGH' ? 'rgba(232,64,0,.2)' : r.level === 'MODERATE' ? 'rgba(245,194,0,.2)' : 'rgba(0,232,176,.2)'}`,
+                                    color: r.level === 'HIGH' ? 'var(--error)' : r.level === 'MODERATE' ? 'var(--warn)' : 'var(--muted)',
+                                    lineHeight: 1.45,
+                                  }}>
+                                    {r.level === 'HIGH' ? '🔴' : r.level === 'MODERATE' ? '⚠️' : 'ℹ️'} {r.message}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* MVP disclaimer */}
+                            <div style={{ fontSize:'.6rem', color:'var(--muted)', lineHeight:1.5, borderTop:'1px solid var(--border)', paddingTop:'.5rem' }}>
+                              ⚠️ <em>Planning estimates only.</em> Verify route, parking, diesel price, DEF availability, and truck access before dispatch.
+                            </div>
                           </div>
                         )}
 

@@ -182,3 +182,263 @@ export function getDieselPrice(stateOrLocation: string): number {
 export function getMpgDefault(rigType: RigType): number {
   return rigType === 'hotshot' ? 12.0 : 7.5
 }
+
+// ── Fuel Intelligence ────────────────────────────────────────────────────────
+
+/** One suggested fuel stop along the route */
+export interface FuelStop {
+  name:     string   // e.g. "Love's — Amarillo, TX"
+  location: string   // city, state
+  network:  'Loves' | 'TA/Petro'
+  corridor: string   // e.g. "I-40"
+  estGal:   number   // gallons to fill at this stop
+  estCost:  number   // dollars
+}
+
+export type FuelRiskLevel = 'LOW' | 'MODERATE' | 'HIGH'
+
+export interface FuelRisk {
+  level:   FuelRiskLevel
+  message: string
+}
+
+export interface FuelIntelInput {
+  origin:         string   // full "City, ST" string
+  destination:    string
+  loadedMiles:    number
+  deadheadMiles:  number
+  rigType:        RigType
+  mpg?:           number   // override; defaults to getMpgDefault
+  fuelPrice?:     number   // override; defaults to getDieselPrice(origin)
+  grossRate?:     number
+}
+
+export interface FuelIntelResult {
+  totalMiles:     number
+  gallonsNeeded:  number   // total trip gallons
+  reserveGal:     number   // safety reserve (10% of tank)
+  fuelCostTotal:  number   // gallons × price
+  costPerMile:    number   // fuel cost / total miles
+  mpgUsed:        number
+  priceUsed:      number
+  priceIsDefault: boolean
+  tankCapGal:     number   // nominal tank size by rig
+  stops:          FuelStop[]
+  risks:          FuelRisk[]
+  // quick summary strings
+  summaryLine:    string   // "~42 gal · $162 · 2 stops"
+}
+
+/** Returns true if fuelPrice was not in DIESEL_BY_STATE (i.e. national default was used) */
+export function isPriceDefault(location: string): boolean {
+  if (!location || !location.trim()) return true   // blank/missing origin → default
+  const upper = location.toUpperCase()
+  if (DIESEL_BY_STATE[upper]) return false
+  for (const state of Object.keys(DIESEL_BY_STATE)) {
+    if (new RegExp(`\\b${state}\\b`).test(upper)) return false
+  }
+  return true
+}
+
+// ── Love's corridor definitions ──────────────────────────────────────────────
+interface CorridorStop {
+  city:     string
+  state:    string
+  corridor: string
+}
+
+const LOVES_CORRIDORS: CorridorStop[] = [
+  // I-80
+  { city: 'Elko',        state: 'NV', corridor: 'I-80' },
+  { city: 'Wells',       state: 'NV', corridor: 'I-80' },
+  { city: 'Winnemucca',  state: 'NV', corridor: 'I-80' },
+  { city: 'Lovelock',    state: 'NV', corridor: 'I-80' },
+  { city: 'Fernley',     state: 'NV', corridor: 'I-80' },
+  // I-40
+  { city: 'Kingman',     state: 'AZ', corridor: 'I-40' },
+  { city: 'Winslow',     state: 'AZ', corridor: 'I-40' },
+  { city: 'Gallup',      state: 'NM', corridor: 'I-40' },
+  { city: 'Amarillo',    state: 'TX', corridor: 'I-40' },
+  { city: 'Oklahoma City', state: 'OK', corridor: 'I-40' },
+  // I-15
+  { city: 'Las Vegas',   state: 'NV', corridor: 'I-15' },
+  { city: 'St. George',  state: 'UT', corridor: 'I-15' },
+  { city: 'Beaver',      state: 'UT', corridor: 'I-15' },
+  { city: 'Nephi',       state: 'UT', corridor: 'I-15' },
+  { city: 'Salt Lake City', state: 'UT', corridor: 'I-15' },
+  // I-10
+  { city: 'Phoenix',     state: 'AZ', corridor: 'I-10' },
+  { city: 'Tucson',      state: 'AZ', corridor: 'I-10' },
+  { city: 'El Paso',     state: 'TX', corridor: 'I-10' },
+  { city: 'San Antonio', state: 'TX', corridor: 'I-10' },
+  { city: 'Houston',     state: 'TX', corridor: 'I-10' },
+  // I-70
+  { city: 'Grand Junction', state: 'CO', corridor: 'I-70' },
+  { city: 'Denver',      state: 'CO', corridor: 'I-70' },
+  { city: 'Salina',      state: 'KS', corridor: 'I-70' },
+  { city: 'Topeka',      state: 'KS', corridor: 'I-70' },
+  // I-5
+  { city: 'Red Bluff',   state: 'CA', corridor: 'I-5' },
+  { city: 'Stockton',    state: 'CA', corridor: 'I-5' },
+  { city: 'Buttonwillow', state: 'CA', corridor: 'I-5' },
+  { city: 'Los Angeles', state: 'CA', corridor: 'I-5' },
+]
+
+/**
+ * Match corridor stops whose state appears in either the origin or destination string.
+ * Returns up to 3 stops for known corridors only — returns empty when states are not
+ * in the database so the caller can surface a "plan manually" risk flag instead of
+ * suggesting geographically wrong stops.
+ */
+function pickFuelStops(
+  origin: string,
+  destination: string,
+  refuelEveryMi: number,
+  totalMiles: number,
+  pricePerGal: number,
+  mpg: number,
+): FuelStop[] {
+  const combined = (origin + ' ' + destination).toUpperCase()
+
+  // Only use stops whose state code appears in origin or destination — no fallback
+  // to unrelated corridors when we can't match the route.
+  const candidates = LOVES_CORRIDORS.filter(s =>
+    new RegExp(`\\b${s.state}\\b`).test(combined)
+  )
+
+  if (candidates.length === 0) return []
+
+  const stopCount  = Math.max(1, Math.min(3, Math.floor(totalMiles / refuelEveryMi)))
+  const safeMpg    = mpg > 0 ? mpg : 7.5
+  const galPerStop = refuelEveryMi / safeMpg
+
+  const picked: FuelStop[] = []
+  const usedCorridors = new Set<string>()
+
+  for (const s of candidates) {
+    if (picked.length >= stopCount) break
+    // Spread stops across corridors on multi-leg routes
+    if (usedCorridors.has(s.corridor) && picked.length < stopCount - 1) continue
+    const estGal  = Math.round(galPerStop)
+    const estCost = Math.round(estGal * pricePerGal * 100) / 100
+    picked.push({
+      name:     `Love's — ${s.city}, ${s.state}`,
+      location: `${s.city}, ${s.state}`,
+      network:  'Loves',
+      corridor: s.corridor,
+      estGal,
+      estCost,
+    })
+    usedCorridors.add(s.corridor)
+  }
+
+  return picked
+}
+
+/** Primary fuel intelligence function */
+export function fuelIntel(input: FuelIntelInput): FuelIntelResult {
+  const {
+    origin     = '',
+    destination = '',
+    rigType,
+  } = input
+
+  // Clamp inputs — never let bad data reach division
+  const loadedMiles  = Math.max(0, input.loadedMiles  || 0)
+  const deadheadMiles = Math.max(0, input.deadheadMiles || 0)
+  const totalMiles   = loadedMiles + deadheadMiles
+
+  // Safe rig type with explicit fallback
+  const safeRig: RigType = (rigType === 'hotshot' || rigType === 'semi-team' || rigType === 'semi-solo')
+    ? rigType : 'semi-solo'
+
+  const mpgUsed    = input.mpg && input.mpg > 0 ? input.mpg : getMpgDefault(safeRig)
+  const safeMpg    = Math.max(1, mpgUsed)  // never divide by zero
+
+  // Tank capacity by rig (conservative usable estimate)
+  const tankCapGal    = safeRig === 'hotshot' ? 40 : 120   // dual 60-gal saddle tanks for semi
+  // Refuel trigger distance
+  const refuelEveryMi = safeRig === 'hotshot' ? 150 : 200
+
+  // Price: prefer explicit input → regional lookup → national default
+  const hasExplicitPrice = input.fuelPrice != null && input.fuelPrice > 0
+  const priceIsDefault   = !hasExplicitPrice && isPriceDefault(origin)
+  const priceUsed        = hasExplicitPrice
+    ? input.fuelPrice!
+    : getDieselPrice(origin)   // getDieselPrice returns 3.85 when origin is blank
+
+  // Zero-miles early exit — return skeleton result with informative summary
+  if (totalMiles === 0) {
+    return {
+      totalMiles: 0, gallonsNeeded: 0, reserveGal: Math.round(tankCapGal * 0.10),
+      fuelCostTotal: 0, costPerMile: 0, mpgUsed: safeMpg, priceUsed, priceIsDefault,
+      tankCapGal, stops: [], risks: [], summaryLine: 'Enter miles to calculate',
+    }
+  }
+
+  // Core calcs
+  const gallonsNeeded = totalMiles / safeMpg
+  const reserveGal    = tankCapGal * 0.10
+  const fuelCostTotal = gallonsNeeded * priceUsed
+  const costPerMile   = fuelCostTotal / totalMiles
+
+  // Fuel stops — only when total miles exceed one refuel interval
+  const stops = totalMiles >= refuelEveryMi
+    ? pickFuelStops(origin, destination, refuelEveryMi, totalMiles, priceUsed, safeMpg)
+    : []
+
+  // ── Risk assessment ──────────────────────────────────────────────────────────
+  const risks: FuelRisk[] = []
+
+  // Missing origin
+  if (!origin.trim()) {
+    risks.push({ level: 'LOW', message: 'Origin not entered — fuel price defaulting to national avg $3.85/gal' })
+  } else if (priceIsDefault) {
+    risks.push({ level: 'LOW', message: `Origin state not in price database — using national avg $3.85/gal (verify at pump)` })
+  }
+
+  // High fuel-to-gross ratio (only when rate is provided)
+  if (input.grossRate && input.grossRate > 0) {
+    const fuelRatio = fuelCostTotal / input.grossRate
+    if (fuelRatio > 0.40) {
+      risks.push({ level: 'HIGH', message: `Fuel is ${Math.round(fuelRatio * 100)}% of gross rate — margin is critically tight; counter or reject` })
+    } else if (fuelRatio > 0.25) {
+      risks.push({ level: 'MODERATE', message: `Fuel is ${Math.round(fuelRatio * 100)}% of gross rate — watch pump price; any spike eats margin` })
+    }
+  }
+
+  // Long haul planning note
+  if (totalMiles > 500) {
+    risks.push({ level: 'LOW', message: `Long haul (${totalMiles} mi) — keep tank above 10% reserve (${Math.round(reserveGal)} gal minimum)` })
+  }
+
+  // High deadhead fuel cost
+  if (deadheadMiles > 0 && deadheadMiles / (loadedMiles || 1) > 0.15) {
+    const dhFuelCost = Math.round((deadheadMiles / safeMpg) * priceUsed)
+    risks.push({ level: 'MODERATE', message: `High deadhead (${deadheadMiles} mi) — ~$${dhFuelCost} in uncompensated fuel before first loaded mile` })
+  }
+
+  // No corridor stops found for the route
+  if (totalMiles > 200 && stops.length === 0) {
+    risks.push({ level: 'LOW', message: "Route states not in Love's corridor database — plan fuel stops manually before departure" })
+  }
+
+  // ── Summary line ─────────────────────────────────────────────────────────────
+  const stopLabel   = stops.length === 1 ? '1 corridor stop' : `${stops.length} corridor stops`
+  const summaryLine = `~${Math.ceil(gallonsNeeded)} gal · $${Math.round(fuelCostTotal)} est.${stops.length > 0 ? ` · ${stopLabel}` : ''}`
+
+  return {
+    totalMiles,
+    gallonsNeeded: Math.ceil(gallonsNeeded * 10) / 10,
+    reserveGal:    Math.round(reserveGal),
+    fuelCostTotal: Math.round(fuelCostTotal * 100) / 100,
+    costPerMile:   Math.round(costPerMile * 1000) / 1000,
+    mpgUsed:       safeMpg,
+    priceUsed,
+    priceIsDefault,
+    tankCapGal,
+    stops,
+    risks,
+    summaryLine,
+  }
+}
