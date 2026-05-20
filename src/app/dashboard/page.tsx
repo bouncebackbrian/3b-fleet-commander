@@ -190,7 +190,12 @@ export default function Dashboard() {
       .limit(1)
       .single()
       .then(({ data, error }) => {
-        if (!error && data) setMission(parseMission(data))
+        if (!error && data) { setMission(parseMission(data)); return }
+        // No rows in Supabase yet (or query error) — fall back to localStorage
+        try {
+          const raw = localStorage.getItem('3b-latest-load')
+          if (raw) setMission(JSON.parse(raw))
+        } catch { /* ignore */ }
       })
   }, [])
 
@@ -334,7 +339,6 @@ export default function Dashboard() {
   const statusColor = hosDisplay?.status ? (statusMap[hosDisplay.status] ?? 'var(--text)') : 'var(--muted)'
 
   // ── Mission score (computed from latest load) ────────────────────────────
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const missionScore = useMemo(() => {
     if (!mission || (!mission.dispatchMiles && !mission.grossRate)) return null
     return scoreLoad({

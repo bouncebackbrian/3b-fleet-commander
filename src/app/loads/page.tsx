@@ -66,6 +66,12 @@ const BLANK: F = {
 }
 
 // ── META encode / decode in notes field ──────────────────────────────────────
+// TECH DEBT: Storing extra operational fields as a [META:{json}] suffix inside the
+// `notes` text column is a zero-migration MVP workaround. These fields (commodity,
+// weight, gross_rate, pickup, delivery, rig_type, reload_known, reload_area_strength,
+// has_overnight_parking, etc.) should eventually be promoted to real Supabase columns
+// or a dedicated `load_meta` table to enable proper querying, indexing, and reporting.
+// Tracked: "Migrate [META:] storage to proper schema columns"
 function encodeMeta(f: F): string {
   const meta = {
     commodity: f.commodity, weight: f.weight, loadType: f.loadType,
@@ -226,6 +232,7 @@ export default function Loads() {
   const [brief,        setBrief]        = useState<string | null>(null)
   const [briefCopied,  setBriefCopied]  = useState(false)
   const [briefErr,     setBriefErr]     = useState<string | null>(null)
+  const [saveErr,      setSaveErr]      = useState<string | null>(null)
 
   // Load data
   useEffect(() => {
@@ -296,7 +303,7 @@ export default function Loads() {
   function openEdit(l: ExtendedLoad) {
     setForm(toForm(l)); setEditId(l.id); setBrief(null); setBriefErr(null); setPanelTab('load'); setPanelOpen(true)
   }
-  function closePanel() { setPanelOpen(false); setEditId(null); setForm(BLANK) }
+  function closePanel() { setPanelOpen(false); setEditId(null); setForm(BLANK); setSaveErr(null) }
 
   // ── Save ──────────────────────────────────────────────────────────────────
   async function handleSave(e: React.FormEvent) {
@@ -304,6 +311,7 @@ export default function Loads() {
 
     // Write latest load to localStorage so dashboard Active Mission can read it
     const latestSnap = {
+      id: editId || Math.random().toString(36).slice(2),
       loadNumber: form.loadNumber, broker: form.broker,
       origin: form.origin, destination: form.destination,
       date: form.date, dispatchMiles: parseFloat(form.dispatchMiles) || 0,
@@ -328,10 +336,12 @@ export default function Loads() {
     }
     if (editId) {
       const { data, error } = await supabase.from('loads').update(toDB(form)).eq('id', editId).select().single()
-      if (!error && data) setLoads(ls => ls.map(l => l.id === editId ? fromDB(data) : l))
+      if (error) { setSaveErr(error.message || 'Update failed — try again.'); setSaving(false); return }
+      if (data) setLoads(ls => ls.map(l => l.id === editId ? fromDB(data) : l))
     } else {
       const { data, error } = await supabase.from('loads').insert(toDB(form)).select().single()
-      if (!error && data) setLoads(ls => [fromDB(data), ...ls])
+      if (error) { setSaveErr(error.message || 'Save failed — try again.'); setSaving(false); return }
+      if (data) setLoads(ls => [fromDB(data), ...ls])
     }
     setSaving(false); closePanel()
   }
@@ -421,6 +431,20 @@ export default function Loads() {
     setBriefLoading(false)
   }
 
+  // ── Copy brief to clipboard ───────────────────────────────────────────────
+  async function copyBrief() {
+    if (!brief) return
+    try {
+      await navigator.clipboard.writeText(brief)
+      setBriefCopied(true)
+      setTimeout(() => setBriefCopied(false), 2000)
+    } catch {
+      // Clipboard API unavailable (non-HTTPS dev, browser restriction)
+      // Show failure state so user knows the copy didn't work
+      setBriefCopied(false)
+    }
+  }
+
   // ── KPI metrics ───────────────────────────────────────────────────────────
   const totalLoads  = loads.length
   const totalMi     = loads.reduce((a, l) => a + (l.dispatchMiles || 0), 0)
@@ -432,11 +456,12 @@ export default function Loads() {
   const totalFuel   = loads.reduce((a, l) => a + (l.fuelCost || 0), 0)
 
   // ── Field helper ──────────────────────────────────────────────────────────
-  const fi = (k: keyof F, label: string, type = 'text', ph?: string) => (
+  const fi = (k: keyof F, label: string, type = 'text', ph?: string, req?: boolean) => (
     <div key={k}>
-      <label style={lbl}>{label}</label>
+      <label style={lbl}>{label}{req && <span style={{ color:'var(--error)', marginLeft:2 }}>*</span>}</label>
       <input value={String(form[k])} onChange={e => set(k, e.target.value)}
-        type={type} placeholder={ph} style={inp} />
+        type={type} placeholder={ph} required={req}
+        min={type === 'number' ? '0' : undefined} style={inp} />
     </div>
   )
 
@@ -591,11 +616,11 @@ export default function Loads() {
 
                   {/* Core Load Info */}
                   <div style={secHdr}>📦 Load Identity</div>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(180px,1fr))', gap:'1rem' }}>
                     {fi('loadNumber','Load Ref #','text','e.g. TQL-229184')}
                     {fi('broker','Broker','text','e.g. TQL, Coyote')}
-                    {fi('origin','Origin','text','City, ST or full address')}
-                    {fi('destination','Destination','text','City, ST or full address')}
+                    {fi('origin','Origin','text','City, ST or full address', true)}
+                    {fi('destination','Destination','text','City, ST or full address', true)}
                     <div>
                       <label style={lbl}>Pickup date/time</label>
                       <input type="datetime-local" value={form.pickup} onChange={e => set('pickup', e.target.value)} style={inp} />
@@ -608,7 +633,7 @@ export default function Loads() {
 
                   {/* Cargo */}
                   <div style={secHdr}>🏗 Cargo</div>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(180px,1fr))', gap:'1rem' }}>
                     {fi('commodity','Commodity','text','e.g. Dry goods, Auto parts')}
                     {fi('weight','Weight (lbs)','number')}
                     <div>
@@ -627,7 +652,7 @@ export default function Loads() {
 
                   {/* Rate & Rig */}
                   <div style={secHdr}>💰 Rate & Rig</div>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(180px,1fr))', gap:'1rem' }}>
                     {fi('grossRate','Gross Rate ($)','number')}
                     {fi('dispatchMiles','Loaded Miles','number')}
                     {fi('deadheadMiles','Deadhead Miles','number')}
@@ -656,7 +681,7 @@ export default function Loads() {
 
                   {/* Scoring factors */}
                   <div style={secHdr}>🎯 Scoring Factors</div>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(180px,1fr))', gap:'1rem' }}>
                     {fi('waitHours','Wait Hours at Pickup','number')}
                     <div>
                       <label style={lbl}>Reload Area Strength</label>
@@ -684,7 +709,7 @@ export default function Loads() {
 
                   {/* Optional */}
                   <div style={secHdr}>📋 Settlement Fields</div>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(180px,1fr))', gap:'1rem' }}>
                     {fi('cpmRate','CPM Rate','number')}
                     {fi('fuelCost','Fuel Cost $','number')}
                     {fi('detentionRate','Detention Rate $/hr','number')}
@@ -705,7 +730,19 @@ export default function Loads() {
                   </div>
 
                   {/* Save bar */}
-                  <div style={{ display:'flex', gap:10, justifyContent:'flex-end', paddingTop:4, borderTop:'1px solid var(--border)' }}>
+                  {saveErr && (
+                    <div style={{ padding:'.6rem .9rem', borderRadius:9, background:'rgba(232,64,0,.08)', border:'1px solid rgba(232,64,0,.2)', color:'var(--error)', fontSize:'.72rem', fontWeight:600 }}>
+                      ❌ {saveErr}
+                    </div>
+                  )}
+                  <div style={{ display:'flex', gap:10, justifyContent:'flex-end', paddingTop:4, borderTop:'1px solid var(--border)', flexWrap:'wrap' }}>
+                    {editId && (
+                      <button type="button"
+                        onClick={() => { closePanel(); setDeleteTarget(loads.find(l => l.id === editId) ?? null) }}
+                        style={{ padding:'.75rem 1rem', borderRadius:10, background:'rgba(232,64,0,.07)', border:'1px solid rgba(232,64,0,.2)', fontWeight:700, fontSize:'var(--text-xs)', color:'var(--error)', marginRight:'auto' }}>
+                        🗑 Delete
+                      </button>
+                    )}
                     <button type="button" onClick={() => setPanelTab('score')}
                       style={{ padding:'.75rem 1rem', borderRadius:10, background:'var(--surface-off)', border:'1px solid var(--border)', fontWeight:700, fontSize:'var(--text-xs)' }}>
                       📊 Score
@@ -754,7 +791,7 @@ export default function Loads() {
                         </div>
 
                         {/* Financial block */}
-                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                        <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(180px,1fr))', gap:8 }}>
                           {([
                             ['Gross Rate',    fmtM(n('grossRate')),           'var(--text)'],
                             ['Fuel Cost',     fmtM(scoreResult.fuelCost),     'var(--warn)'],
@@ -846,7 +883,7 @@ export default function Loads() {
                   {briefErr && (
                     <div style={{ background:'rgba(232,64,0,.07)', border:'1px solid rgba(232,64,0,.2)', borderRadius:12, padding:'1rem', color:'var(--error)', fontSize:'var(--text-xs)' }}>
                       ❌ {briefErr}
-                      <button onClick={() => { setBriefErr(null); setBrief(null) }}
+                      <button onClick={() => { setBriefErr(null); setBrief(null); handleBrief() }}
                         style={{ display:'block', marginTop:8, color:'var(--muted)', fontSize:'.7rem', textDecoration:'underline', background:'none', border:'none', cursor:'pointer' }}>
                         Try again
                       </button>
@@ -856,7 +893,7 @@ export default function Loads() {
                     <>
                       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                         <div style={{ fontSize:'.7rem', color:'var(--muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:'.07em' }}>Dispatch Handoff Block</div>
-                        <button onClick={() => { navigator.clipboard.writeText(brief); setBriefCopied(true); setTimeout(() => setBriefCopied(false), 2000) }}
+                        <button onClick={copyBrief}
                           style={{ padding:'.4rem .9rem', borderRadius:8, background: briefCopied ? 'rgba(40,192,72,.1)' : 'var(--surface-2)', border:`1px solid ${briefCopied ? 'rgba(40,192,72,.3)' : 'var(--border)'}`, color: briefCopied ? 'var(--success)' : 'var(--text)', fontWeight:700, fontSize:'.7rem' }}>
                           {briefCopied ? '✅ Copied!' : '📋 Copy All'}
                         </button>
