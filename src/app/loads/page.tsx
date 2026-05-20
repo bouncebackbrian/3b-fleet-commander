@@ -201,6 +201,20 @@ const marginStyle = (m: MarginFlag | null): React.CSSProperties => ({
   border: `1px solid ${m === 'STRONG' ? 'rgba(40,192,72,.25)' : m === 'OK' ? 'rgba(0,232,176,.2)' : m === 'MARGINAL' ? 'rgba(245,194,0,.25)' : 'rgba(232,64,0,.25)'}`,
 })
 
+// ── Driver Packet ─────────────────────────────────────────────────────────────
+interface DriverPacket {
+  loadNumber: string; broker: string; date: string
+  origin: string; destination: string
+  pickup: string; delivery: string
+  commodity: string; weight: string; loadType: string
+  grossRate: number; dispatchMiles: number; deadheadMiles: number
+  rigType: RigType; driverMode: string
+  fuelEst: number; netEst: number; netRpm: number
+  score: number | null; verdict: ScoreVerdict | null; marginFlag: MarginFlag | null
+  driverNotes: string; brief: string | null
+  generatedAt: string
+}
+
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const inp: React.CSSProperties  = { width:'100%', padding:'.75rem 1rem', borderRadius:10, border:'1px solid var(--border)', background:'var(--surface-2)', outline:'none', fontSize:'var(--text-sm)' }
 const lbl: React.CSSProperties  = { display:'block', fontSize:'.7rem', color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.07em', fontWeight:700, marginBottom:4 }
@@ -233,6 +247,7 @@ export default function Loads() {
   const [briefCopied,  setBriefCopied]  = useState(false)
   const [briefErr,     setBriefErr]     = useState<string | null>(null)
   const [saveErr,      setSaveErr]      = useState<string | null>(null)
+  const [packet,       setPacket]       = useState<DriverPacket | null>(null)
 
   // Load data
   useEffect(() => {
@@ -298,12 +313,12 @@ export default function Loads() {
   function openAdd() {
     const cfg = loadSettings()
     setForm({ ...BLANK, dispatcher: cfg.dispatcher || BLANK.dispatcher, cpmRate: cfg.defaultCpm.toString() })
-    setEditId(null); setBrief(null); setBriefErr(null); setPanelTab('load'); setPanelOpen(true)
+    setEditId(null); setBrief(null); setBriefErr(null); setPacket(null); setPanelTab('load'); setPanelOpen(true)
   }
   function openEdit(l: ExtendedLoad) {
-    setForm(toForm(l)); setEditId(l.id); setBrief(null); setBriefErr(null); setPanelTab('load'); setPanelOpen(true)
+    setForm(toForm(l)); setEditId(l.id); setBrief(null); setBriefErr(null); setPacket(null); setPanelTab('load'); setPanelOpen(true)
   }
-  function closePanel() { setPanelOpen(false); setEditId(null); setForm(BLANK); setSaveErr(null) }
+  function closePanel() { setPanelOpen(false); setEditId(null); setForm(BLANK); setSaveErr(null); setPacket(null) }
 
   // ── Save ──────────────────────────────────────────────────────────────────
   async function handleSave(e: React.FormEvent) {
@@ -443,6 +458,214 @@ export default function Loads() {
       // Show failure state so user knows the copy didn't work
       setBriefCopied(false)
     }
+  }
+
+  // ── Driver Packet ─────────────────────────────────────────────────────────
+  function buildPacket(): DriverPacket {
+    const s = scoreResult
+    return {
+      loadNumber:    form.loadNumber    || '—',
+      broker:        form.broker        || '—',
+      date:          form.date,
+      origin:        form.origin        || '—',
+      destination:   form.destination   || '—',
+      pickup:        form.pickup,
+      delivery:      form.delivery,
+      commodity:     form.commodity     || '—',
+      weight:        form.weight,
+      loadType:      form.loadType,
+      grossRate:     parseFloat(form.grossRate)     || 0,
+      dispatchMiles: parseFloat(form.dispatchMiles) || 0,
+      deadheadMiles: parseFloat(form.deadheadMiles) || 0,
+      rigType:       form.rigType,
+      driverMode:    form.driverMode,
+      fuelEst:       s?.fuelCost   ?? 0,
+      netEst:        s?.netMargin  ?? 0,
+      netRpm:        s?.netRpm     ?? 0,
+      score:         s?.score      ?? null,
+      verdict:       s?.verdict    ?? null,
+      marginFlag:    s?.marginFlag ?? null,
+      driverNotes:   form.notes,
+      brief,
+      generatedAt:   new Date().toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' }),
+    }
+  }
+
+  function generatePacketHTML(p: DriverPacket): string {
+    const h   = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    const vc  = p.verdict    === 'TAKE'    ? '#16a34a' : p.verdict    === 'AVOID'    ? '#dc2626' : '#d97706'
+    const mc  = p.marginFlag === 'STRONG'  ? '#16a34a' : p.marginFlag === 'OK'       ? '#0891b2' : p.marginFlag === 'MARGINAL' ? '#d97706' : '#dc2626'
+    const cur = (n: number) => n.toLocaleString('en-US', { style:'currency', currency:'USD', maximumFractionDigits:0 })
+    const rig = p.rigType === 'hotshot' ? 'Hotshot Dually' : p.rigType === 'semi-team' ? 'Class 8 Semi (Team)' : 'Class 8 Semi (Solo)'
+    const pFmt = (dt: string) => { try { return dt ? new Date(dt).toLocaleString('en-US',{dateStyle:'short',timeStyle:'short'}) : '—' } catch { return '—' } }
+    const vBadge = p.verdict    === 'TAKE' ? 'badge-take' : p.verdict    === 'AVOID' ? 'badge-avoid' : 'badge-caution'
+    const mBadge = p.marginFlag === 'STRONG' ? 'badge-strong' : p.marginFlag === 'OK' ? 'badge-ok' : p.marginFlag === 'MARGINAL' ? 'badge-marginal' : 'badge-reject'
+    const wl = '<div class="wl"></div>'
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Driver Packet — ${h(p.loadNumber)}</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;font-size:10.5pt;color:#0f172a;background:#fff}
+.page{max-width:760px;margin:0 auto;padding:1.5rem 2rem}
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0f172a;padding-bottom:.7rem;margin-bottom:.9rem}
+.hdr-tag{font-size:8pt;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#64748b}
+.hdr-num{font-size:18pt;font-weight:900;line-height:1.1}
+.hdr-brand{font-size:8pt;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#64748b;text-align:right}
+.hdr-dt{font-size:8.5pt;color:#475569;margin-top:2px;text-align:right}
+.banner{background:#0f172a;color:#fff;padding:.6rem 1rem;border-radius:7px;margin-bottom:.9rem;display:flex;align-items:center;gap:.85rem;flex-wrap:wrap}
+.ban-city{font-weight:900;font-size:13pt}
+.ban-arr{color:#00e8b0;font-weight:900;font-size:14pt}
+.ban-broker{font-size:8pt;color:#94a3b8;margin-left:auto}
+.sec{margin-bottom:.9rem}
+.sec-title{font-size:7.5pt;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#64748b;border-bottom:1px solid #e2e8f0;padding-bottom:3px;margin-bottom:.45rem}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:.3rem .7rem}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.3rem .7rem}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:.3rem .45rem}
+.f{display:flex;flex-direction:column}
+.fl{font-size:7pt;text-transform:uppercase;letter-spacing:.07em;font-weight:700;color:#94a3b8}
+.fv{font-weight:700;font-size:10pt;color:#0f172a;line-height:1.3}
+.fin{border:1.5px solid #e2e8f0;border-radius:7px;padding:.5rem .65rem;text-align:center}
+.fin-val{font-size:13pt;font-weight:900;font-variant-numeric:tabular-nums;line-height:1.2}
+.score-row{display:flex;align-items:center;gap:1rem;padding:.6rem .9rem;border-radius:7px;border:1.5px solid #e2e8f0}
+.score-n{font-size:26pt;font-weight:900;line-height:1;font-variant-numeric:tabular-nums}
+.score-d{font-size:11pt;color:#94a3b8;font-weight:600}
+.badges{display:flex;flex-direction:column;gap:5px}
+.badge{display:inline-flex;padding:.2rem .55rem;border-radius:5px;font-weight:900;font-size:8pt;letter-spacing:.07em}
+.badge-take{background:#dcfce7;color:#15803d;border:1px solid #86efac}
+.badge-caution{background:#fef9c3;color:#a16207;border:1px solid #fde047}
+.badge-avoid{background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5}
+.badge-strong{background:#dcfce7;color:#15803d;border:1px solid #86efac}
+.badge-ok{background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc}
+.badge-marginal{background:#fef9c3;color:#a16207;border:1px solid #fde047}
+.badge-reject{background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5}
+.brief-pre{font-family:'Courier New',Courier,monospace;font-size:8pt;line-height:1.75;white-space:pre-wrap;word-break:break-word;padding:.7rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px}
+.notes-pre{font-size:9.5pt;color:#475569;line-height:1.8;white-space:pre-wrap;padding:.5rem .7rem;border:1px dashed #cbd5e1;border-radius:6px;min-height:48px}
+.wl{border-bottom:1px solid #d1d5db;height:24px;margin-bottom:2px}
+.wlines{padding:.4rem .25rem}
+.footer{border-top:1.5px solid #0f172a;padding-top:.5rem;margin-top:.9rem;display:flex;justify-content:space-between;align-items:center}
+.ft-brand{font-size:8pt;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#64748b}
+.ft-ts{font-size:8pt;color:#94a3b8}
+@media print{
+  body{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  .page{padding:.5rem .75rem;max-width:100%}
+  .banner{background:#0f172a!important;-webkit-print-color-adjust:exact!important}
+  @page{margin:.45in;size:letter portrait}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="hdr">
+  <div>
+    <div class="hdr-tag">Driver Packet</div>
+    <div class="hdr-num">Load #${h(p.loadNumber)}</div>
+  </div>
+  <div>
+    <div class="hdr-brand">3B Fleet Commander</div>
+    <div class="hdr-dt">${h(p.date)}</div>
+    <div class="hdr-dt">Generated ${h(p.generatedAt)}</div>
+  </div>
+</div>
+
+<div class="banner">
+  <span class="ban-city">${h(p.origin.split(',')[0])}</span>
+  <span class="ban-arr">→</span>
+  <span class="ban-city">${h(p.destination.split(',')[0])}</span>
+  ${p.broker !== '—' ? `<span class="ban-broker">${h(p.broker)}</span>` : ''}
+</div>
+
+<div class="sec">
+  <div class="sec-title">Load Identity</div>
+  <div class="g3">
+    <div class="f"><span class="fl">Origin</span><span class="fv">${h(p.origin)}</span></div>
+    <div class="f"><span class="fl">Pickup Appt</span><span class="fv">${h(pFmt(p.pickup))}</span></div>
+    <div class="f"><span class="fl">Broker</span><span class="fv">${h(p.broker)}</span></div>
+    <div class="f"><span class="fl">Destination</span><span class="fv">${h(p.destination)}</span></div>
+    <div class="f"><span class="fl">Delivery Appt</span><span class="fv">${h(pFmt(p.delivery))}</span></div>
+    <div class="f"><span class="fl">Rig / Driver</span><span class="fv">${h(rig)} · ${h(p.driverMode)}</span></div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sec-title">Cargo</div>
+  <div class="g3">
+    <div class="f"><span class="fl">Commodity</span><span class="fv">${h(p.commodity)}</span></div>
+    <div class="f"><span class="fl">Weight</span><span class="fv">${p.weight ? h(p.weight) + ' lbs' : '—'}</span></div>
+    <div class="f"><span class="fl">Load Type</span><span class="fv">${h(p.loadType)}</span></div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sec-title">Financials</div>
+  <div class="g4" style="margin-bottom:.45rem">
+    <div class="fin"><div class="fl" style="margin-bottom:2px">Gross Rate</div><div class="fin-val">${h(cur(p.grossRate))}</div></div>
+    <div class="fin"><div class="fl" style="margin-bottom:2px">Net RPM</div><div class="fin-val" style="color:${mc}">$${p.netRpm.toFixed(2)}</div></div>
+    <div class="fin"><div class="fl" style="margin-bottom:2px">Fuel Est</div><div class="fin-val" style="color:#d97706">${h(cur(p.fuelEst))}</div></div>
+    <div class="fin"><div class="fl" style="margin-bottom:2px">Net Est</div><div class="fin-val" style="color:${p.netEst >= 0 ? '#16a34a' : '#dc2626'}">${h(cur(p.netEst))}</div></div>
+  </div>
+  <div style="display:flex;gap:1.5rem">
+    <div class="f"><span class="fl">Loaded Miles</span><span class="fv">${fmt(p.dispatchMiles)} mi</span></div>
+    <div class="f"><span class="fl">Deadhead</span><span class="fv">${fmt(p.deadheadMiles)} mi</span></div>
+    <div class="f"><span class="fl">Total Miles</span><span class="fv">${fmt(p.dispatchMiles + p.deadheadMiles)} mi</span></div>
+  </div>
+</div>
+
+${p.score !== null ? `<div class="sec">
+  <div class="sec-title">Score Analysis</div>
+  <div class="score-row">
+    <div>
+      <div class="fl" style="margin-bottom:3px">Load Score</div>
+      <span class="score-n" style="color:${vc}">${p.score}</span><span class="score-d">/12</span>
+    </div>
+    <div class="badges">
+      ${p.verdict    ? `<span class="badge ${vBadge}">${p.verdict}</span>`    : ''}
+      ${p.marginFlag ? `<span class="badge ${mBadge}">${p.marginFlag}</span>` : ''}
+    </div>
+  </div>
+</div>` : ''}
+
+${p.brief ? `<div class="sec">
+  <div class="sec-title">AI Dispatch Brief — 3B Fleet Commander</div>
+  <div class="brief-pre">${h(p.brief)}</div>
+</div>` : ''}
+
+<div class="sec">
+  <div class="sec-title">Driver Notes</div>
+  ${p.driverNotes
+    ? `<div class="notes-pre">${h(p.driverNotes)}</div>`
+    : `<div class="wlines">${wl.repeat(3)}</div>`}
+</div>
+
+<div class="sec">
+  <div class="sec-title">Dispatch Notes</div>
+  <div class="wlines">${wl.repeat(4)}</div>
+</div>
+
+<div class="footer">
+  <div class="ft-brand">3B Fleet Commander · Driver Packet</div>
+  <div class="ft-ts">Generated ${h(p.generatedAt)}</div>
+</div>
+
+</div>
+</body>
+</html>`
+  }
+
+  function printPacket() {
+    if (!packet) return
+    const html = generatePacketHTML(packet)
+    const win  = window.open('', '_blank')
+    if (!win) { alert('Allow pop-ups to open the Driver Packet, then try again.'); return }
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+    // Brief delay so styles finish parsing before the print dialog opens
+    setTimeout(() => win.print(), 450)
   }
 
   // ── KPI metrics ───────────────────────────────────────────────────────────
@@ -907,6 +1130,80 @@ export default function Loads() {
                       </button>
                     </>
                   )}
+
+                  {/* ── Driver Packet ───────────────────────────────────────── */}
+                  <div style={{ borderTop:'1px solid var(--border)', paddingTop:'1rem', display:'grid', gap:'.85rem' }}>
+
+                    {/* Section header + Build button */}
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:8 }}>
+                      <div>
+                        <div style={{ fontWeight:800, fontSize:'var(--text-sm)' }}>📄 Driver Packet</div>
+                        <div style={{ fontSize:'.7rem', color:'var(--muted)', marginTop:2 }}>
+                          {brief
+                            ? 'Includes load data · score · AI brief · driver notes'
+                            : 'Load data + score — generate a brief first for full packet'}
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => setPacket(buildPacket())}
+                        style={{ padding:'.6rem 1rem', borderRadius:10, background:'rgba(0,232,176,.1)', border:'1px solid rgba(0,232,176,.25)', color:'var(--primary)', fontWeight:800, fontSize:'var(--text-xs)', whiteSpace:'nowrap' }}>
+                        {packet ? '🔄 Rebuild' : '📋 Build Packet'}
+                      </button>
+                    </div>
+
+                    {/* Packet preview + print button — shown after build */}
+                    {packet && (
+                      <>
+                        {/* Summary card */}
+                        <div style={{ background:'var(--surface-2)', border:'1px solid var(--border)', borderRadius:12, padding:'.9rem 1rem', display:'grid', gap:'.55rem' }}>
+                          {/* Route */}
+                          <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                            <span style={{ fontWeight:900, fontSize:'.9rem' }}>{packet.origin.split(',')[0]}</span>
+                            <span style={{ color:'var(--primary)', fontWeight:900, fontSize:'.95rem' }}>→</span>
+                            <span style={{ fontWeight:900, fontSize:'.9rem' }}>{packet.destination.split(',')[0]}</span>
+                            {packet.broker !== '—' && (
+                              <span style={{ fontSize:'.63rem', color:'var(--muted)', padding:'.1rem .4rem', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:4 }}>
+                                {packet.broker}
+                              </span>
+                            )}
+                          </div>
+                          {/* Financials row */}
+                          <div style={{ display:'flex', gap:'.85rem', flexWrap:'wrap' }}>
+                            {([
+                              ['Gross',   packet.grossRate > 0 ? fmtM(packet.grossRate) : '—'],
+                              ['Net RPM', packet.netRpm    > 0 ? fmtR(packet.netRpm)    : '—'],
+                              ['Fuel',    packet.fuelEst   > 0 ? fmtM(packet.fuelEst)   : '—'],
+                              ['Net Est', fmtM(packet.netEst)],
+                            ] as [string,string][]).map(([lbl,val]) => (
+                              <div key={lbl} style={{ display:'flex', gap:4, alignItems:'baseline' }}>
+                                <span style={{ fontSize:'.6rem', color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.07em', fontWeight:700 }}>{lbl}</span>
+                                <span style={{ fontSize:'.76rem', fontWeight:800, fontVariantNumeric:'tabular-nums' }}>{val}</span>
+                              </div>
+                            ))}
+                          </div>
+                          {/* Score + brief status */}
+                          <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
+                            {packet.verdict    && <span style={verdictStyle(packet.verdict)}>{packet.verdict}</span>}
+                            {packet.marginFlag && <span style={marginStyle(packet.marginFlag)}>{packet.marginFlag}</span>}
+                            <span style={{ fontSize:'.63rem', fontWeight:600, color: packet.brief ? 'var(--success)' : 'var(--muted)' }}>
+                              {packet.brief ? '✓ AI Brief included' : '⚠ No brief — packet uses load data only'}
+                            </span>
+                          </div>
+                          <div style={{ fontSize:'.62rem', color:'var(--faint)' }}>Built {packet.generatedAt}</div>
+                        </div>
+
+                        {/* Print / Save as PDF */}
+                        <button type="button" onClick={printPacket}
+                          style={{ width:'100%', padding:'.9rem', borderRadius:12, background:'var(--primary)', color:'#061210', fontWeight:800, fontSize:'var(--text-sm)', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+                          🖨️ Print / Save as PDF
+                        </button>
+                        <div style={{ fontSize:'.63rem', color:'var(--faint)', textAlign:'center', lineHeight:1.5 }}>
+                          Opens print dialog — choose <strong style={{ color:'var(--muted)' }}>Save as PDF</strong> to download.
+                          On mobile, use the share sheet → Save to Files.
+                        </div>
+                      </>
+                    )}
+                  </div>
+
                 </div>
               )}
             </div>
