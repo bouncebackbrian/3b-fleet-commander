@@ -1,7 +1,10 @@
 'use client'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import TopBar from '@/components/layout/TopBar'
+import { supabase } from '@/lib/supabase'
+import { scoreLoad, getDieselPrice, getMpgDefault } from '@/lib/scoreLoad'
+import type { RigType, MarginFlag, ScoreVerdict } from '@/lib/scoreLoad'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type EldMode = 'screenshot' | 'samsara'
@@ -33,6 +36,45 @@ type Expense = {
 }
 type WeatherData = {
   temp: number; windSpeed: number; code: number; precip: number; lat: number; lng: number
+}
+
+// Active mission — latest load with operational meta
+type LoadMission = {
+  id: string; loadNumber: string; broker?: string
+  origin: string; destination: string; date: string
+  dispatchMiles: number; deadheadMiles: number
+  grossRate: number; fuelPrice: number; rigType: RigType
+  waitHours: number; reloadKnown: boolean; reloadAreaStrength: 1|2|3
+  hasOvernightParking: boolean; loadType: string
+  pickup?: string; delivery?: string; commodity?: string
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseMission(row: any): LoadMission {
+  const notes = row.notes ?? ''
+  let meta: Record<string, unknown> = {}
+  try { const m = notes.match(/\[META:(.*?)\]$/); if (m) meta = JSON.parse(m[1]) } catch { /* ignore */ }
+  return {
+    id:                  row.id,
+    loadNumber:          row.load_number   ?? '',
+    broker:              row.broker        ?? undefined,
+    origin:              row.origin        ?? '',
+    destination:         row.destination   ?? '',
+    date:                row.date          ?? '',
+    dispatchMiles:       Number(row.dispatch_miles)  || 0,
+    deadheadMiles:       Number(row.deadhead_miles)  || 0,
+    grossRate:           Number(meta.grossRate)       || 0,
+    fuelPrice:           parseFloat(String(meta.fuelPrice)) || getDieselPrice(row.origin ?? ''),
+    rigType:             (meta.rigType as RigType)    || 'semi-solo',
+    waitHours:           Number(row.wait_hours)       || 0,
+    reloadKnown:         Boolean(meta.reloadKnown),
+    reloadAreaStrength:  (meta.reloadAreaStrength as 1|2|3) || 2,
+    hasOvernightParking: Boolean(meta.hasOvernightParking),
+    loadType:            String(meta.loadType || 'FTL'),
+    pickup:              meta.pickup  as string | undefined,
+    delivery:            meta.delivery as string | undefined,
+    commodity:           meta.commodity as string | undefined,
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -108,6 +150,9 @@ export default function Dashboard() {
   const [weather,        setWeather]        = useState<WeatherData | null>(null)
   const [weatherLoading, setWeatherLoading] = useState(false)
 
+  // Active mission (latest load from Supabase or localStorage)
+  const [mission,        setMission]        = useState<LoadMission | null>(null)
+
   // ── Live clock ──
   useEffect(() => {
     const tick = () => {
@@ -126,6 +171,27 @@ export default function Dashboard() {
     try { const t = localStorage.getItem('3b-active-trip');if (t) setActiveTrip(JSON.parse(t)) } catch { /* ignore */ }
     try { const h = localStorage.getItem('3b-hos-data');   if (h) setHos(JSON.parse(h)) }        catch { /* ignore */ }
     try { const m = localStorage.getItem('3b-eld-mode') as EldMode|null; if (m) setEldMode(m) }  catch { /* ignore */ }
+  }, [])
+
+  // ── Load latest mission from Supabase (or localStorage fallback) ──
+  useEffect(() => {
+    if (!supabase) {
+      // localStorage fallback — written by loads/page on save
+      try {
+        const raw = localStorage.getItem('3b-latest-load')
+        if (raw) setMission(JSON.parse(raw))
+      } catch { /* ignore */ }
+      return
+    }
+    supabase
+      .from('loads')
+      .select('*')
+      .order('date', { ascending: false })
+      .limit(1)
+      .single()
+      .then(({ data, error }) => {
+        if (!error && data) setMission(parseMission(data))
+      })
   }, [])
 
   // ── Load today's expenses ──
@@ -266,6 +332,25 @@ export default function Dashboard() {
   const statusLabelMap: Record<string, string> = { driving: 'Driving', offDuty: 'Off Duty', onDutyNotDriving: 'On Duty', sleeperBed: 'Sleeper Berth' }
   const statusLabel = hosDisplay?.status ? (statusLabelMap[hosDisplay.status] ?? hosDisplay.status) : null
   const statusColor = hosDisplay?.status ? (statusMap[hosDisplay.status] ?? 'var(--text)') : 'var(--muted)'
+
+  // ── Mission score (computed from latest load) ────────────────────────────
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const missionScore = useMemo(() => {
+    if (!mission || (!mission.dispatchMiles && !mission.grossRate)) return null
+    return scoreLoad({
+      loadedMiles:         mission.dispatchMiles,
+      deadheadMiles:       mission.deadheadMiles,
+      loadType:            mission.loadType,
+      waitHours:           mission.waitHours,
+      reloadKnown:         mission.reloadKnown,
+      reloadAreaStrength:  mission.reloadAreaStrength,
+      hasOvernightParking: mission.hasOvernightParking,
+      grossRate:           mission.grossRate,
+      mpg:                 getMpgDefault(mission.rigType),
+      fuelPrice:           mission.fuelPrice,
+      rigType:             mission.rigType,
+    })
+  }, [mission])
 
   const QUICK_ACTIONS = [
     { href: '/trips',    icon: '🗺',  label: 'Plan Trip' },
@@ -658,6 +743,143 @@ export default function Dashboard() {
           )}
         </div>
 
+        {/* ── ACTIVE MISSION ── */}
+        <div style={{ background: 'var(--surface)', border: `1px solid ${mission ? 'rgba(0,232,176,.2)' : 'var(--border)'}`, borderRadius: 20, padding: '1.2rem 1.4rem', display: 'grid', gap: '.85rem', boxShadow: mission ? '0 2px 16px rgba(0,232,176,.06)' : 'none' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {mission && <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--primary)', boxShadow: '0 0 8px var(--primary)', animation: 'pulse 2s infinite' }} />}
+              <span style={{ fontWeight: 800, fontSize: 'var(--text-sm)' }}>
+                {mission ? `Active Mission${mission.loadNumber ? ` — ${mission.loadNumber}` : ''}` : 'No Active Mission'}
+              </span>
+              {mission?.date && <span style={{ fontSize: '.62rem', color: 'var(--muted)', fontWeight: 600 }}>{mission.date}</span>}
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {mission && (
+                <>
+                  <Link href="/loads" style={{ padding: '.3rem .65rem', borderRadius: 7, border: '1px solid rgba(0,232,176,.3)', fontSize: '.7rem', color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}>Open Intake →</Link>
+                  <Link href="/dispatch" style={{ padding: '.3rem .65rem', borderRadius: 7, border: '1px solid var(--border)', fontSize: '.7rem', color: 'var(--text)', fontWeight: 700, textDecoration: 'none' }}>Messages</Link>
+                </>
+              )}
+              {!mission && (
+                <Link href="/loads" style={{ padding: '.35rem .85rem', borderRadius: 8, border: '1px solid rgba(0,232,176,.3)', background: 'rgba(0,232,176,.06)', fontSize: '.75rem', color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}>
+                  ⚡ New Load →
+                </Link>
+              )}
+            </div>
+          </div>
+
+          {mission ? (
+            <>
+              {/* Route strip */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 800, fontSize: '.88rem', color: 'var(--text)' }}>
+                  {mission.origin.split(',')[0]}
+                </span>
+                <span style={{ color: 'var(--primary)', fontWeight: 900, fontSize: '.9rem' }}>→</span>
+                <span style={{ fontWeight: 800, fontSize: '.88rem', color: 'var(--text)' }}>
+                  {mission.destination.split(',')[0]}
+                </span>
+                {mission.broker && (
+                  <span style={{ fontSize: '.65rem', color: 'var(--muted)', padding: '.15rem .45rem', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 5 }}>
+                    {mission.broker}
+                  </span>
+                )}
+                {mission.commodity && (
+                  <span style={{ fontSize: '.65rem', color: 'var(--muted)' }}>· {mission.commodity}</span>
+                )}
+              </div>
+
+              {missionScore ? (
+                <>
+                  {/* Score + margin row */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '1rem', alignItems: 'center' }}>
+                    {/* Score */}
+                    <div style={{ textAlign: 'center', minWidth: 64 }}>
+                      <div style={{ fontSize: '.58rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 700, marginBottom: 3 }}>Score</div>
+                      <div style={{ fontWeight: 900, fontSize: '1.6rem', lineHeight: 1, color: missionScore.verdictColor, fontVariantNumeric: 'tabular-nums' }}>
+                        {missionScore.score}
+                        <span style={{ fontSize: '.75rem', color: 'var(--muted)', fontWeight: 600 }}>/12</span>
+                      </div>
+                      <span style={{
+                        display: 'inline-flex', padding: '.15rem .45rem', borderRadius: 5, fontWeight: 800,
+                        fontSize: '.58rem', letterSpacing: '.06em', marginTop: 4,
+                        background: (missionScore.verdict as ScoreVerdict) === 'TAKE' ? 'rgba(40,192,72,.12)' : (missionScore.verdict as ScoreVerdict) === 'AVOID' ? 'rgba(232,64,0,.12)' : 'rgba(245,194,0,.12)',
+                        color: (missionScore.verdict as ScoreVerdict) === 'TAKE' ? 'var(--success)' : (missionScore.verdict as ScoreVerdict) === 'AVOID' ? 'var(--error)' : 'var(--warn)',
+                        border: `1px solid ${(missionScore.verdict as ScoreVerdict) === 'TAKE' ? 'rgba(40,192,72,.2)' : (missionScore.verdict as ScoreVerdict) === 'AVOID' ? 'rgba(232,64,0,.2)' : 'rgba(245,194,0,.2)'}`,
+                      }}>
+                        {missionScore.verdict}
+                      </span>
+                    </div>
+
+                    {/* Score bar + financials */}
+                    <div style={{ display: 'grid', gap: '.5rem' }}>
+                      <div style={{ height: 8, background: 'var(--surface-off)', borderRadius: 4, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${(missionScore.score / 12) * 100}%`, background: missionScore.verdictColor, borderRadius: 4, transition: 'width .5s ease', boxShadow: `0 0 6px ${missionScore.verdictColor}` }} />
+                      </div>
+                      <div style={{ display: 'flex', gap: '.75rem', flexWrap: 'wrap' }}>
+                        {([
+                          ['Miles',    `${mission.dispatchMiles} mi`,                             'var(--text)'],
+                          ['Net RPM',  `$${missionScore.netRpm.toFixed(2)}/mi`,                   missionScore.marginColor],
+                          ['Fuel Est', `$${missionScore.fuelCost.toFixed(0)}`,                    'var(--warn)'],
+                          ['Net Est',  `$${missionScore.netMargin.toFixed(0)}`,                    missionScore.netMargin >= 0 ? 'var(--success)' : 'var(--error)'],
+                        ] as [string,string,string][]).map(([lbl, val, clr]) => (
+                          <div key={lbl} style={{ display: 'flex', gap: 4, alignItems: 'baseline' }}>
+                            <span style={{ fontSize: '.58rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 700 }}>{lbl}</span>
+                            <span style={{ fontSize: '.72rem', fontWeight: 800, color: clr, fontVariantNumeric: 'tabular-nums' }}>{val}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Margin badge */}
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '.58rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 700, marginBottom: 5 }}>Margin</div>
+                      <span style={{
+                        display: 'inline-flex', padding: '.3rem .6rem', borderRadius: 7, fontWeight: 900,
+                        fontSize: '.68rem', letterSpacing: '.06em',
+                        background: (missionScore.marginFlag as MarginFlag) === 'STRONG' ? 'rgba(40,192,72,.12)' : (missionScore.marginFlag as MarginFlag) === 'OK' ? 'rgba(0,232,176,.1)' : (missionScore.marginFlag as MarginFlag) === 'MARGINAL' ? 'rgba(245,194,0,.12)' : 'rgba(232,64,0,.12)',
+                        color: missionScore.marginColor,
+                        border: `1px solid ${missionScore.marginColor}30`,
+                      }}>
+                        {missionScore.marginFlag}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Flags row */}
+                  {(missionScore.highDeadhead || missionScore.counterOffer) && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {missionScore.highDeadhead && (
+                        <div style={{ fontSize: '.65rem', fontWeight: 700, color: 'var(--warn)', padding: '.2rem .6rem', borderRadius: 6, background: 'rgba(245,194,0,.08)', border: '1px solid rgba(245,194,0,.2)' }}>
+                          ⚠️ High DH {missionScore.deadheadRatio.toFixed(0)}%
+                        </div>
+                      )}
+                      {missionScore.counterOffer && (
+                        <div style={{ fontSize: '.65rem', fontWeight: 700, color: (missionScore.marginFlag as MarginFlag) === 'REJECT' ? 'var(--error)' : 'var(--warn)', padding: '.2rem .6rem', borderRadius: 6, background: (missionScore.marginFlag as MarginFlag) === 'REJECT' ? 'rgba(232,64,0,.08)' : 'rgba(245,194,0,.08)', border: `1px solid ${(missionScore.marginFlag as MarginFlag) === 'REJECT' ? 'rgba(232,64,0,.2)' : 'rgba(245,194,0,.2)'}` }}>
+                          💬 {missionScore.counterOffer.slice(0, 60)}{missionScore.counterOffer.length > 60 ? '…' : ''}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+                // Load exists but no rate/miles entered yet
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: '.75rem', color: 'var(--muted)' }}>
+                  <span>{mission.dispatchMiles > 0 ? `${mission.dispatchMiles} mi` : '—'}</span>
+                  <span>·</span>
+                  <Link href="/loads" style={{ color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}>
+                    Add rate + miles to score this load →
+                  </Link>
+                </div>
+              )}
+            </>
+          ) : (
+            <p style={{ fontSize: '.78rem', color: 'var(--muted)', lineHeight: 1.6 }}>
+              Your latest load appears here with live score analysis, net RPM, margin flag, and risk alerts — straight from the Load Intake.
+            </p>
+          )}
+        </div>
+
         {/* ── QUICK ACTIONS ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '.65rem' }}>
           {QUICK_ACTIONS.map(a => (
@@ -686,7 +908,10 @@ export default function Dashboard() {
       </main>
 
       {/* Spinner animation */}
-      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+      <style>{`
+        @keyframes spin  { to { transform: rotate(360deg) } }
+        @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
+      `}</style>
     </>
   )
 }

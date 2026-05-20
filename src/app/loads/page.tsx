@@ -301,6 +301,22 @@ export default function Loads() {
   // ── Save ──────────────────────────────────────────────────────────────────
   async function handleSave(e: React.FormEvent) {
     e.preventDefault(); setSaving(true)
+
+    // Write latest load to localStorage so dashboard Active Mission can read it
+    const latestSnap = {
+      loadNumber: form.loadNumber, broker: form.broker,
+      origin: form.origin, destination: form.destination,
+      date: form.date, dispatchMiles: parseFloat(form.dispatchMiles) || 0,
+      deadheadMiles: parseFloat(form.deadheadMiles) || 0,
+      grossRate: parseFloat(form.grossRate) || 0,
+      fuelPrice: parseFloat(form.fuelPrice) || 3.85,
+      rigType: form.rigType, waitHours: parseFloat(form.waitHours) || 0,
+      reloadKnown: form.reloadKnown, reloadAreaStrength: form.reloadAreaStrength,
+      hasOvernightParking: form.hasOvernightParking, loadType: form.loadType,
+      pickup: form.pickup, delivery: form.delivery, commodity: form.commodity,
+    }
+    try { localStorage.setItem('3b-latest-load', JSON.stringify(latestSnap)) } catch { /* ignore */ }
+
     if (!supabase) {
       if (editId) {
         setLoads(ls => ls.map(l => l.id === editId ? { ...l, ...toForm(l), ...fromDB({ ...toDB(form), id: editId, created_at: l.createdAt, updated_at: new Date().toISOString() }) } : l))
