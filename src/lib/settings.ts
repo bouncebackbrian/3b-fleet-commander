@@ -3,22 +3,26 @@ export type AppSettings = {
   driverName:   string
   dispatcher:   string
   // ── Vehicle ───────────────────────────────────────
-  truckNum:     string
-  year:         string
-  make:         string
-  model:        string
-  vin:          string
-  hp:           string
-  truckHeight:  number
-  trailerNum:   string
-  trailerType:  string
-  trailerLen:   number
-  trailerHeight:number
-  axles:        string
-  maxWeight:    number
-  gvwr:         number
-  cdlClass:     string
-  endorsements: string
+  truckNum:          string
+  year:              string
+  make:              string
+  model:             string
+  vin:               string
+  hp:                string
+  truckHeight:       number
+  tractorPlate:      string
+  tractorPlateState: string
+  trailerNum:        string
+  trailerType:       string
+  trailerLen:        number
+  trailerHeight:     number
+  trailerPlate:      string
+  trailerPlateState: string
+  axles:             string
+  maxWeight:         number
+  gvwr:              number
+  cdlClass:          string
+  endorsements:      string
   // ── Pay ───────────────────────────────────────────
   cpmReceived:  number   // actual CPM on current contract
   defaultCpm:   number
@@ -36,22 +40,26 @@ export type AppSettings = {
 export const DEFAULT_SETTINGS: AppSettings = {
   driverName:   '',
   dispatcher:   'Trev',
-  truckNum:     '',
-  year:         '',
-  make:         '',
-  model:        '',
-  vin:          '',
-  hp:           '',
-  truckHeight:  13.5,
-  trailerNum:   '',
-  trailerType:  '53dry',
-  trailerLen:   53,
-  trailerHeight:13.5,
-  axles:        '5',
-  maxWeight:    80000,
-  gvwr:         80000,
-  cdlClass:     'A',
-  endorsements: '',
+  truckNum:          '',
+  year:              '',
+  make:              '',
+  model:             '',
+  vin:               '',
+  hp:                '',
+  truckHeight:       13.5,
+  tractorPlate:      '',
+  tractorPlateState: '',
+  trailerNum:        '',
+  trailerType:       '53dry',
+  trailerLen:        53,
+  trailerHeight:     13.5,
+  trailerPlate:      '',
+  trailerPlateState: '',
+  axles:             '5',
+  maxWeight:         80000,
+  gvwr:              80000,
+  cdlClass:          'A',
+  endorsements:      '',
   cpmReceived:  0.55,
   defaultCpm:   0.55,
   cpmLow:       0.50,

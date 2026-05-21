@@ -25,7 +25,20 @@ type InsuranceScan = {
   coverage_type: string | null; coverage_limit: string | null
   agent_name: string | null; agent_phone: string | null; scannedAt: string
 }
-type ComplianceDocs = { license?: LicenseScan; registration?: RegistrationScan; insurance?: InsuranceScan }
+type MedicalCardScan = {
+  card_number: string | null; examiner_name: string | null; examiner_npi: string | null
+  examiner_address: string | null; issued: string | null; expiry: string | null
+  driver_name: string | null; dob: string | null; restrictions: string | null
+  vision_waiver: boolean; hearing_waiver: boolean; skill_performance: boolean; scannedAt: string
+}
+type ComplianceDocs = { license?: LicenseScan; registration?: RegistrationScan; insurance?: InsuranceScan; medical?: MedicalCardScan }
+
+// ── Deadhead / empty-trailer log ───────────────────────────────────────────────
+type DeadheadEntry = {
+  id: string; type: 'bobtail' | 'empty'; date: string
+  miles: number | null; duration_hrs: number | null; notes: string
+}
+const DH_KEY = '3b-deadhead-log'
 
 function daysUntil(iso: string | null | undefined): number | null {
   if (!iso) return null
@@ -115,6 +128,11 @@ export default function Settings() {
   const licenseInputRef      = useRef<HTMLInputElement>(null)
   const registrationInputRef = useRef<HTMLInputElement>(null)
   const insuranceInputRef    = useRef<HTMLInputElement>(null)
+  const medicalInputRef      = useRef<HTMLInputElement>(null)
+  // Deadhead log
+  const [dhLog,    setDhLog]    = useState<DeadheadEntry[]>([])
+  const [dhForm,   setDhForm]   = useState<Omit<DeadheadEntry,'id'>>({ type: 'bobtail', date: new Date().toISOString().slice(0,10), miles: null, duration_hrs: null, notes: '' })
+  const [dhAdding, setDhAdding] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
@@ -123,6 +141,10 @@ export default function Settings() {
     try {
       const raw = localStorage.getItem('3b-compliance-docs')
       if (raw) setCompliance(JSON.parse(raw))
+    } catch { /* ignore */ }
+    try {
+      const raw = localStorage.getItem(DH_KEY)
+      if (raw) setDhLog(JSON.parse(raw))
     } catch { /* ignore */ }
   }, [])
 
@@ -192,10 +214,15 @@ export default function Settings() {
       const data = await res.json() as RegistrationScan & { error?: string }
       if (data.error) { setScanMsg(p => ({ ...p, registration: `❌ ${data.error}` })); return }
       // Auto-populate vehicle fields
-      if (data.vin)   setS(prev => ({ ...prev, vin:   data.vin   ?? prev.vin   }))
-      if (data.year)  setS(prev => ({ ...prev, year:  data.year  ?? prev.year  }))
-      if (data.make)  setS(prev => ({ ...prev, make:  data.make  ?? prev.make  }))
-      if (data.model) setS(prev => ({ ...prev, model: data.model ?? prev.model }))
+      setS(prev => ({
+        ...prev,
+        vin:               data.vin               ?? prev.vin,
+        year:              data.year              ?? prev.year,
+        make:              data.make              ?? prev.make,
+        model:             data.model             ?? prev.model,
+        tractorPlate:      data.plate             ?? prev.tractorPlate,
+        tractorPlateState: data.plate_state       ?? prev.tractorPlateState,
+      }))
       setSaved(false)
       const next = { ...compliance, registration: data }
       setCompliance(next)
@@ -221,6 +248,40 @@ export default function Settings() {
       setScanMsg(p => ({ ...p, insurance: `✅ Insurance scanned — ${data.insurer ?? 'policy saved'}` }))
     } catch { setScanMsg(p => ({ ...p, insurance: '❌ Scan failed — check connection' })) }
     finally   { setScanning(p => ({ ...p, insurance: false })); if (insuranceInputRef.current) insuranceInputRef.current.value = '' }
+  }
+
+  // ── Medical card scan ──────────────────────────────────────────────────────
+  async function handleMedicalScan(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setScanning(p => ({ ...p, medical: true })); setScanMsg(p => ({ ...p, medical: '' }))
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const res  = await fetch('/api/scan-medical', { method: 'POST', body: fd })
+      const data = await res.json() as MedicalCardScan & { error?: string }
+      if (data.error) { setScanMsg(p => ({ ...p, medical: `❌ ${data.error}` })); return }
+      const next = { ...compliance, medical: data }
+      setCompliance(next)
+      localStorage.setItem('3b-compliance-docs', JSON.stringify(next))
+      const exp = data.expiry ? ` · Exp ${data.expiry}` : ''
+      setScanMsg(p => ({ ...p, medical: `✅ Medical card scanned${exp}` }))
+    } catch { setScanMsg(p => ({ ...p, medical: '❌ Scan failed — check connection' })) }
+    finally   { setScanning(p => ({ ...p, medical: false })); if (medicalInputRef.current) medicalInputRef.current.value = '' }
+  }
+
+  // ── Deadhead log helpers ───────────────────────────────────────────────────
+  function addDhEntry() {
+    const entry: DeadheadEntry = { ...dhForm, id: crypto.randomUUID() }
+    const next = [entry, ...dhLog]
+    setDhLog(next)
+    localStorage.setItem(DH_KEY, JSON.stringify(next))
+    setDhAdding(false)
+    setDhForm({ type: 'bobtail', date: new Date().toISOString().slice(0,10), miles: null, duration_hrs: null, notes: '' })
+  }
+  function deleteDhEntry(id: string) {
+    const next = dhLog.filter(e => e.id !== id)
+    setDhLog(next)
+    localStorage.setItem(DH_KEY, JSON.stringify(next))
   }
 
   function handleSave(e: React.FormEvent) {
@@ -548,6 +609,14 @@ export default function Settings() {
                   <Inp k="truckHeight" type="number" step="0.1" />
                 </div>
                 <div>
+                  <label style={lbl}>Tractor plate #</label>
+                  <Inp k="tractorPlate" ph="ABC1234" />
+                </div>
+                <div>
+                  <label style={lbl}>Plate state</label>
+                  <input style={inp} maxLength={2} value={s.tractorPlateState} onChange={e => set('tractorPlateState', e.target.value.toUpperCase())} placeholder="TX" />
+                </div>
+                <div>
                   <label style={lbl}>CDL class</label>
                   <select style={inp} value={s.cdlClass} onChange={e => set('cdlClass', e.target.value)}>
                     {['A','B','C'].map(c => <option key={c}>Class {c}</option>)}
@@ -599,6 +668,14 @@ export default function Settings() {
                 <div>
                   <label style={lbl}>Trailer height (ft)</label>
                   <Inp k="trailerHeight" type="number" step="0.1" />
+                </div>
+                <div>
+                  <label style={lbl}>Trailer plate #</label>
+                  <Inp k="trailerPlate" ph="TR12345" />
+                </div>
+                <div>
+                  <label style={lbl}>Plate state</label>
+                  <input style={inp} maxLength={2} value={s.trailerPlateState} onChange={e => set('trailerPlateState', e.target.value.toUpperCase())} placeholder="TX" />
                 </div>
                 <div>
                   <label style={lbl}>Axles</label>
@@ -952,13 +1029,179 @@ export default function Settings() {
               )}
             </div>
 
+            {/* ── DOT Medical Card ── */}
+            <div style={card}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 'var(--text-base)' }}>🩺 DOT Medical Card</div>
+                  <div style={{ fontSize: '.7rem', color: 'var(--muted)', marginTop: 2 }}>DOT Medical Examiner&apos;s Certificate — required for CDL operation.</div>
+                </div>
+                {compliance.medical ? (
+                  <div style={{ padding: '.28rem .65rem', borderRadius: 7, fontSize: '.6rem', fontWeight: 800, letterSpacing: '.05em',
+                    background: `${expiryColor(daysUntil(compliance.medical.expiry))}18`,
+                    border: `1px solid ${expiryColor(daysUntil(compliance.medical.expiry))}44`,
+                    color: expiryColor(daysUntil(compliance.medical.expiry)) }}>
+                    {expiryLabel(daysUntil(compliance.medical.expiry), compliance.medical.expiry)}
+                  </div>
+                ) : <div style={{ fontSize: '.65rem', color: 'var(--muted)' }}>Not scanned</div>}
+              </div>
+
+              {compliance.medical ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.5rem' }}>
+                  {([
+                    ['Card #',    compliance.medical.card_number],
+                    ['Examiner',  compliance.medical.examiner_name],
+                    ['NPI',       compliance.medical.examiner_npi],
+                    ['Driver',    compliance.medical.driver_name],
+                    ['Issued',    compliance.medical.issued],
+                    ['Expires',   compliance.medical.expiry],
+                    ['Restrictions', compliance.medical.restrictions],
+                    ['Waivers',   [compliance.medical.vision_waiver && 'Vision', compliance.medical.hearing_waiver && 'Hearing'].filter(Boolean).join(', ') || null],
+                  ] as [string, string | null][]).filter(([, v]) => v).map(([k, v]) => (
+                    <div key={k} style={{ padding: '.5rem .7rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', ...(k === 'Restrictions' || k === 'Waivers' || k === 'Examiner' ? { gridColumn: '1 / -1' } : {}) }}>
+                      <div style={{ fontSize: '.55rem', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em' }}>{k}</div>
+                      <div style={{ fontWeight: 700, fontSize: '.78rem', marginTop: 2, color: k === 'Expires' ? expiryColor(daysUntil(compliance.medical!.expiry)) : 'var(--text)' }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: '.75rem', color: 'var(--muted)', padding: '.8rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', textAlign: 'center' }}>
+                  No medical card scanned yet. Take a photo of your DOT Medical Examiner&apos;s Certificate.
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button type="button"
+                  onClick={() => medicalInputRef.current?.click()}
+                  disabled={scanning.medical}
+                  style={{ padding: '.6rem 1.2rem', borderRadius: 9, border: 'none', background: scanning.medical ? 'rgba(0,232,176,.12)' : 'var(--primary)', color: scanning.medical ? 'var(--primary)' : '#061210', fontWeight: 800, fontSize: '.78rem', cursor: scanning.medical ? 'wait' : 'pointer' }}>
+                  {scanning.medical ? '⏳ Scanning…' : compliance.medical ? '🔄 Rescan Medical Card' : '📷 Scan Medical Card'}
+                </button>
+                {compliance.medical && (
+                  <button type="button"
+                    onClick={() => { const next = { ...compliance }; delete next.medical; setCompliance(next); localStorage.setItem('3b-compliance-docs', JSON.stringify(next)) }}
+                    style={{ padding: '.6rem .9rem', borderRadius: 9, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', fontWeight: 600, fontSize: '.75rem', cursor: 'pointer' }}>
+                    Clear
+                  </button>
+                )}
+              </div>
+              {scanMsg.medical && (
+                <div style={{ fontSize: '.72rem', padding: '.45rem .75rem', borderRadius: 9, background: scanMsg.medical.startsWith('✅') ? 'rgba(40,192,72,.07)' : 'rgba(232,64,0,.07)', border: `1px solid ${scanMsg.medical.startsWith('✅') ? 'rgba(40,192,72,.2)' : 'rgba(232,64,0,.2)'}`, color: scanMsg.medical.startsWith('✅') ? 'var(--success)' : 'var(--error)' }}>
+                  {scanMsg.medical}
+                </div>
+              )}
+            </div>
+
+            {/* ── Bobtail / Empty Miles Log ── */}
+            <div style={card}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 'var(--text-base)' }}>🛣 Bobtail &amp; Empty Log</div>
+                  <div style={{ fontSize: '.7rem', color: 'var(--muted)', marginTop: 2 }}>Track non-revenue miles &amp; time — bobtail (no trailer) and empty (no load).</div>
+                </div>
+                <button type="button" onClick={() => setDhAdding(v => !v)}
+                  style={{ padding: '.5rem .95rem', borderRadius: 9, border: dhAdding ? '1px solid var(--border)' : 'none', background: dhAdding ? 'none' : 'var(--primary)', color: dhAdding ? 'var(--muted)' : '#061210', fontWeight: 800, fontSize: '.75rem', cursor: 'pointer', flexShrink: 0 }}>
+                  {dhAdding ? 'Cancel' : '+ Log Entry'}
+                </button>
+              </div>
+
+              {/* ── Add entry form ── */}
+              {dhAdding && (
+                <div style={{ display: 'grid', gap: '.75rem', padding: '1rem', borderRadius: 12, background: 'rgba(0,232,176,.04)', border: '1px solid rgba(0,232,176,.15)' }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {(['bobtail', 'empty'] as const).map(t => (
+                      <button key={t} type="button" onClick={() => setDhForm(p => ({ ...p, type: t }))}
+                        style={{ flex: 1, padding: '.55rem', borderRadius: 9, border: `1px solid ${dhForm.type === t ? 'rgba(0,232,176,.4)' : 'var(--border)'}`, background: dhForm.type === t ? 'rgba(0,232,176,.1)' : 'none', color: dhForm.type === t ? 'var(--primary)' : 'var(--muted)', fontWeight: 800, fontSize: '.78rem', cursor: 'pointer' }}>
+                        {t === 'bobtail' ? '🚛 Bobtail' : '📦 Empty Trailer'}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '.65rem' }}>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <label style={lbl}>Date</label>
+                      <input style={inp} type="date" value={dhForm.date} onChange={e => setDhForm(p => ({ ...p, date: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label style={lbl}>Miles</label>
+                      <input style={inp} type="text" inputMode="numeric" placeholder="0" value={dhForm.miles ?? ''} onChange={e => setDhForm(p => ({ ...p, miles: parseFloat(e.target.value) || null }))} />
+                    </div>
+                    <div>
+                      <label style={lbl}>Hours</label>
+                      <input style={inp} type="text" inputMode="decimal" placeholder="0.0" value={dhForm.duration_hrs ?? ''} onChange={e => setDhForm(p => ({ ...p, duration_hrs: parseFloat(e.target.value) || null }))} />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={lbl}>Notes (optional)</label>
+                    <input style={inp} type="text" placeholder="e.g. yard move, swap trailer, deadhead to shipper" value={dhForm.notes} onChange={e => setDhForm(p => ({ ...p, notes: e.target.value }))} />
+                  </div>
+                  <button type="button" onClick={addDhEntry}
+                    style={{ padding: '.65rem', borderRadius: 9, border: 'none', background: 'var(--primary)', color: '#061210', fontWeight: 800, fontSize: '.82rem', cursor: 'pointer' }}>
+                    Save Entry
+                  </button>
+                </div>
+              )}
+
+              {/* ── Monthly summary ── */}
+              {dhLog.length > 0 && (() => {
+                const now   = new Date()
+                const month = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`
+                const thisMonth = dhLog.filter(e => e.date.startsWith(month))
+                const bobtailMi = thisMonth.filter(e=>e.type==='bobtail').reduce((s,e)=>s+(e.miles??0),0)
+                const emptyMi   = thisMonth.filter(e=>e.type==='empty').reduce((s,e)=>s+(e.miles??0),0)
+                const bobtailHr = thisMonth.filter(e=>e.type==='bobtail').reduce((s,e)=>s+(e.duration_hrs??0),0)
+                const emptyHr   = thisMonth.filter(e=>e.type==='empty').reduce((s,e)=>s+(e.duration_hrs??0),0)
+                if (!thisMonth.length) return null
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.5rem' }}>
+                    {[
+                      ['🚛 Bobtail mi',  bobtailMi > 0 ? bobtailMi.toLocaleString() : '—'],
+                      ['📦 Empty mi',    emptyMi   > 0 ? emptyMi.toLocaleString()   : '—'],
+                      ['🚛 Bobtail hrs', bobtailHr > 0 ? bobtailHr.toFixed(1)       : '—'],
+                      ['📦 Empty hrs',   emptyHr   > 0 ? emptyHr.toFixed(1)         : '—'],
+                    ].map(([k,v]) => (
+                      <div key={k} style={{ padding: '.5rem .7rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                        <div style={{ fontSize: '.55rem', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em' }}>{k} <span style={{ color: 'var(--primary)' }}>this mo.</span></div>
+                        <div style={{ fontWeight: 800, fontSize: '.95rem', color: 'var(--primary)', marginTop: 2 }}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+
+              {/* ── Log entries ── */}
+              {dhLog.length === 0 ? (
+                <div style={{ fontSize: '.72rem', color: 'var(--muted)', textAlign: 'center', padding: '.6rem' }}>No entries yet.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '.4rem', maxHeight: 320, overflowY: 'auto' }}>
+                  {dhLog.map(e => (
+                    <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '.55rem .75rem', borderRadius: 9, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                      <div style={{ flexShrink: 0, fontSize: '.75rem' }}>{e.type === 'bobtail' ? '🚛' : '📦'}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: '.75rem', color: 'var(--text)' }}>
+                          {e.type === 'bobtail' ? 'Bobtail' : 'Empty'} · {new Date(e.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </div>
+                        <div style={{ fontSize: '.65rem', color: 'var(--muted)' }}>
+                          {[e.miles != null && `${e.miles} mi`, e.duration_hrs != null && `${e.duration_hrs}h`, e.notes].filter(Boolean).join(' · ')}
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => deleteDhEntry(e.id)}
+                        style={{ flexShrink: 0, padding: '.25rem .5rem', borderRadius: 6, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', fontSize: '.65rem', cursor: 'pointer' }}>
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* ── Compliance overview banner ── */}
-            {(compliance.license || compliance.registration || compliance.insurance) && (
+            {(compliance.license || compliance.registration || compliance.insurance || compliance.medical) && (
               <div style={{ padding: '1rem 1.2rem', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--border)', display: 'grid', gap: '.65rem' }}>
                 {secHead('Expiry Summary')}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '.4rem' }}>
                   {[
                     ['CDL',          compliance.license?.expiry],
+                    ['Medical Card', compliance.medical?.expiry],
                     ['Registration', compliance.registration?.expiry],
                     ['Insurance',    compliance.insurance?.expiry],
                   ].map(([label, expiry]) => {
@@ -1120,6 +1363,7 @@ export default function Settings() {
       <input ref={licenseInputRef}      type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleLicenseScan}      />
       <input ref={registrationInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleRegistrationScan} />
       <input ref={insuranceInputRef}    type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleInsuranceScan}    />
+      <input ref={medicalInputRef}      type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleMedicalScan}      />
     </>
   )
 }
