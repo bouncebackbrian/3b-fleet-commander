@@ -51,6 +51,25 @@ export type WeatherData = {
   temp: number; windSpeed: number; code: number; precip: number; lat: number; lng: number
 }
 
+// ── Multi-Stop Mission ────────────────────────────────────────────────────────
+export type StopType = 'pickup' | 'delivery' | 'relay' | 'fuel' | 'yard'
+
+export type MissionStop = {
+  id:               string
+  sequence:         number        // 1-based display order
+  type:             StopType
+  name:             string        // facility / store name
+  address?:         string        // street address
+  city?:            string
+  state?:           string
+  appointmentStart?: string       // ISO datetime or "YYYY-MM-DD HH:mm"
+  appointmentEnd?:   string
+  notes?:           string
+  reference?:       string        // BOL / REF# / PO#
+  completed?:       boolean
+  completedAt?:     string        // ISO datetime when marked done
+}
+
 // ── Route Preference ─────────────────────────────────────────────────────────
 export type RoutePreference =
   | 'main_corridors'   // DEFAULT — interstates + major US highways
@@ -79,6 +98,8 @@ export type LoadMission = {
   // Route preference — defaults to 'main_corridors'
   routePreference?: RoutePreference
   routeNotes?:      string          // free-form dispatcher/driver route notes
+  // Multi-stop — optional; single-dest missions leave this undefined
+  stops?:           MissionStop[]
 }
 
 export type HOSDisplay = {

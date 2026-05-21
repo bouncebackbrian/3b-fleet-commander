@@ -1,6 +1,6 @@
 import { getDieselPrice } from '@/lib/scoreLoad'
 import type { RigType } from '@/lib/scoreLoad'
-import type { LoadMission, WeatherInfo, RoutePreference } from './types'
+import type { LoadMission, WeatherInfo, RoutePreference, MissionStop } from './types'
 
 export const fmtTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
@@ -60,6 +60,7 @@ export function parseMission(row: any): LoadMission {
     commodity:           meta.commodity       as string | undefined,
     routePreference:     (meta.routePreference as RoutePreference) ?? 'main_corridors',
     routeNotes:          meta.routeNotes      as string | undefined,
+    stops:               Array.isArray(meta.stops) ? (meta.stops as MissionStop[]) : undefined,
   }
 }
 
@@ -93,6 +94,9 @@ export function parseFleetMission(row: any): LoadMission {
     routeNotes:          row.route_notes
                          ?? ((row.metadata as Record<string, unknown>)?.routeNotes as string | undefined)
                          ?? undefined,
+    stops:               Array.isArray((row.metadata as Record<string, unknown>)?.stops)
+                         ? ((row.metadata as Record<string, unknown>).stops as MissionStop[])
+                         : undefined,
   }
 }
 
@@ -119,10 +123,11 @@ export function missionToRow(m: LoadMission): Record<string, unknown> {
     delivery:              m.delivery  ?? null,
     commodity:             m.commodity ?? null,
     status:                'active',
-    // routePreference + routeNotes stored in metadata jsonb — no column migration needed
+    // routePreference, routeNotes, stops stored in metadata jsonb — no column migration needed
     metadata: {
       routePreference: m.routePreference ?? 'main_corridors',
       routeNotes:      m.routeNotes      ?? null,
+      stops:           m.stops           ?? null,
     },
   }
 }

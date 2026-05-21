@@ -1,8 +1,9 @@
 'use client'
 import Link from 'next/link'
-import type { LoadMission, SyncState, RouteRisk } from '@/lib/dashboard/types'
+import type { LoadMission, SyncState, RouteRisk, MissionStop } from '@/lib/dashboard/types'
 import type { ScoreResult, FuelIntelResult, ScoreVerdict, MarginFlag } from '@/lib/scoreLoad'
 import { ROUTE_RISK_META, ROUTE_PREF_META } from '@/lib/dashboard/routePreference'
+import StopTimeline from './StopTimeline'
 
 interface Props {
   mission:        LoadMission | null
@@ -13,6 +14,8 @@ interface Props {
   routeRisk?:     RouteRisk | null
   onLogEvent?:    () => void
   onShowHistory?: () => void
+  onCompleteStop?: (stopId: string) => void
+  onUndoStop?:    (stopId: string) => void
 }
 
 function SyncBadge({ state }: { state: SyncState }) {
@@ -36,7 +39,12 @@ function SyncBadge({ state }: { state: SyncState }) {
   )
 }
 
-export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', routeRisk, onLogEvent, onShowHistory }: Props) {
+export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', routeRisk, onLogEvent, onShowHistory, onCompleteStop, onUndoStop }: Props) {
+  const stops = mission?.stops ?? []
+  const sortedStops = [...stops].sort((a, b) => a.sequence - b.sequence)
+  const currentStop = sortedStops.find(s => !s.completed) ?? null
+  const doneCount   = sortedStops.filter(s => s.completed).length
+  const hasStops    = sortedStops.length > 0
   return (
     <div className="cc-card" style={{ border: `1px solid ${mission ? 'rgba(0,232,176,.25)' : 'var(--border)'}`, boxShadow: mission ? '0 2px 20px rgba(0,232,176,.06)' : 'none' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.8rem', flexWrap: 'wrap', gap: 8 }}>
@@ -75,6 +83,12 @@ export default function ActiveMissionCard({ mission, missionScore, missionFuel, 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 900, fontSize: 'clamp(1.25rem,3vw,1.75rem)', color: 'var(--text)', lineHeight: 1.15 }}>{mission.origin.split(',')[0]}</span>
             <span style={{ color: 'var(--primary)', fontWeight: 900, fontSize: '1.5rem' }}>→</span>
+            {/* Multi-stop indicator */}
+            {hasStops && (
+              <span style={{ fontWeight: 700, fontSize: '.75rem', color: 'var(--primary)', padding: '.2rem .55rem', background: 'rgba(0,232,176,.08)', border: '1px solid rgba(0,232,176,.25)', borderRadius: 6, flexShrink: 0 }}>
+                {doneCount}/{sortedStops.length} stops
+              </span>
+            )}
             <span style={{ fontWeight: 900, fontSize: 'clamp(1.25rem,3vw,1.75rem)', color: 'var(--text)', lineHeight: 1.15 }}>{mission.destination.split(',')[0]}</span>
             {mission.broker && <span style={{ fontSize: '.72rem', color: 'var(--muted)', padding: '.2rem .55rem', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, flexShrink: 0 }}>{mission.broker}</span>}
             {/* Route risk badge */}
@@ -103,6 +117,17 @@ export default function ActiveMissionCard({ mission, missionScore, missionFuel, 
               <span style={{ fontSize: '.7rem', fontWeight: 700, color: ROUTE_RISK_META[routeRisk.level].color, lineHeight: 1.35 }}>
                 {routeRisk.disclaimer}
               </span>
+            </div>
+          )}
+
+          {/* ── Stop Timeline (multi-stop loads) ── */}
+          {hasStops && (
+            <div style={{ padding: '.75rem .9rem', borderRadius: 12, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+              <StopTimeline
+                stops={sortedStops}
+                onComplete={onCompleteStop}
+                onUndo={onUndoStop}
+              />
             </div>
           )}
 

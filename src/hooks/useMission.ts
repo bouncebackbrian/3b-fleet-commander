@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { scoreLoad, getMpgDefault, fuelIntel } from '@/lib/scoreLoad'
-import type { LoadMission, SyncState } from '@/lib/dashboard/types'
+import type { LoadMission, SyncState, MissionStop } from '@/lib/dashboard/types'
 import { parseMission, parseFleetMission, missionToRow } from '@/lib/dashboard/helpers'
 import { opLog } from '@/lib/logger'
 import { validateMission, isScoreResultSafe, isFuelResultSafe } from '@/lib/guards'
@@ -198,11 +198,22 @@ export function useMission() {
     }
   }, [mission])
 
+  // ── Update a single stop (mark arrived / complete / delayed) ─────────────────
+  // Merges partial updates into the stop, then saves the full mission.
+  const updateStop = async (stopId: string, updates: Partial<MissionStop>): Promise<void> => {
+    if (!mission) return
+    const stops = (mission.stops ?? []).map(s =>
+      s.id === stopId ? { ...s, ...updates } : s,
+    )
+    await saveMission({ ...mission, stops })
+  }
+
   return {
     mission,
     missionScore,
     missionFuel,
     saveMission,
+    updateStop,
     missionSaveError,
     syncState,
   }

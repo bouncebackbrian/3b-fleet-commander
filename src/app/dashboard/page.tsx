@@ -141,7 +141,7 @@ export default function Dashboard() {
 
   // ── Hooks
   const { weather, weatherLoading, wx, lastUpdated: weatherUpdated, refresh: refreshWeather } = useWeather()
-  const { mission, missionScore, missionFuel, saveMission, missionSaveError, syncState } = useMission()
+  const { mission, missionScore, missionFuel, saveMission, updateStop, missionSaveError, syncState } = useMission()
   const {
     breakActive, breakSecs, showBreakModal, setShowBreakModal,
     handleStartBreak, handleEndBreak, BREAK_TARGET, fmtBreak,
@@ -161,6 +161,12 @@ export default function Dashboard() {
     if (!mission) return
     saveMission({ ...mission, routePreference: pref })
   }
+
+  // ── Stop completion handlers ─────────────────────────────────────────────────
+  const handleCompleteStop = (stopId: string) =>
+    updateStop(stopId, { completed: true, completedAt: new Date().toISOString() })
+  const handleUndoStop = (stopId: string) =>
+    updateStop(stopId, { completed: false, completedAt: undefined })
 
   // ── Online/offline transition toasts ────────────────────────────────────────
   const prevOnline = useRef<boolean>(true)
@@ -390,6 +396,8 @@ export default function Dashboard() {
               routeRisk={routeRisk}
               onLogEvent={mission ? () => setShowLogEvent(true) : undefined}
               onShowHistory={mission ? () => setShowHistoryPanel(true) : undefined}
+              onCompleteStop={handleCompleteStop}
+              onUndoStop={handleUndoStop}
             />
             {activeTrip && (
               <ActiveTripCard
