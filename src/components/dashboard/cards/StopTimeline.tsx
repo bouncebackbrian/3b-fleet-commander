@@ -1,4 +1,5 @@
 'use client'
+import { useState, useEffect } from 'react'
 import type { MissionStop, StopType } from '@/lib/dashboard/types'
 import DetentionClock from '@/components/dashboard/clocks/DetentionClock'
 
@@ -24,6 +25,62 @@ function fmtAppt(iso: string): string {
   } catch { return iso }
 }
 
+// ── Live-ticking "now" for appointment urgency chips ─────────────────────────
+// Tick every 30s — enough granularity for minute-level appointment warnings.
+function useLiveMinute(): number {
+  const [tick, setTick] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setTick(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [])
+  return tick
+}
+
+// ── Per-stop appointment urgency chip ────────────────────────────────────────
+// Returns null when appointment is far out (> 2h) or stop is already done.
+function ApptUrgencyChip({ iso, isDone }: { iso: string; isDone: boolean }) {
+  const now = useLiveMinute()
+  if (isDone) return null
+
+  const apptMs = new Date(iso).getTime()
+  if (isNaN(apptMs)) return null
+  const mins = Math.round((apptMs - now) / 60000)
+
+  // Only show chip within 2 hours or if overdue
+  if (mins > 120) return null
+
+  const abs  = Math.abs(mins)
+  const hStr = Math.floor(abs / 60)
+  const mStr = abs % 60
+  const timeStr = hStr > 0
+    ? (mStr > 0 ? `${hStr}h ${mStr}m` : `${hStr}h`)
+    : `${mStr}m`
+
+  const isOverdue = mins < 0
+  const isUrgent  = mins >= 0 && mins < 20
+  const isWarn    = mins >= 20 && mins < 60
+
+  const bg     = isOverdue || isUrgent ? 'rgba(232,64,0,.12)'    : isWarn ? 'rgba(245,194,0,.1)'   : 'rgba(0,232,176,.08)'
+  const border = isOverdue || isUrgent ? 'rgba(232,64,0,.3)'     : isWarn ? 'rgba(245,194,0,.25)'  : 'rgba(0,232,176,.2)'
+  const color  = isOverdue || isUrgent ? 'var(--error)'          : isWarn ? 'var(--warn)'          : 'var(--primary)'
+  const label  = isOverdue
+    ? `OVERDUE +${timeStr}`
+    : isUrgent
+      ? `${timeStr} left`
+      : `in ${timeStr}`
+
+  return (
+    <span style={{
+      fontSize: '.58rem', fontWeight: 800, padding: '.1rem .4rem',
+      borderRadius: 4, background: bg, color, border: `1px solid ${border}`,
+      letterSpacing: '.04em', whiteSpace: 'nowrap',
+      animation: (isOverdue || isUrgent) ? 'apptPulse 2s ease-in-out infinite' : undefined,
+    }}>
+      ⏰ {label}
+    </span>
+  )
+}
+
 interface Props {
   stops:        MissionStop[]
   onComplete?:  (stopId: string) => void
@@ -42,6 +99,12 @@ export default function StopTimeline({ stops, onComplete, onUndo, onAddStop, onT
 
   return (
     <div style={{ display: 'grid', gap: 0 }}>
+      <style>{`
+        @keyframes apptPulse {
+          0%,100% { opacity: 1 }
+          50%      { opacity: .55 }
+        }
+      `}</style>
       {/* Progress header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <span style={{ fontSize: 'var(--cc-meta)', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
@@ -135,11 +198,14 @@ export default function StopTimeline({ stops, onComplete, onUndo, onAddStop, onT
                 )}
 
                 {/* Appointment + reference row */}
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2, alignItems: 'center' }}>
                   {stop.appointmentStart && (
                     <span style={{ fontSize: 'var(--cc-meta)', fontWeight: 700, color: isDone ? 'var(--muted)' : isCurrent ? 'var(--warn)' : 'var(--muted)' }}>
                       🕐 {fmtAppt(stop.appointmentStart)}
                     </span>
+                  )}
+                  {stop.appointmentStart && (
+                    <ApptUrgencyChip iso={stop.appointmentStart} isDone={isDone} />
                   )}
                   {stop.reference && (
                     <span style={{ fontSize: 'var(--cc-meta)', color: 'var(--muted)', fontWeight: 600 }}>

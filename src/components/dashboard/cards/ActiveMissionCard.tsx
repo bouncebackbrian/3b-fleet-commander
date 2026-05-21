@@ -5,8 +5,9 @@ import type { ScoreResult, FuelIntelResult, ScoreVerdict, MarginFlag } from '@/l
 import type { LaneMetrics } from '@/hooks/useLaneIntelligence'
 import { ROUTE_RISK_META, ROUTE_PREF_META } from '@/lib/dashboard/routePreference'
 import StopTimeline from './StopTimeline'
-import LaneSummaryCard from './LaneSummaryCard'
-import QuickStopTimer  from './QuickStopTimer'
+import LaneSummaryCard      from './LaneSummaryCard'
+import QuickStopTimer       from './QuickStopTimer'
+import DeliveryCountdown    from '@/components/dashboard/clocks/DeliveryCountdown'
 
 interface Props {
   mission:        LoadMission | null
@@ -161,6 +162,9 @@ export default function ActiveMissionCard({ mission, missionScore, missionFuel, 
               onTap={onTapLane}
             />
           )}
+
+          {/* ── Delivery countdown banner ── */}
+          {hasStops && <DeliveryCountdown stops={sortedStops} />}
 
           {/* ── Stop Timeline (multi-stop loads) ── */}
           {hasStops && (

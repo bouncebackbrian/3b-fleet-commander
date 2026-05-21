@@ -656,8 +656,9 @@ export default function Dashboard() {
       </div>
 
       <style>{`
-        @keyframes spin  { to { transform: rotate(360deg) } }
-        @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
+        @keyframes spin            { to { transform: rotate(360deg) } }
+        @keyframes pulse           { 0%,100% { opacity:1 } 50% { opacity:.4 } }
+        @keyframes countdownPulse  { 0%,100% { box-shadow: 0 0 0 0 rgba(232,64,0,.0) } 50% { box-shadow: 0 0 0 4px rgba(232,64,0,.18) } }
       `}</style>
     </>
   )
