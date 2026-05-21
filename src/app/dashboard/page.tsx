@@ -17,6 +17,7 @@ import { useWeather }            from '@/hooks/useWeather'
 import { useBreakTimer }         from '@/hooks/useBreakTimer'
 import { useMission }            from '@/hooks/useMission'
 import { useStopEvents }         from '@/hooks/useStopEvents'
+import { useLaneIntelligence }   from '@/hooks/useLaneIntelligence'
 import { useOperationalMemory }  from '@/hooks/useOperationalMemory'
 import { useOnlineStatus }       from '@/hooks/useOnlineStatus'
 import { useMovementDetector }   from '@/hooks/useMovementDetector'
@@ -38,8 +39,9 @@ import AddStopSheet         from '@/components/dashboard/sheets/AddStopSheet'
 import StopLifecyclePanel  from '@/components/dashboard/sheets/StopLifecyclePanel'
 import TripReviewSheet     from '@/components/dashboard/sheets/TripReviewSheet'
 import CompletedTripsPanel from '@/components/dashboard/panels/CompletedTripsPanel'
-import MusicPanel          from '@/components/dashboard/panels/MusicPanel'
-import GymFinderPanel      from '@/components/dashboard/panels/GymFinderPanel'
+import MusicPanel              from '@/components/dashboard/panels/MusicPanel'
+import GymFinderPanel          from '@/components/dashboard/panels/GymFinderPanel'
+import LaneIntelligencePanel   from '@/components/dashboard/panels/LaneIntelligencePanel'
 import ToastContainer      from '@/components/shared/ToastContainer'
 import OfflineBanner       from '@/components/shared/OfflineBanner'
 import DebugPanel          from '@/components/debug/DebugPanel'
@@ -157,6 +159,10 @@ export default function Dashboard() {
   const { weather, weatherLoading, wx, lastUpdated: weatherUpdated, refresh: refreshWeather } = useWeather()
   const { mission, missionScore, missionFuel, saveMission, updateStop, addStop, completeMission, missionSaveError, syncState } = useMission()
   const { advanceLifecycle } = useStopEvents()
+  const { metrics: laneMetrics, loading: laneLoading } = useLaneIntelligence(
+    mission?.origin,
+    mission?.destination,
+  )
   const {
     breakActive, breakSecs, showBreakModal, setShowBreakModal,
     handleStartBreak, handleEndBreak, BREAK_TARGET, fmtBreak,
@@ -212,6 +218,7 @@ export default function Dashboard() {
   const [selectedStop,      setSelectedStop]      = useState<MissionStop | null>(null)
   const [showMusicPanel,    setShowMusicPanel]    = useState(false)
   const [showGymFinder,     setShowGymFinder]     = useState(false)
+  const [showLanePanel,     setShowLanePanel]     = useState(false)
 
   // ── Movement detector — only active when driving mode is on
   const movement = useMovementDetector(drivingMode)
@@ -430,6 +437,13 @@ export default function Dashboard() {
         onClose={() => setShowGymFinder(false)}
         drivingMode={drivingMode}
       />
+      <LaneIntelligencePanel
+        open={showLanePanel}
+        onClose={() => setShowLanePanel(false)}
+        metrics={laneMetrics}
+        loading={laneLoading}
+        driverMode={driverMode}
+      />
 
       {/* ═══ COMMAND CENTER SHELL ════════════════════════════════════════════ */}
       <div className="cc-main" style={{ display: drivingMode ? 'none' : undefined }}>
@@ -471,12 +485,15 @@ export default function Dashboard() {
               syncState={syncState}
               routeRisk={routeRisk}
               driverMode={driverMode}
+              laneSummary={mission ? laneMetrics : undefined}
+              laneLoading={mission ? laneLoading : undefined}
               onLogEvent={mission ? () => setShowLogEvent(true) : undefined}
               onShowHistory={mission ? () => setShowHistoryPanel(true) : undefined}
               onCompleteStop={handleCompleteStop}
               onUndoStop={handleUndoStop}
               onAddStop={mission ? () => setShowAddStop(true) : undefined}
               onTapStop={mission ? (stop) => setSelectedStop(stop) : undefined}
+              onTapLane={mission ? () => setShowLanePanel(true) : undefined}
               onCompleteTrip={mission ? () => setShowTripReview(true) : undefined}
               onShowCompleted={() => setShowCompletedTrips(true)}
             />

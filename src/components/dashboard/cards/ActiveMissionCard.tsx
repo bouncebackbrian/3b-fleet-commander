@@ -2,8 +2,10 @@
 import Link from 'next/link'
 import type { LoadMission, SyncState, RouteRisk, MissionStop } from '@/lib/dashboard/types'
 import type { ScoreResult, FuelIntelResult, ScoreVerdict, MarginFlag } from '@/lib/scoreLoad'
+import type { LaneMetrics } from '@/hooks/useLaneIntelligence'
 import { ROUTE_RISK_META, ROUTE_PREF_META } from '@/lib/dashboard/routePreference'
 import StopTimeline from './StopTimeline'
+import LaneSummaryCard from './LaneSummaryCard'
 
 interface Props {
   mission:        LoadMission | null
@@ -13,12 +15,15 @@ interface Props {
   syncState?:     SyncState
   routeRisk?:     RouteRisk | null
   driverMode?:    boolean
+  laneSummary?:   LaneMetrics | null
+  laneLoading?:   boolean
   onLogEvent?:    () => void
   onShowHistory?: () => void
   onCompleteStop?:  (stopId: string) => void
   onUndoStop?:      (stopId: string) => void
   onAddStop?:       () => void
   onTapStop?:       (stop: MissionStop) => void
+  onTapLane?:       () => void
   onCompleteTrip?:  () => void
   onShowCompleted?: () => void
 }
@@ -44,7 +49,7 @@ function SyncBadge({ state }: { state: SyncState }) {
   )
 }
 
-export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', routeRisk, driverMode = false, onLogEvent, onShowHistory, onCompleteStop, onUndoStop, onAddStop, onTapStop, onCompleteTrip, onShowCompleted }: Props) {
+export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', routeRisk, driverMode = false, laneSummary, laneLoading, onLogEvent, onShowHistory, onCompleteStop, onUndoStop, onAddStop, onTapStop, onTapLane, onCompleteTrip, onShowCompleted }: Props) {
   const stops = mission?.stops ?? []
   const sortedStops = [...stops].sort((a, b) => a.sequence - b.sequence)
   const currentStop = sortedStops.find(s => !s.completed) ?? null
@@ -130,6 +135,15 @@ export default function ActiveMissionCard({ mission, missionScore, missionFuel, 
                 {routeRisk.disclaimer}
               </span>
             </div>
+          )}
+
+          {/* ── Lane Intelligence summary strip ── */}
+          {(laneSummary !== undefined || laneLoading) && (
+            <LaneSummaryCard
+              metrics={laneSummary ?? null}
+              loading={laneLoading}
+              onTap={onTapLane}
+            />
           )}
 
           {/* ── Stop Timeline (multi-stop loads) ── */}
