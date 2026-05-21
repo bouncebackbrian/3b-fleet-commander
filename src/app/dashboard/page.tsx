@@ -55,6 +55,7 @@ import FuelWeatherRow    from '@/components/dashboard/cards/FuelWeatherRow'
 import ExpensesCard      from '@/components/dashboard/cards/ExpensesCard'
 import QuickNavCard      from '@/components/dashboard/cards/QuickNavCard'
 import MovementAlert     from '@/components/dashboard/cards/MovementAlert'
+import LocationBar       from '@/components/dashboard/cards/LocationBar'
 
 // ── Actions
 import StatusBar from '@/components/dashboard/actions/StatusBar'
@@ -561,6 +562,7 @@ export default function Dashboard() {
 
           {/* ══ LEFT COLUMN ══ */}
           <div className="cc-col-left">
+            <LocationBar mission={mission} />
             <ActiveMissionCard
               mission={mission}
               missionScore={missionScore}

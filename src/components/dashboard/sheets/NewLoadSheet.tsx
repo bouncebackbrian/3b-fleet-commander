@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Link from 'next/link'
 import { getDieselPrice } from '@/lib/scoreLoad'
 import type { LoadMission, RoutePreference, MissionStop, StopType } from '@/lib/dashboard/types'
@@ -134,8 +134,53 @@ export default function NewLoadSheet({ open, onClose, onSave }: Props) {
   const [multiStop,   setMultiStop]   = useState(false)
   const [stops,       setStops]       = useState<MissionStop[]>([])
   const [saving,      setSaving]      = useState(false)
+  // BOL scan
+  const [bolScanning, setBolScanning] = useState(false)
+  const [bolMsg,      setBolMsg]      = useState<{ text: string; ok: boolean } | null>(null)
+  const bolInputRef = useRef<HTMLInputElement>(null)
 
   if (!open) return null
+
+  // ── BOL / Rate Confirmation scan ─────────────────────────────────────────────
+  const handleBolScan = async (file: File) => {
+    setBolScanning(true)
+    setBolMsg(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res  = await fetch('/api/bol-scan', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        setBolMsg({ text: data.error ?? 'Scan failed — try again', ok: false })
+        return
+      }
+      // Fill any field that came back with a value
+      const filled: string[] = []
+      if (data.origin)      { setOrigin(data.origin);       filled.push('origin') }
+      if (data.destination) { setDest(data.destination);    filled.push('destination') }
+      if (data.grossRate)   { setRate(data.grossRate);       filled.push('rate') }
+      if (data.miles)       { setMiles(data.miles);          filled.push('miles') }
+      // If multi-stop is on and we have stop addresses, seed origin stop
+      if (multiStop && stops.length > 0 && data.originAddress) {
+        changeStop(stops[0].id, {
+          address: data.originAddress,
+          name:    data.shipper ?? stops[0].name,
+        })
+      }
+      setBolMsg({
+        text: filled.length > 0
+          ? `✅ Filled: ${filled.join(', ')} — verify before saving`
+          : '⚠️ No fields detected — try a clearer photo',
+        ok: filled.length > 0,
+      })
+    } catch {
+      setBolMsg({ text: '❌ Network error — check connection', ok: false })
+    } finally {
+      setBolScanning(false)
+      // Reset file input so the same file can trigger onChange again
+      if (bolInputRef.current) bolInputRef.current.value = ''
+    }
+  }
 
   // ── Stop management ──────────────────────────────────────────────────────────
   const addStop = (type: StopType = 'delivery') => {
@@ -249,6 +294,77 @@ export default function NewLoadSheet({ open, onClose, onSave }: Props) {
         </div>
 
         <div style={{ display: 'grid', gap: 10 }}>
+
+          {/* ── BOL / Rate Confirmation Scan ── */}
+          <div style={{ background: 'rgba(0,232,176,.04)', border: '1px solid rgba(0,232,176,.15)', borderRadius: 12, padding: '.8rem .9rem', display: 'grid', gap: 7 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '.75rem', color: 'var(--primary)' }}>📷 Scan BOL / Rate Confirmation</div>
+                <div style={{ fontSize: '.62rem', color: 'var(--muted)', marginTop: 2 }}>
+                  Take a photo — AI fills origin, destination, rate &amp; miles automatically
+                </div>
+              </div>
+            </div>
+            {/* Hidden file input — opens camera on mobile */}
+            <input
+              ref={bolInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style={{ display: 'none' }}
+              onChange={e => {
+                const file = e.target.files?.[0]
+                if (file) handleBolScan(file)
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              {/* Camera button — primary */}
+              <button
+                type="button"
+                disabled={bolScanning}
+                onClick={() => bolInputRef.current?.click()}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '.55rem 1rem', borderRadius: 9,
+                  background: bolScanning ? 'var(--surface-2)' : 'var(--primary)',
+                  color: bolScanning ? 'var(--muted)' : '#061210',
+                  border: 'none', fontWeight: 800, fontSize: '.78rem',
+                  cursor: bolScanning ? 'default' : 'pointer', opacity: bolScanning ? .7 : 1,
+                }}
+              >
+                {bolScanning ? '⏳ Scanning…' : '📷 Scan Document'}
+              </button>
+              {/* Gallery / file fallback (no capture attribute) */}
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '.5rem .85rem', borderRadius: 9,
+                border: '1px solid var(--border)', background: 'var(--surface-2)',
+                color: 'var(--muted)', fontWeight: 700, fontSize: '.72rem', cursor: 'pointer',
+              }}>
+                🖼 Choose File
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const file = e.target.files?.[0]
+                    if (file) handleBolScan(file)
+                  }}
+                />
+              </label>
+            </div>
+            {bolMsg && (
+              <div style={{
+                fontSize: '.7rem', fontWeight: 600, padding: '.4rem .65rem', borderRadius: 7,
+                background: bolMsg.ok ? 'rgba(40,192,72,.08)' : 'rgba(245,194,0,.08)',
+                border: `1px solid ${bolMsg.ok ? 'rgba(40,192,72,.2)' : 'rgba(245,194,0,.2)'}`,
+                color: bolMsg.ok ? 'var(--success)' : 'var(--warn)',
+                lineHeight: 1.4,
+              }}>
+                {bolMsg.text}
+              </div>
+            )}
+          </div>
 
           {/* Origin */}
           <div>
