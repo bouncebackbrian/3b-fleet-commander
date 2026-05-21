@@ -1,7 +1,7 @@
 {
   "name": "3B Fleet Commander",
   "short_name": "3B Fleet",
-  "description": "Mileage Intelligence System for owner-operators — trip planning, HOS tracking, expenses, dispatch.",
+  "description": "Operational command center for owner-operators — live HOS, multi-stop missions, ELD alerts, route intelligence, offline-first.",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
@@ -38,6 +38,13 @@
   ],
   "shortcuts": [
     {
+      "name": "Command Center",
+      "short_name": "Dashboard",
+      "description": "Live HOS, missions, weather",
+      "url": "/dashboard",
+      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96" }]
+    },
+    {
       "name": "Trip Planner",
       "short_name": "Trips",
       "description": "Plan your next load",
@@ -49,13 +56,6 @@
       "short_name": "Expenses",
       "description": "Add a road expense",
       "url": "/expenses",
-      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96" }]
-    },
-    {
-      "name": "Dispatch",
-      "short_name": "Dispatch",
-      "description": "Send a message",
-      "url": "/dispatch",
       "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96" }]
     }
   ]
