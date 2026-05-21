@@ -100,6 +100,42 @@ export function parseFleetMission(row: any): LoadMission {
   }
 }
 
+// ── Insert a stop into a mission at a given position ─────────────────────────
+// position:
+//   'after_current'  — immediately after the first incomplete stop
+//   'before_final'   — before the last stop in sequence
+//   'end'            — append after all existing stops
+//   number           — 0-based array index to insert at
+//
+// Completed stops are never disturbed; re-sequencing updates all sequence
+// values to 1-based contiguous integers after the splice.
+export function insertStop(
+  mission: LoadMission,
+  stop: MissionStop,
+  position: 'after_current' | 'before_final' | 'end' | number = 'end',
+): LoadMission {
+  const sorted = [...(mission.stops ?? [])].sort((a, b) => a.sequence - b.sequence)
+  const currentIndex = sorted.findIndex(s => !s.completed)
+
+  let insertAt: number
+  if (position === 'after_current') {
+    insertAt = currentIndex === -1 ? sorted.length : currentIndex + 1
+  } else if (position === 'before_final') {
+    insertAt = Math.max(0, sorted.length - 1)
+  } else if (position === 'end') {
+    insertAt = sorted.length
+  } else {
+    insertAt = Math.max(0, Math.min(position, sorted.length))
+  }
+
+  sorted.splice(insertAt, 0, { ...stop, sequence: insertAt + 1 })
+
+  // Re-sequence 1-based from the beginning
+  const resequenced = sorted.map((s, i) => ({ ...s, sequence: i + 1 }))
+
+  return { ...mission, stops: resequenced }
+}
+
 // ── Identity context for Supabase rows ───────────────────────────────────────
 export type RowIdentity = {
   userId?:     string | null

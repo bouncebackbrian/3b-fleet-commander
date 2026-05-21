@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { scoreLoad, getMpgDefault, fuelIntel } from '@/lib/scoreLoad'
 import type { LoadMission, SyncState, MissionStop } from '@/lib/dashboard/types'
-import { parseMission, parseFleetMission, missionToRow } from '@/lib/dashboard/helpers'
+import { parseMission, parseFleetMission, missionToRow, insertStop } from '@/lib/dashboard/helpers'
 import { getFleetIdentity } from '@/lib/identity'
 import { opLog } from '@/lib/logger'
 import { validateMission, isScoreResultSafe, isFuelResultSafe } from '@/lib/guards'
@@ -210,12 +210,24 @@ export function useMission() {
     await saveMission({ ...mission, stops })
   }
 
+  // ── Insert a new stop into the active mission ─────────────────────────────
+  // Uses insertStop helper for splice + re-sequence, then persists via saveMission.
+  const addStop = async (
+    stop: MissionStop,
+    position: 'after_current' | 'before_final' | 'end' | number = 'end',
+  ): Promise<void> => {
+    if (!mission) return
+    const updated = insertStop(mission, stop, position)
+    await saveMission(updated)
+  }
+
   return {
     mission,
     missionScore,
     missionFuel,
     saveMission,
     updateStop,
+    addStop,
     missionSaveError,
     syncState,
   }

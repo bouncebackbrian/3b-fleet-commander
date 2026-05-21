@@ -7,6 +7,11 @@ const STOP_META: Record<StopType, { emoji: string; label: string; color: string 
   relay:    { emoji: '🔄', label: 'Relay',    color: 'var(--warn)'    },
   fuel:     { emoji: '⛽', label: 'Fuel',     color: 'var(--warn)'    },
   yard:     { emoji: '🏠', label: 'Yard',     color: 'var(--muted)'   },
+  rest:     { emoji: '🛏️', label: 'Rest',     color: 'var(--muted)'   },
+  scale:    { emoji: '⚖️',  label: 'Scale',    color: '#6c9bd2'        },
+  repair:   { emoji: '🔧', label: 'Repair',   color: 'var(--error)'   },
+  washout:  { emoji: '🚿', label: 'Washout',  color: '#6c9bd2'        },
+  other:    { emoji: '📍', label: 'Other',    color: 'var(--muted)'   },
 }
 
 function fmtAppt(iso: string): string {
@@ -22,10 +27,11 @@ interface Props {
   stops:        MissionStop[]
   onComplete?:  (stopId: string) => void
   onUndo?:      (stopId: string) => void
+  onAddStop?:   () => void
   compact?:     boolean
 }
 
-export default function StopTimeline({ stops, onComplete, onUndo, compact = false }: Props) {
+export default function StopTimeline({ stops, onComplete, onUndo, onAddStop, compact = false }: Props) {
   if (!stops.length) return null
 
   const sorted       = [...stops].sort((a, b) => a.sequence - b.sequence)
@@ -46,9 +52,9 @@ export default function StopTimeline({ stops, onComplete, onUndo, compact = fals
 
       {/* Stop list */}
       <div style={{ position: 'relative' }}>
-        {/* Connector line */}
+        {/* Connector line — extend a bit further when Add Stop button follows */}
         {sorted.length > 1 && (
-          <div style={{ position: 'absolute', left: 13, top: 26, bottom: 26, width: 2, background: 'var(--border)', zIndex: 0 }} />
+          <div style={{ position: 'absolute', left: 13, top: 26, bottom: onAddStop ? 0 : 26, width: 2, background: 'var(--border)', zIndex: 0 }} />
         )}
 
         {sorted.map((stop, i) => {
@@ -166,6 +172,30 @@ export default function StopTimeline({ stops, onComplete, onUndo, compact = fals
             </div>
           )
         })}
+
+        {/* Add Stop — shown when handler is provided and not compact */}
+        {!compact && onAddStop && (
+          <div style={{ position: 'relative', zIndex: 1, display: 'flex', gap: 10, alignItems: 'center', paddingTop: '.6rem' }}>
+            {/* Dashed circle node */}
+            <div style={{
+              width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              border: '2px dashed var(--border)', background: 'none', fontSize: '.75rem', color: 'var(--muted)',
+            }}>
+              +
+            </div>
+            <button
+              onClick={onAddStop}
+              style={{
+                fontSize: '.75rem', fontWeight: 800, padding: '.3rem .8rem', borderRadius: 7,
+                border: '1px dashed rgba(0,232,176,.4)', background: 'rgba(0,232,176,.05)',
+                color: 'var(--primary)', cursor: 'pointer',
+              }}
+            >
+              + Add Stop
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

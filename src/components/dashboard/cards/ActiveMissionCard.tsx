@@ -17,6 +17,7 @@ interface Props {
   onShowHistory?: () => void
   onCompleteStop?: (stopId: string) => void
   onUndoStop?:    (stopId: string) => void
+  onAddStop?:     () => void
 }
 
 function SyncBadge({ state }: { state: SyncState }) {
@@ -40,7 +41,7 @@ function SyncBadge({ state }: { state: SyncState }) {
   )
 }
 
-export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', routeRisk, driverMode = false, onLogEvent, onShowHistory, onCompleteStop, onUndoStop }: Props) {
+export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', routeRisk, driverMode = false, onLogEvent, onShowHistory, onCompleteStop, onUndoStop, onAddStop }: Props) {
   const stops = mission?.stops ?? []
   const sortedStops = [...stops].sort((a, b) => a.sequence - b.sequence)
   const currentStop = sortedStops.find(s => !s.completed) ?? null
@@ -128,6 +129,7 @@ export default function ActiveMissionCard({ mission, missionScore, missionFuel, 
                 stops={sortedStops}
                 onComplete={onCompleteStop}
                 onUndo={onUndoStop}
+                onAddStop={onAddStop}
               />
             </div>
           )}

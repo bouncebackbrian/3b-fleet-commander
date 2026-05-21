@@ -4,6 +4,10 @@ import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import TopBar from '@/components/layout/TopBar'
 import { loadSettings } from '@/lib/settings'
+import StopTimeline from '@/components/dashboard/cards/StopTimeline'
+import AddStopSheet  from '@/components/dashboard/sheets/AddStopSheet'
+import { insertStop } from '@/lib/dashboard/helpers'
+import type { MissionStop, LoadMission } from '@/lib/dashboard/types'
 
 // Leaflet must be client-side only
 const RouteMap = dynamic(() => import('@/components/map/RouteMap'), { ssr: false })
@@ -1066,6 +1070,10 @@ export default function TripPlanner() {
   const [plan,      setPlan]      = useState<Plan | null>(null)
   const [copiedGPS, setCopiedGPS] = useState(false)
 
+  // Mission Stops (reads/writes the active mission in localStorage)
+  const [tripMission,      setTripMission]      = useState<LoadMission | null>(null)
+  const [showTripAddStop,  setShowTripAddStop]  = useState(false)
+
   // AI Load Prep
   const [aiText,    setAiText]    = useState('')
   const [aiResult,  setAiResult]  = useState<AIResult | null>(null)
@@ -1107,7 +1115,39 @@ export default function TripPlanner() {
         }
       }
     } catch { /* ignore */ }
+    // Load active mission for Mission Stops panel
+    try {
+      const raw = localStorage.getItem('3b-latest-load')
+      if (raw) setTripMission(JSON.parse(raw) as LoadMission)
+    } catch { /* ignore */ }
   }, [])
+
+  // Persist updated mission back to localStorage (no Supabase sync from trips page)
+  const saveTripMission = (m: LoadMission) => {
+    try { localStorage.setItem('3b-latest-load', JSON.stringify(m)) } catch { /* ignore */ }
+    setTripMission(m)
+  }
+
+  const handleAddTripStop = (stop: MissionStop, position: 'after_current' | 'before_final' | 'end') => {
+    if (!tripMission) return
+    saveTripMission(insertStop(tripMission, stop, position))
+  }
+
+  const handleCompleteTripStop = (stopId: string) => {
+    if (!tripMission) return
+    const stops = (tripMission.stops ?? []).map(s =>
+      s.id === stopId ? { ...s, completed: true, completedAt: new Date().toISOString() } : s,
+    )
+    saveTripMission({ ...tripMission, stops })
+  }
+
+  const handleUndoTripStop = (stopId: string) => {
+    if (!tripMission) return
+    const stops = (tripMission.stops ?? []).map(s =>
+      s.id === stopId ? { ...s, completed: false, completedAt: undefined } : s,
+    )
+    saveTripMission({ ...tripMission, stops })
+  }
 
   const fill = useCallback((f: Parsed) => {
     if (f.origin)    setOrigin(f.origin)
@@ -1562,6 +1602,13 @@ export default function TripPlanner() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
+      {/* Mission Stops — Add Stop sheet */}
+      <AddStopSheet
+        open={showTripAddStop}
+        onClose={() => setShowTripAddStop(false)}
+        onAdd={handleAddTripStop}
+      />
+
       <style>{`
         @media (max-width: 768px) {
           .trips-main { grid-template-columns: 1fr !important; }
@@ -2157,6 +2204,57 @@ export default function TripPlanner() {
                   </div>
                 </div>
               )}
+
+              {/* ─── Mission Stops ─── */}
+              <div style={{ padding: '.9rem 1rem', borderRadius: 12, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.75rem' }}>
+                  <span style={{ fontSize: 'var(--cc-meta)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--muted)' }}>
+                    Mission Stops
+                    {tripMission && (
+                      <span style={{ fontWeight: 600, textTransform: 'none', letterSpacing: 0, marginLeft: 6 }}>
+                        — {tripMission.loadNumber || 'Active Load'}
+                      </span>
+                    )}
+                  </span>
+                  <button
+                    onClick={() => setShowTripAddStop(true)}
+                    disabled={!tripMission}
+                    style={{
+                      fontSize: '.72rem', fontWeight: 800, padding: '.28rem .7rem', borderRadius: 7,
+                      border: '1px dashed rgba(0,232,176,.45)', background: 'rgba(0,232,176,.06)',
+                      color: tripMission ? 'var(--primary)' : 'var(--muted)',
+                      cursor: tripMission ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    + Add Stop
+                  </button>
+                </div>
+
+                {tripMission ? (
+                  tripMission.stops && tripMission.stops.length > 0 ? (
+                    <StopTimeline
+                      stops={tripMission.stops}
+                      onComplete={handleCompleteTripStop}
+                      onUndo={handleUndoTripStop}
+                      onAddStop={() => setShowTripAddStop(true)}
+                    />
+                  ) : (
+                    <div style={{ fontSize: '.82rem', color: 'var(--muted)', textAlign: 'center', padding: '.75rem 0' }}>
+                      No stops added yet.{' '}
+                      <button
+                        onClick={() => setShowTripAddStop(true)}
+                        style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: '.82rem' }}
+                      >
+                        Add first stop →
+                      </button>
+                    </div>
+                  )
+                ) : (
+                  <div style={{ fontSize: '.82rem', color: 'var(--muted)', textAlign: 'center', padding: '.75rem 0' }}>
+                    No active mission. Accept a load to manage stops.
+                  </div>
+                )}
+              </div>
 
               {/* Route Map */}
               <RouteMap

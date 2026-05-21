@@ -52,7 +52,7 @@ export type WeatherData = {
 }
 
 // ── Multi-Stop Mission ────────────────────────────────────────────────────────
-export type StopType = 'pickup' | 'delivery' | 'relay' | 'fuel' | 'yard'
+export type StopType = 'pickup' | 'delivery' | 'relay' | 'fuel' | 'yard' | 'rest' | 'scale' | 'repair' | 'washout' | 'other'
 
 export type MissionStop = {
   id:               string
