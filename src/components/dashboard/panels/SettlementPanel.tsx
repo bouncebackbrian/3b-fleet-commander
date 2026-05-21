@@ -93,10 +93,10 @@ type Flag = {
 }
 
 function computeMetrics(s: SettlementData): Metrics {
-  const loadedMi  = s.loadedMiles  ?? 0
-  const emptyMi   = s.emptyMiles   ?? 0
-  const totalMi   = s.totalMiles   ?? (loadedMi + emptyMi)
-  const grossPay  = s.grossPay     ?? 0
+  const loadedMi   = s.loadedMiles ?? 0
+  const emptyMi    = s.emptyMiles  ?? 0
+  const totalMi    = s.totalMiles  ?? (loadedMi + emptyMi)
+  const grossPay   = s.grossPay    ?? 0
   const dispatches = s.dispatches  ?? (s.loads.filter(l => l.loadType === 'loaded').length || 1)
 
   const emptyPct           = totalMi > 0 ? (emptyMi / totalMi) * 100 : 0
@@ -106,12 +106,10 @@ function computeMetrics(s: SettlementData): Metrics {
   const grossCpm           = totalMi > 0 ? grossPay / totalMi : 0
   const effectiveCpm       = loadedMi > 0 ? grossPay / loadedMi : 0
 
-  // Rough hourly estimate: assume 52 mph avg + 10% idle time
-  const estDriveHrs = totalMi / 52
-  const estHours    = estDriveHrs * 1.1
+  const estDriveHrs   = totalMi / 52
+  const estHours      = estDriveHrs * 1.1
   const estHourlyRate = estHours > 0 ? grossPay / estHours : 0
 
-  // Lane rows from individual loads
   const laneRows: LaneRow[] = (s.loads ?? [])
     .filter(l => l.origin && l.destination)
     .map(l => ({
@@ -126,7 +124,6 @@ function computeMetrics(s: SettlementData): Metrics {
     }))
     .sort((a, b) => b.cpm - a.cpm)
 
-  // Intelligence flags
   const flags: Flag[] = []
 
   if (emptyPct > 20)
@@ -136,12 +133,10 @@ function computeMetrics(s: SettlementData): Metrics {
   else if (emptyPct <= 5 && emptyMi > 0)
     flags.push({ level: 'success', emoji: '✅', message: `Excellent positioning: only ${emptyPct.toFixed(0)}% deadhead` })
 
-  // Micro-moves: loaded runs under 100 miles
   const microMoves = (s.loads ?? []).filter(l => l.loadType === 'loaded' && (l.loadedMiles ?? 0) < 100 && (l.loadedMiles ?? 0) > 0)
   if (microMoves.length > 0)
     flags.push({ level: 'warn', emoji: '🔬', message: `${microMoves.length} micro-dispatch${microMoves.length > 1 ? 'es' : ''} under 100 mi — check if worth taking at this CPM` })
 
-  // Nevada reposition loop detection
   const stateFreq: Record<string, number> = {}
   for (const l of s.loads ?? []) {
     const st = l.origin?.split(',')?.[1]?.trim()
@@ -151,13 +146,11 @@ function computeMetrics(s: SettlementData): Metrics {
   if (topEntry && topEntry[1] >= 3)
     flags.push({ level: 'warn', emoji: '🔄', message: `${topEntry[0]} reposition loop: ${topEntry[1]} origins from ${topEntry[0]} — possible staging inefficiency` })
 
-  // Low effective CPM
   if (effectiveCpm > 0 && effectiveCpm < 0.45)
     flags.push({ level: 'warn', emoji: '💸', message: `Low effective CPM at ${fmtR(effectiveCpm)}/mi — target ≥ $0.50 for solo semi` })
   else if (effectiveCpm >= 0.55)
     flags.push({ level: 'success', emoji: '💚', message: `Strong CPM at ${fmtR(effectiveCpm)}/mi — above target` })
 
-  // Per diem impact
   if (s.perDiem && s.perDiem > 0)
     flags.push({ level: 'info', emoji: '🛏', message: `Per diem ${fmtM(s.perDiem)} shifts ${fmtM((s.grossPay ?? 0) - (s.perDiem ?? 0))} to taxable wages — check IRS $69/day limit` })
 
@@ -175,28 +168,264 @@ function MetricTile({ label, value, sub, color }: { label: string; value: string
   )
 }
 
+// ── Hourly Pay Tab ────────────────────────────────────────────────────────────
+// Phase 5C — True Hourly Pay Engine
+// Calculates real $/hr (all 168 hrs), active $/hr (drive+dwell), drive-only $/hr,
+// time allocation bar, per-load hourly breakdown, and benchmark comparison.
+function HourlyPayTab({ result, driverMode }: { result: SettlementData; driverMode?: boolean }) {
+  const grossPay = result.grossPay ?? 0
+
+  // ── Constants ───────────────────────────────────────────────────────────────
+  const LOADED_MPH = 52
+  const EMPTY_MPH  = 55
+  const DWELL_HRS  = 2    // standard dwell per stop endpoint (pickup OR delivery)
+
+  // ── Time buckets ─────────────────────────────────────────────────────────────
+  const loadedMi  = result.loadedMiles ?? 0
+  const emptyMi   = result.emptyMiles  ?? 0
+
+  // Period length — use actual dates if available, default to 7-day week
+  let workDays = 7
+  if (result.periodStart && result.periodEnding) {
+    try {
+      const diff = Math.round(
+        (new Date(result.periodEnding).getTime() - new Date(result.periodStart).getTime()) / 86_400_000,
+      )
+      if (diff >= 1 && diff <= 14) workDays = diff + 1
+    } catch { /* use 7 */ }
+  }
+  const totalPeriodHrs = workDays * 24
+
+  const drivingHrs    = loadedMi > 0 ? loadedMi / LOADED_MPH : 0
+  const deadheadHrs   = emptyMi  > 0 ? emptyMi  / EMPTY_MPH  : 0
+  const dispatchCount = result.dispatches ?? result.loads.filter(l => l.loadType === 'loaded').length
+  const dwellHrs      = dispatchCount * DWELL_HRS * 2    // 2h pickup + 2h delivery per run
+
+  // Estimate detention from deduction items (~$50/hr)
+  let detentionHrs = 0
+  for (const d of result.deductionItems ?? []) {
+    if (d.description.toLowerCase().includes('detent') && d.amount > 0) {
+      detentionHrs += d.amount / 50
+    }
+  }
+
+  const activeHrs   = drivingHrs + deadheadHrs + dwellHrs + detentionHrs
+  const offClockHrs = Math.max(0, totalPeriodHrs - activeHrs)
+
+  // ── Pay rates ────────────────────────────────────────────────────────────────
+  const realHourlyRate      = totalPeriodHrs > 0 ? grossPay / totalPeriodHrs : 0
+  const effectiveHourlyRate = activeHrs > 0      ? grossPay / activeHrs      : 0
+  const drivingOnlyRate     = drivingHrs > 0     ? grossPay / drivingHrs     : 0
+
+  // ── Allocation percents ──────────────────────────────────────────────────────
+  const drivingPct  = totalPeriodHrs > 0 ? (drivingHrs  / totalPeriodHrs) * 100 : 0
+  const deadheadPct = totalPeriodHrs > 0 ? (deadheadHrs / totalPeriodHrs) * 100 : 0
+  const dwellPct    = totalPeriodHrs > 0 ? (dwellHrs    / totalPeriodHrs) * 100 : 0
+  const offClockPct = totalPeriodHrs > 0 ? (offClockHrs / totalPeriodHrs) * 100 : 0
+
+  // ── Per-load hourly ──────────────────────────────────────────────────────────
+  const loadHours = (result.loads ?? [])
+    .filter(l => l.loadType === 'loaded' && l.origin && l.destination)
+    .map(l => {
+      const mi      = l.loadedMiles ?? 0
+      const pay     = l.grossPay    ?? 0
+      const driveH  = mi > 0 ? mi / LOADED_MPH : 0
+      const dwellH  = DWELL_HRS * 2
+      const totalH  = driveH + dwellH
+      return {
+        label:      `${l.origin.split(',')[0]} → ${l.destination.split(',')[0]}`,
+        miles:      mi,
+        driveHrs:   driveH,
+        totalHrs:   totalH,
+        grossPay:   pay,
+        hourlyRate: totalH > 0 ? pay / totalH : 0,
+      }
+    })
+    .sort((a, b) => b.hourlyRate - a.hourlyRate)
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+  const fmtH    = (n: number) => n < 1 ? `${Math.round(n * 60)}m` : `${n.toFixed(1)}h`
+  const fmtRate = (n: number) => '$' + n.toFixed(2)
+  const rateColor = (r: number) =>
+    r >= 28 ? 'var(--success)' : r >= 18 ? 'var(--warn)' : 'var(--error)'
+
+  return (
+    <div style={{ display: 'grid', gap: '1rem' }}>
+
+      {/* ── Three rate tiers ── */}
+      <div>
+        <div style={{ fontSize: '.6rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.5rem' }}>
+          True Hourly Value — {workDays}-day period ({totalPeriodHrs}h total)
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+          {([
+            { label: 'Real $/hr',   value: realHourlyRate,      sub: `all ${totalPeriodHrs}h`,         note: 'entire week incl. off-clock' },
+            { label: 'Active $/hr', value: effectiveHourlyRate, sub: `${fmtH(activeHrs)} active`,      note: 'drive + dwell time'          },
+            { label: 'Drive $/hr',  value: drivingOnlyRate,     sub: `${fmtH(drivingHrs)} wheel time`, note: 'steering wheel only'         },
+          ] as { label: string; value: number; sub: string; note: string }[]).map(({ label, value, sub }) => (
+            <div key={label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 11, padding: '.65rem .75rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '.57rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 700, marginBottom: 3 }}>{label}</div>
+              <div style={{ fontWeight: 900, fontSize: '.95rem', color: rateColor(value), fontVariantNumeric: 'tabular-nums' }}>{fmtRate(value)}</div>
+              <div style={{ fontSize: '.58rem', color: 'var(--muted)', marginTop: 2 }}>{sub}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: '.6rem', color: 'var(--muted)', marginTop: 5, textAlign: 'center', lineHeight: 1.4 }}>
+          Real = full week · Active = while working · Drive = wheel time only
+        </div>
+      </div>
+
+      {/* ── Time allocation bar ── */}
+      <div>
+        <div style={{ fontSize: '.6rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.45rem' }}>
+          Where Your {totalPeriodHrs} Hours Went
+        </div>
+        <div style={{ height: 24, borderRadius: 7, overflow: 'hidden', display: 'flex', background: 'rgba(255,255,255,.04)', border: '1px solid var(--border)', marginBottom: '.6rem' }}>
+          {drivingPct  > 0.5 && <div style={{ width: `${drivingPct}%`,  background: 'var(--primary)',        transition: 'width .5s ease', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title={`Driving ${fmtH(drivingHrs)}`}><span style={{ fontSize: '.5rem', color: '#061210', fontWeight: 900, pointerEvents: 'none' }}>{drivingPct > 8 ? fmtH(drivingHrs) : ''}</span></div>}
+          {deadheadPct > 0.5 && <div style={{ width: `${deadheadPct}%`, background: 'rgba(245,194,0,.85)',   transition: 'width .5s ease' }} title={`Deadhead ${fmtH(deadheadHrs)}`} />}
+          {dwellPct    > 0.5 && <div style={{ width: `${dwellPct}%`,    background: 'rgba(74,196,255,.75)',  transition: 'width .5s ease' }} title={`Dwell ${fmtH(dwellHrs)}`} />}
+          {offClockPct > 0.5 && <div style={{ width: `${offClockPct}%`, background: 'rgba(255,255,255,.07)', transition: 'width .5s ease' }} title={`Off-clock ${fmtH(offClockHrs)}`} />}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.25rem .9rem' }}>
+          {([
+            { color: 'var(--primary)',         label: 'Driving',   hrs: drivingHrs,  pct: drivingPct  },
+            { color: 'rgba(245,194,0,.85)',     label: 'Deadhead',  hrs: deadheadHrs, pct: deadheadPct },
+            { color: 'rgba(74,196,255,.75)',    label: 'Dwell',     hrs: dwellHrs,    pct: dwellPct    },
+            { color: 'rgba(255,255,255,.18)',   label: 'Off-Clock', hrs: offClockHrs, pct: offClockPct },
+          ] as { color: string; label: string; hrs: number; pct: number }[]).map(({ color, label, hrs, pct }) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '.62rem' }}>
+              <div style={{ width: 9, height: 9, borderRadius: 2, background: color, flexShrink: 0, border: '1px solid rgba(255,255,255,.1)' }} />
+              <span style={{ color: 'var(--muted)' }}>{label}</span>
+              <span style={{ fontWeight: 800, color: 'var(--text)' }}>{fmtH(hrs)}</span>
+              <span style={{ color: 'var(--muted)' }}>({pct.toFixed(0)}%)</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Key insight callout ── */}
+      <div style={{
+        padding: '.7rem .9rem', borderRadius: 11, lineHeight: 1.6, fontSize: '.75rem',
+        background: offClockPct > 55 ? 'rgba(232,64,0,.06)' : 'rgba(0,232,176,.05)',
+        border: `1px solid ${offClockPct > 55 ? 'rgba(232,64,0,.2)' : 'rgba(0,232,176,.2)'}`,
+      }}>
+        <div style={{ fontWeight: 800, marginBottom: 3, fontSize: '.77rem' }}>
+          {offClockPct > 55 ? '⚠️ Time efficiency insight' : '📊 Weekly time summary'}
+        </div>
+        You drove <strong>{fmtH(drivingHrs + deadheadHrs)}</strong> ({(drivingPct + deadheadPct).toFixed(0)}% of your week).{' '}
+        {offClockHrs > 0 ? (
+          <>The other <strong style={{ color: offClockPct > 55 ? 'var(--error)' : 'var(--muted)' }}>{fmtH(offClockHrs)}</strong> ({offClockPct.toFixed(0)}%) were off-clock — home time, dispatch waits, and resets.</>
+        ) : (
+          <>Full utilization — active work fills the entire period.</>
+        )}
+      </div>
+
+      {/* ── Daily value + benchmarks (owner only) ── */}
+      {!driverMode && (
+        <div style={{ display: 'grid', gap: 5 }}>
+          <div style={{ fontSize: '.6rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.3rem' }}>
+            Benchmark Comparison (real $/hr)
+          </div>
+          {([
+            { label: 'Federal Min. Wage', rate: 7.25, note: 'must be > 1.0×'   },
+            { label: 'Avg. Driver ~$22',  rate: 22,   note: '1.0× = industry par' },
+            { label: 'Target ~$28/hr',    rate: 28,   note: '> 1.0× = above target' },
+          ] as { label: string; rate: number; note: string }[]).map(({ label, rate, note }) => {
+            const ratio = realHourlyRate > 0 ? realHourlyRate / rate : 0
+            return (
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '.4rem .65rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', gap: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '.72rem' }}>{label}</div>
+                  <div style={{ fontSize: '.6rem', color: 'var(--muted)' }}>{note}</div>
+                </div>
+                <div style={{ fontWeight: 900, fontSize: '.9rem', color: ratio >= 1 ? 'var(--success)' : 'var(--error)', flexShrink: 0 }}>
+                  {ratio.toFixed(2)}×
+                </div>
+              </div>
+            )
+          })}
+          <div style={{ fontSize: '.62rem', color: 'var(--muted)', padding: '.35rem .65rem', background: 'var(--surface-2)', borderRadius: 7, border: '1px solid var(--border)', lineHeight: 1.5 }}>
+            💡 Daily average: <strong style={{ color: 'var(--text)' }}>{fmtM(workDays > 0 ? grossPay / workDays : 0)}/day</strong> over {workDays} days ·{' '}
+            <strong style={{ color: 'var(--text)' }}>{fmtRate(realHourlyRate)}</strong> real hourly
+          </div>
+        </div>
+      )}
+
+      {/* ── Per-load hourly table ── */}
+      {loadHours.length > 0 && (
+        <div>
+          <div style={{ fontSize: '.6rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.3rem' }}>
+            Run-by-Run Hourly Rate
+          </div>
+          <div style={{ fontSize: '.6rem', color: 'var(--muted)', marginBottom: '.5rem', lineHeight: 1.5 }}>
+            Each run: drive time at 52 mph + 4h dwell (2h shipper + 2h receiver est.)
+          </div>
+          <div style={{ display: 'grid', gap: 5 }}>
+            {loadHours.map((l, i) => {
+              const isTop = i === 0 && loadHours.length > 1
+              const isBot = i === loadHours.length - 1 && loadHours.length > 1
+              return (
+                <div key={i} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '.55rem .75rem', borderRadius: 9, gap: 8,
+                  background: isTop ? 'rgba(40,192,72,.07)' : isBot ? 'rgba(232,64,0,.05)' : 'var(--surface-2)',
+                  border: `1px solid ${isTop ? 'rgba(40,192,72,.2)' : isBot ? 'rgba(232,64,0,.15)' : 'var(--border)'}`,
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: '.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {isTop && <span style={{ fontSize: '.6rem', color: 'var(--success)', marginRight: 3 }}>★</span>}
+                      {isBot && <span style={{ fontSize: '.6rem', color: 'var(--error)',   marginRight: 3 }}>▼</span>}
+                      {l.label}
+                    </div>
+                    <div style={{ fontSize: '.6rem', color: 'var(--muted)', marginTop: 2 }}>
+                      {fmt(l.miles)} mi · {fmtH(l.driveHrs)} drive + 4h dwell = {fmtH(l.totalHrs)} total
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontWeight: 900, fontSize: '.82rem', color: rateColor(l.hourlyRate) }}>
+                      {fmtRate(l.hourlyRate)}/hr
+                    </div>
+                    <div style={{ fontSize: '.6rem', color: 'var(--muted)' }}>{fmtM(l.grossPay)}</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {loadHours.length > 1 && (
+            <div style={{ marginTop: 6, fontSize: '.6rem', color: 'var(--muted)', lineHeight: 1.4, padding: '.35rem .6rem', background: 'var(--surface-2)', borderRadius: 7, border: '1px solid var(--border)' }}>
+              ★ = highest-value run by $/hr · ▼ = lowest — <strong>CPM alone doesn&apos;t tell this story</strong>
+            </div>
+          )}
+        </div>
+      )}
+
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 interface Props {
-  open:       boolean
-  onClose:    () => void
+  open:        boolean
+  onClose:     () => void
   driverMode?: boolean
 }
 
-type PanelState = 'upload' | 'processing' | 'results' | 'history'
+type PanelState  = 'upload' | 'processing' | 'results' | 'history'
+type ResultTab   = 'summary' | 'hourly'
 
 export default function SettlementPanel({ open, onClose, driverMode }: Props) {
   const [panelState,   setPanelState]   = useState<PanelState>('upload')
-  const [processing,   setProcessing]   = useState<string>('')   // status message
+  const [processing,   setProcessing]   = useState<string>('')
   const [result,       setResult]       = useState<SettlementData | null>(null)
   const [error,        setError]        = useState<string | null>(null)
   const [history,      setHistory]      = useState<StoredSettlement[]>([])
   const [importing,    setImporting]    = useState(false)
   const [importedMsg,  setImportedMsg]  = useState<string | null>(null)
-  const [activeLoad,   setActiveLoad]   = useState<number | null>(null) // expanded load index
+  const [activeLoad,   setActiveLoad]   = useState<number | null>(null)
+  const [resultTab,    setResultTab]    = useState<ResultTab>('summary')
 
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // Load history on open
   useEffect(() => {
     if (!open) return
     try {
@@ -229,9 +458,9 @@ export default function SettlementPanel({ open, onClose, driverMode }: Props) {
       }
 
       setResult(data as SettlementData)
+      setResultTab('summary')
       setPanelState('results')
 
-      // Save to history
       try {
         const raw   = localStorage.getItem(STORAGE_KEY)
         const hist: StoredSettlement[] = raw ? JSON.parse(raw) : []
@@ -257,25 +486,23 @@ export default function SettlementPanel({ open, onClose, driverMode }: Props) {
     const loads = result.loads.filter(l => l.origin && l.destination && l.loadType === 'loaded')
     if (loads.length === 0) { setImporting(false); setImportedMsg('No loaded dispatches to import'); return }
 
-    // Push to localStorage 3b-completed-missions
     try {
       const raw     = localStorage.getItem('3b-completed-missions')
       const archive: unknown[] = raw ? JSON.parse(raw) : []
       const newEntries = loads.map(l => ({
-        id:          crypto.randomUUID(),
-        loadNumber:  l.loadNumber ?? '',
-        origin:      l.origin,
-        destination: l.destination,
-        date:        l.deliveryDate ?? result.periodEnding ?? new Date().toISOString().slice(0, 10),
-        completedAt: l.deliveryDate ?? result.periodEnding,
-        tripReview:  null,
+        id:             crypto.randomUUID(),
+        loadNumber:     l.loadNumber ?? '',
+        origin:         l.origin,
+        destination:    l.destination,
+        date:           l.deliveryDate ?? result.periodEnding ?? new Date().toISOString().slice(0, 10),
+        completedAt:    l.deliveryDate ?? result.periodEnding,
+        tripReview:     null,
         fromSettlement: true,
       }))
       newEntries.forEach(e => archive.unshift(e))
       localStorage.setItem('3b-completed-missions', JSON.stringify(archive.slice(0, 50)))
     } catch { /* ignore */ }
 
-    // Optionally push to Supabase fleet_missions
     if (supabase) {
       try {
         const { userId, businessId } = await getFleetIdentity()
@@ -299,8 +526,8 @@ export default function SettlementPanel({ open, onClose, driverMode }: Props) {
           user_id:        userId ?? null,
           ...(businessId ? { business_id: businessId } : {}),
           metadata: {
-            fromSettlement: true,
-            settlementPeriod: result.periodEnding,
+            fromSettlement:    true,
+            settlementPeriod:  result.periodEnding,
             settlementCarrier: result.carrier,
           },
         }))
@@ -386,7 +613,6 @@ export default function SettlementPanel({ open, onClose, driverMode }: Props) {
                 PDF · JPG · PNG · HEIC — carrier pay stub or settlement sheet
               </span>
             </button>
-            {/* What gets extracted */}
             <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 12, padding: '.85rem' }}>
               <div style={{ fontSize: '.65rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '.55rem' }}>
                 Auto-extracted from your settlement
@@ -397,7 +623,7 @@ export default function SettlementPanel({ open, onClose, driverMode }: Props) {
                   ['🛣', 'Loaded & empty miles'],
                   ['📦', 'Every dispatch lane'],
                   ['📊', 'CPM & effective rate'],
-                  ['🏁', 'Per diem & deductions'],
+                  ['⏱', 'True hourly pay engine'],
                   ['🚨', 'Operational patterns'],
                 ].map(([emoji, label]) => (
                   <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.7rem', color: 'var(--muted)', fontWeight: 600 }}>
@@ -441,7 +667,7 @@ export default function SettlementPanel({ open, onClose, driverMode }: Props) {
               return (
                 <div
                   key={s.id}
-                  onClick={() => { setResult(s); setPanelState('results') }}
+                  onClick={() => { setResult(s); setResultTab('summary'); setPanelState('results') }}
                   style={{ padding: '.75rem .9rem', borderRadius: 12, background: 'var(--surface-2)', border: '1px solid var(--border)', cursor: 'pointer' }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -471,7 +697,24 @@ export default function SettlementPanel({ open, onClose, driverMode }: Props) {
         {panelState === 'results' && result && metrics && (
           <div style={{ display: 'grid', gap: '1rem' }}>
 
-            {/* ── Summary header ── */}
+            {/* ── Result tab switcher ── */}
+            <div style={{ display: 'flex', gap: 4, background: 'var(--surface-2)', borderRadius: 10, padding: '.28rem' }}>
+              {(['summary', 'hourly'] as ResultTab[]).map(id => (
+                <button key={id} onClick={() => setResultTab(id)}
+                  style={{
+                    flex: 1, padding: '.48rem', borderRadius: 8, border: 'none', cursor: 'pointer',
+                    fontWeight: 800, fontSize: '.72rem',
+                    background: resultTab === id ? 'var(--surface)' : 'none',
+                    color:      resultTab === id ? 'var(--primary)' : 'var(--muted)',
+                    boxShadow:  resultTab === id ? '0 1px 4px rgba(0,0,0,.15)' : 'none',
+                    transition: 'all .15s',
+                  }}>
+                  {id === 'summary' ? '📊 Summary' : '⏱ Hourly'}
+                </button>
+              ))}
+            </div>
+
+            {/* ── Summary header (always visible) ── */}
             <div style={{ background: 'linear-gradient(135deg, rgba(0,232,176,.06) 0%, rgba(0,232,176,.02) 100%)', border: '1px solid rgba(0,232,176,.2)', borderRadius: 14, padding: '1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
                 <div>
@@ -497,128 +740,139 @@ export default function SettlementPanel({ open, onClose, driverMode }: Props) {
               </div>
             </div>
 
-            {/* ── Metrics grid ── */}
-            <div>
-              <div style={{ fontSize: '.6rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.5rem' }}>Weekly Metrics</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                <MetricTile label="Loaded Mi" value={fmt(result.loadedMiles)} sub={`${metrics.loadedPct.toFixed(0)}% of total`} color="var(--primary)" />
-                <MetricTile label="Empty Mi"  value={fmt(result.emptyMiles)}  sub={`${metrics.emptyPct.toFixed(0)}% deadhead`} color={metrics.emptyPct > 20 ? 'var(--error)' : metrics.emptyPct > 10 ? 'var(--warn)' : 'var(--muted)'} />
-                <MetricTile label="Dispatches" value={fmt(result.dispatches ?? result.loads.length)} sub="loads this week" />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 6 }}>
-                {!driverMode && <MetricTile label="Gross CPM"    value={fmtR(metrics.grossCpm)}      sub="all miles" color="var(--text)" />}
-                <MetricTile label="Eff. CPM"     value={fmtR(metrics.effectiveCpm)} sub="loaded miles" color={metrics.effectiveCpm >= 0.55 ? 'var(--success)' : metrics.effectiveCpm >= 0.45 ? 'var(--warn)' : 'var(--error)'} />
-                <MetricTile label="Avg / Run"    value={fmtM(metrics.avgDispatchRevenue)} sub={`${fmt(metrics.avgDispatchMiles, 0)} mi avg`} />
-                {!driverMode && <MetricTile label="Est. Hourly"  value={fmtM(metrics.estHourlyRate)} sub="incl. idle est." color={metrics.estHourlyRate >= 25 ? 'var(--success)' : metrics.estHourlyRate >= 18 ? 'var(--warn)' : 'var(--error)'} />}
-              </div>
-              {/* Financial breakdown — owner only */}
-              {!driverMode && (result.perDiem || result.deductions || result.taxableWages) && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 6 }}>
-                  {result.taxableWages != null && <MetricTile label="Taxable Wages" value={fmtM(result.taxableWages)} />}
-                  {result.perDiem     != null && result.perDiem > 0 && <MetricTile label="Per Diem" value={fmtM(result.perDiem)} color="var(--primary)" />}
-                  {result.deductions  != null && result.deductions > 0 && <MetricTile label="Deductions" value={fmtM(result.deductions)} color="var(--warn)" />}
-                </div>
-              )}
-            </div>
+            {/* ══ SUMMARY TAB ══ */}
+            {resultTab === 'summary' && (
+              <div style={{ display: 'grid', gap: '1rem' }}>
 
-            {/* ── Intelligence flags ── */}
-            {metrics.flags.length > 0 && (
-              <div style={{ display: 'grid', gap: 6 }}>
-                <div style={{ fontSize: '.6rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em' }}>🚨 Operational Intelligence</div>
-                {metrics.flags.map((f, i) => (
-                  <div key={i} style={{
-                    padding: '.55rem .8rem', borderRadius: 9, fontSize: '.72rem', fontWeight: 600, lineHeight: 1.45,
-                    background: f.level === 'warn' ? 'rgba(245,194,0,.07)' : f.level === 'success' ? 'rgba(40,192,72,.07)' : 'rgba(0,232,176,.05)',
-                    border: `1px solid ${f.level === 'warn' ? 'rgba(245,194,0,.2)' : f.level === 'success' ? 'rgba(40,192,72,.2)' : 'rgba(0,232,176,.2)'}`,
-                    color: f.level === 'warn' ? 'var(--warn)' : f.level === 'success' ? 'var(--success)' : 'var(--primary)',
-                  }}>
-                    {f.emoji} {f.message}
+                {/* ── Metrics grid ── */}
+                <div>
+                  <div style={{ fontSize: '.6rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.5rem' }}>Weekly Metrics</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                    <MetricTile label="Loaded Mi"  value={fmt(result.loadedMiles)} sub={`${metrics.loadedPct.toFixed(0)}% of total`} color="var(--primary)" />
+                    <MetricTile label="Empty Mi"   value={fmt(result.emptyMiles)}  sub={`${metrics.emptyPct.toFixed(0)}% deadhead`} color={metrics.emptyPct > 20 ? 'var(--error)' : metrics.emptyPct > 10 ? 'var(--warn)' : 'var(--muted)'} />
+                    <MetricTile label="Dispatches" value={fmt(result.dispatches ?? result.loads.length)} sub="loads this week" />
                   </div>
-                ))}
-              </div>
-            )}
-
-            {/* ── Lane breakdown ── */}
-            {metrics.laneRows.length > 0 && (
-              <div>
-                <div style={{ fontSize: '.6rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.5rem' }}>
-                  Dispatch Breakdown — {metrics.laneRows.length} run{metrics.laneRows.length > 1 ? 's' : ''}
-                </div>
-                <div style={{ display: 'grid', gap: 5 }}>
-                  {metrics.laneRows.map((row, i) => {
-                    const isExpanded = activeLoad === i
-                    const isTop      = i === 0 && row.cpm > 0
-                    const isBot      = i === metrics.laneRows.length - 1 && metrics.laneRows.length > 1 && row.cpm > 0
-                    return (
-                      <div
-                        key={i}
-                        onClick={() => setActiveLoad(isExpanded ? null : i)}
-                        style={{
-                          padding: '.6rem .8rem', borderRadius: 10,
-                          background: isTop ? 'rgba(40,192,72,.07)' : isBot ? 'rgba(232,64,0,.05)' : 'var(--surface-2)',
-                          border: `1px solid ${isTop ? 'rgba(40,192,72,.2)' : isBot ? 'rgba(232,64,0,.15)' : 'var(--border)'}`,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 800, fontSize: '.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {isTop && <span style={{ fontSize: '.6rem', color: 'var(--success)', marginRight: 4 }}>★</span>}
-                              {isBot && <span style={{ fontSize: '.6rem', color: 'var(--error)',   marginRight: 4 }}>▼</span>}
-                              {row.label}
-                              {row.loadType === 'empty' && <span style={{ fontSize: '.58rem', color: 'var(--warn)', marginLeft: 4, fontWeight: 700 }}>EMPTY</span>}
-                            </div>
-                            <div style={{ fontSize: '.62rem', color: 'var(--muted)', marginTop: 2 }}>
-                              {fmt(row.miles)} mi
-                            </div>
-                          </div>
-                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                            <div style={{ fontWeight: 800, fontSize: '.78rem', color: row.cpm >= 0.55 ? 'var(--success)' : row.cpm >= 0.45 ? 'var(--warn)' : row.cpm > 0 ? 'var(--error)' : 'var(--muted)' }}>
-                              {row.cpm > 0 ? fmtR(row.cpm) + '/mi' : fmtM(row.pay)}
-                            </div>
-                            <div style={{ fontSize: '.62rem', color: 'var(--muted)', marginTop: 1 }}>
-                              {fmtM(row.pay)}
-                            </div>
-                          </div>
-                        </div>
-                        {isExpanded && (
-                          <div style={{ marginTop: '.55rem', paddingTop: '.55rem', borderTop: '1px solid var(--border)', fontSize: '.68rem', color: 'var(--muted)', display: 'grid', gap: 3 }}>
-                            <div>📍 {row.origin} → {row.destination}</div>
-                            {row.loadType === 'empty' && <div style={{ color: 'var(--warn)' }}>⚠️ Positioning move — deadhead</div>}
-                            {row.cpm > 0 && row.cpm < 0.45 && <div style={{ color: 'var(--error)' }}>💸 Below target CPM — consider declining similar short lanes</div>}
-                            {row.cpm >= 0.60 && <div style={{ color: 'var(--success)' }}>✅ Strong lane — repeat if available</div>}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* ── Deductions (owner only) ── */}
-            {!driverMode && result.deductionItems && result.deductionItems.length > 0 && (
-              <div>
-                <div style={{ fontSize: '.6rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.5rem' }}>Deductions</div>
-                <div style={{ display: 'grid', gap: 4 }}>
-                  {result.deductionItems.map((d, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '.4rem .65rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: '.72rem' }}>
-                      <span style={{ color: 'var(--muted)' }}>{d.description}</span>
-                      <span style={{ fontWeight: 700, color: 'var(--warn)' }}>-{fmtM(d.amount)}</span>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 6 }}>
+                    {!driverMode && <MetricTile label="Gross CPM"   value={fmtR(metrics.grossCpm)}           sub="all miles"    color="var(--text)" />}
+                    <MetricTile label="Eff. CPM"    value={fmtR(metrics.effectiveCpm)}        sub="loaded miles" color={metrics.effectiveCpm >= 0.55 ? 'var(--success)' : metrics.effectiveCpm >= 0.45 ? 'var(--warn)' : 'var(--error)'} />
+                    <MetricTile label="Avg / Run"   value={fmtM(metrics.avgDispatchRevenue)}  sub={`${fmt(metrics.avgDispatchMiles, 0)} mi avg`} />
+                    {!driverMode && <MetricTile label="Est. Hourly" value={fmtM(metrics.estHourlyRate)}       sub="incl. idle est." color={metrics.estHourlyRate >= 25 ? 'var(--success)' : metrics.estHourlyRate >= 18 ? 'var(--warn)' : 'var(--error)'} />}
+                  </div>
+                  {!driverMode && (result.perDiem || result.deductions || result.taxableWages) && (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 6 }}>
+                      {result.taxableWages != null && <MetricTile label="Taxable Wages" value={fmtM(result.taxableWages)} />}
+                      {result.perDiem      != null && result.perDiem > 0     && <MetricTile label="Per Diem"   value={fmtM(result.perDiem)}   color="var(--primary)" />}
+                      {result.deductions   != null && result.deductions > 0  && <MetricTile label="Deductions" value={fmtM(result.deductions)} color="var(--warn)" />}
                     </div>
-                  ))}
+                  )}
                 </div>
+
+                {/* ── Intelligence flags ── */}
+                {metrics.flags.length > 0 && (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ fontSize: '.6rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em' }}>🚨 Operational Intelligence</div>
+                    {metrics.flags.map((f, i) => (
+                      <div key={i} style={{
+                        padding: '.55rem .8rem', borderRadius: 9, fontSize: '.72rem', fontWeight: 600, lineHeight: 1.45,
+                        background: f.level === 'warn' ? 'rgba(245,194,0,.07)' : f.level === 'success' ? 'rgba(40,192,72,.07)' : 'rgba(0,232,176,.05)',
+                        border: `1px solid ${f.level === 'warn' ? 'rgba(245,194,0,.2)' : f.level === 'success' ? 'rgba(40,192,72,.2)' : 'rgba(0,232,176,.2)'}`,
+                        color: f.level === 'warn' ? 'var(--warn)' : f.level === 'success' ? 'var(--success)' : 'var(--primary)',
+                      }}>
+                        {f.emoji} {f.message}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* ── Lane breakdown ── */}
+                {metrics.laneRows.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '.6rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.5rem' }}>
+                      Dispatch Breakdown — {metrics.laneRows.length} run{metrics.laneRows.length > 1 ? 's' : ''}
+                    </div>
+                    <div style={{ display: 'grid', gap: 5 }}>
+                      {metrics.laneRows.map((row, i) => {
+                        const isExpanded = activeLoad === i
+                        const isTop      = i === 0 && row.cpm > 0
+                        const isBot      = i === metrics.laneRows.length - 1 && metrics.laneRows.length > 1 && row.cpm > 0
+                        return (
+                          <div
+                            key={i}
+                            onClick={() => setActiveLoad(isExpanded ? null : i)}
+                            style={{
+                              padding: '.6rem .8rem', borderRadius: 10,
+                              background: isTop ? 'rgba(40,192,72,.07)' : isBot ? 'rgba(232,64,0,.05)' : 'var(--surface-2)',
+                              border: `1px solid ${isTop ? 'rgba(40,192,72,.2)' : isBot ? 'rgba(232,64,0,.15)' : 'var(--border)'}`,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 800, fontSize: '.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {isTop && <span style={{ fontSize: '.6rem', color: 'var(--success)', marginRight: 4 }}>★</span>}
+                                  {isBot && <span style={{ fontSize: '.6rem', color: 'var(--error)',   marginRight: 4 }}>▼</span>}
+                                  {row.label}
+                                  {row.loadType === 'empty' && <span style={{ fontSize: '.58rem', color: 'var(--warn)', marginLeft: 4, fontWeight: 700 }}>EMPTY</span>}
+                                </div>
+                                <div style={{ fontSize: '.62rem', color: 'var(--muted)', marginTop: 2 }}>
+                                  {fmt(row.miles)} mi
+                                </div>
+                              </div>
+                              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                <div style={{ fontWeight: 800, fontSize: '.78rem', color: row.cpm >= 0.55 ? 'var(--success)' : row.cpm >= 0.45 ? 'var(--warn)' : row.cpm > 0 ? 'var(--error)' : 'var(--muted)' }}>
+                                  {row.cpm > 0 ? fmtR(row.cpm) + '/mi' : fmtM(row.pay)}
+                                </div>
+                                <div style={{ fontSize: '.62rem', color: 'var(--muted)', marginTop: 1 }}>
+                                  {fmtM(row.pay)}
+                                </div>
+                              </div>
+                            </div>
+                            {isExpanded && (
+                              <div style={{ marginTop: '.55rem', paddingTop: '.55rem', borderTop: '1px solid var(--border)', fontSize: '.68rem', color: 'var(--muted)', display: 'grid', gap: 3 }}>
+                                <div>📍 {row.origin} → {row.destination}</div>
+                                {row.loadType === 'empty' && <div style={{ color: 'var(--warn)' }}>⚠️ Positioning move — deadhead</div>}
+                                {row.cpm > 0 && row.cpm < 0.45 && <div style={{ color: 'var(--error)' }}>💸 Below target CPM — consider declining similar short lanes</div>}
+                                {row.cpm >= 0.60 && <div style={{ color: 'var(--success)' }}>✅ Strong lane — repeat if available</div>}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Deductions (owner only) ── */}
+                {!driverMode && result.deductionItems && result.deductionItems.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '.6rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.5rem' }}>Deductions</div>
+                    <div style={{ display: 'grid', gap: 4 }}>
+                      {result.deductionItems.map((d, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '.4rem .65rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: '.72rem' }}>
+                          <span style={{ color: 'var(--muted)' }}>{d.description}</span>
+                          <span style={{ fontWeight: 700, color: 'var(--warn)' }}>-{fmtM(d.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Notes ── */}
+                {result.notes && (
+                  <div style={{ padding: '.6rem .8rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: '.72rem', color: 'var(--muted)', lineHeight: 1.5, fontStyle: 'italic' }}>
+                    📝 {result.notes}
+                  </div>
+                )}
+
               </div>
             )}
 
-            {/* ── Notes ── */}
-            {result.notes && (
-              <div style={{ padding: '.6rem .8rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: '.72rem', color: 'var(--muted)', lineHeight: 1.5, fontStyle: 'italic' }}>
-                📝 {result.notes}
-              </div>
+            {/* ══ HOURLY TAB ══ */}
+            {resultTab === 'hourly' && (
+              <HourlyPayTab result={result} driverMode={driverMode} />
             )}
 
-            {/* ── Import action ── */}
+            {/* ── Import action (always visible) ── */}
             <div style={{ display: 'grid', gap: 8, paddingTop: 4, borderTop: '1px solid var(--border)' }}>
               {importedMsg ? (
                 <div style={{ padding: '.65rem .9rem', borderRadius: 10, background: 'rgba(40,192,72,.08)', border: '1px solid rgba(40,192,72,.2)', color: 'var(--success)', fontSize: '.78rem', fontWeight: 700, textAlign: 'center' }}>
@@ -643,6 +897,7 @@ export default function SettlementPanel({ open, onClose, driverMode }: Props) {
                 Loads feed into Lane Intelligence · appears in Completed Trips
               </div>
             </div>
+
           </div>
         )}
       </div>
