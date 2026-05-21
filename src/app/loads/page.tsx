@@ -1038,7 +1038,7 @@ ${p.brief ? `<div class="sec">
                   <div style={secHdr}>📋 Settlement Fields</div>
                   <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(180px,1fr))', gap:'1rem' }}>
                     {fi('cpmRate','CPM Rate','number')}
-                    {fi('fuelCost','Fuel Cost $','number')}
+                    {fi('fuelCost','Diesel Cost $','number')}
                     {fi('detentionRate','Detention Rate $/hr','number')}
                     {fi('tonuRate','TONU Rate $','number')}
                     {fi('lumperCost','Lumper Cost $','number')}
@@ -1121,7 +1121,7 @@ ${p.brief ? `<div class="sec">
                         <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(180px,1fr))', gap:8 }}>
                           {([
                             ['Gross Rate',    fmtM(n('grossRate')),           'var(--text)'],
-                            ['Fuel Cost',     fmtM(scoreResult.fuelCost),     'var(--warn)'],
+                            ['Diesel Cost',   fmtM(scoreResult.fuelCost),     'var(--warn)'],
                             ['Net Margin',    fmtM(scoreResult.netMargin),    scoreResult.netMargin >= 0 ? 'var(--success)' : 'var(--error)'],
                             ['Net RPM',       fmtR(scoreResult.netRpm),       scoreResult.marginColor],
                             ['Gross RPM',     fmtR(scoreResult.grossRpm),     'var(--primary)'],

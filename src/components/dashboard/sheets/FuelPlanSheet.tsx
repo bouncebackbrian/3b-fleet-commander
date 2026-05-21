@@ -157,7 +157,7 @@ export default function FuelPlanSheet({ open, onClose, missionFuel, mission, onC
               )}
 
               {missionFuel.priceIsDefault && (
-                <div style={{ fontSize: '.68rem', color: 'var(--muted)', fontStyle: 'italic' }}>* Fuel price is national avg estimate — verify at pump</div>
+                <div style={{ fontSize: '.68rem', color: 'var(--muted)', fontStyle: 'italic' }}>* Diesel price is national avg estimate — verify at pump</div>
               )}
             </>
           ) : (

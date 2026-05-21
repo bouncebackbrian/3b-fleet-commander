@@ -149,7 +149,7 @@ Deadhead Miles:  ${deadheadMiles || 0} mi
 Rig Type:        ${rigType === 'hotshot' ? 'Hotshot Dually' : rigType === 'semi-team' ? 'Class 8 Semi (Team)' : 'Class 8 Semi (Solo)'}
 Driver Mode:     ${driverMode || 'Solo'}
 MPG (loaded):    ${mpg || (rigType === 'hotshot' ? 12.0 : 7.5)}
-Fuel Price:      $${Number(fuelPrice || 3.85).toFixed(2)}/gal
+Diesel Price:    $${Number(fuelPrice || 3.85).toFixed(2)}/gal
 Gross RPM:       $${Number(grossRpm || 0).toFixed(2)}/mi
 Net RPM:         $${Number(netRpm || 0).toFixed(2)}/mi
 Margin Flag:     ${marginFlag || 'Unknown'}

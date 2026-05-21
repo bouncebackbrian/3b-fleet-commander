@@ -130,7 +130,7 @@ function buildHOSPlan(inputs: {
         type: 'fuel', icon: '⛽', color: 'var(--warn)',
         label: '⛽ Fuel Stop', location: fs.label, address: fs.address,
         eta: fmtMinsToTime(clock), dur: '15–20 min', mi: Math.round(miles), hosStr: hosLabel(hos),
-        note: `Fill up. Check oil/coolant. Verify tire pressure. Price: ~$${fuelPrice.toFixed(3)}/gal.`,
+        note: `Fill up. Check oil/coolant. Verify tire pressure. Diesel: ~$${fuelPrice.toFixed(3)}/gal.`,
       })
       clock += 18; onDuty += 18; continue
     }
@@ -478,7 +478,7 @@ export default function TripPlanner() {
               ))}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.75rem' }}>
-              <div><label style={lbl}>Fuel price ($/gal)</label><input style={inp} type="number" step="0.01" value={vForm.fuelPrice} onChange={e => setVForm(p => ({ ...p, fuelPrice: parseFloat(e.target.value) || 3.85 }))} /></div>
+              <div><label style={lbl}>Diesel price ($/gal)</label><input style={inp} type="number" step="0.01" value={vForm.fuelPrice} onChange={e => setVForm(p => ({ ...p, fuelPrice: parseFloat(e.target.value) || 3.85 }))} /></div>
               <div><label style={lbl}>Truck height (ft)</label><input style={inp} type="number" step="0.1" value={vForm.truckHeight} onChange={e => setVForm(p => ({ ...p, truckHeight: parseFloat(e.target.value) || 13.5 }))} /></div>
             </div>
 
@@ -529,7 +529,7 @@ export default function TripPlanner() {
             <span style={{ fontSize: '1.3rem' }}>🚛</span>
             <div style={{ textAlign: 'left', flex: 1 }}>
               <div style={{ fontSize: 'var(--text-xs)', fontWeight: 800 }}>{vehicle ? vehLabel : 'Set up your truck'}</div>
-              <div style={{ fontSize: '.65rem', color: 'var(--muted)' }}>{vehicle ? `${vehicle.trailerType} · ${vehicle.mpgLoaded} mpg · $${vehicle.fuelPrice}/gal` : 'Required for legal checks & fuel calculation'}</div>
+              <div style={{ fontSize: '.65rem', color: 'var(--muted)' }}>{vehicle ? `${vehicle.trailerType} · ${vehicle.mpgLoaded} mpg · $${vehicle.fuelPrice}/gal diesel` : 'Required for legal checks & fuel calculation'}</div>
             </div>
             <span style={{ fontSize: 'var(--text-xs)', color: 'var(--primary)' }}>⚙ Edit</span>
           </button>
@@ -682,7 +682,7 @@ export default function TripPlanner() {
                   ['Total miles', String(plan.total_miles), ''],
                   ['ETA arrival', plan.eta, 'var(--primary)'],
                   ['Est. pay', fmtMoney(plan.est_pay), 'var(--success)'],
-                  ['Fuel cost', fmtMoney(plan.fuel_cost), 'var(--warn)'],
+                  ['Diesel cost', fmtMoney(plan.fuel_cost), 'var(--warn)'],
                   ...(plan.deadhead > 0 ? [['Deadhead cost', fmtMoney(plan.deadheadCost), 'var(--warn)']] as [string, string, string][] : []),
                   ['Net (fuel out)', fmtMoney(plan.net), plan.net > 0 ? 'var(--success)' : 'var(--error)'],
                   ['CPM rate', `$${plan.cpm.toFixed(3)}`, ''],

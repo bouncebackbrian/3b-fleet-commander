@@ -830,7 +830,7 @@ export default function Settings() {
                 )}
               </div>
 
-              {secHead('Fuel price')}
+              {secHead('Diesel price')}
               <div>
                 <label style={lbl}>Diesel price ($/gal)</label>
                 <SettingsInp k="fuelPrice" type="number"  s={s} set={set} />
