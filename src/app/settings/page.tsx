@@ -1,8 +1,52 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { loadSettings, persistSettings, DEFAULT_SETTINGS, type AppSettings } from '@/lib/settings'
 import { createClient } from '@/lib/supabase-browser'
+
+// ── Compliance doc types ───────────────────────────────────────────────────────
+type LicenseScan = {
+  full_name: string | null; address: string | null; city: string | null
+  state: string | null; zip: string | null; dob: string | null
+  cdl_number: string | null; cdl_class: string | null
+  endorsements: string | null; restrictions: string | null
+  issued_state: string | null; expiry: string | null; scannedAt: string
+}
+type RegistrationScan = {
+  vin: string | null; year: string | null; make: string | null; model: string | null
+  plate: string | null; plate_state: string | null; owner_name: string | null
+  owner_address: string | null; expiry: string | null
+  registered_weight: number | null; scannedAt: string
+}
+type InsuranceScan = {
+  policy_number: string | null; insurer: string | null
+  effective: string | null; expiry: string | null
+  named_insured: string | null; vin: string | null
+  coverage_type: string | null; coverage_limit: string | null
+  agent_name: string | null; agent_phone: string | null; scannedAt: string
+}
+type ComplianceDocs = { license?: LicenseScan; registration?: RegistrationScan; insurance?: InsuranceScan }
+
+function daysUntil(iso: string | null | undefined): number | null {
+  if (!iso) return null
+  const diff = new Date(iso).getTime() - Date.now()
+  return Math.floor(diff / 86_400_000)
+}
+function expiryColor(days: number | null): string {
+  if (days === null) return 'var(--muted)'
+  if (days < 0)    return 'var(--error)'
+  if (days < 30)   return 'var(--error)'
+  if (days < 90)   return 'var(--warn)'
+  return 'var(--success)'
+}
+function expiryLabel(days: number | null, iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const date = new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  if (days === null) return date
+  if (days < 0)    return `EXPIRED ${Math.abs(days)}d ago · ${date}`
+  if (days === 0)  return `Expires TODAY · ${date}`
+  return `${days}d · ${date}`
+}
 
 // ── shared styles ──────────────────────────────────────────────────────────────
 const inp: React.CSSProperties = {
@@ -33,13 +77,14 @@ const badge = (text: string, color = 'teal') => (
   </div>
 )
 
-type Tab = 'personal' | 'vehicle' | 'pay' | 'fuel' | 'system'
+type Tab = 'personal' | 'vehicle' | 'pay' | 'fuel' | 'compliance' | 'system'
 const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'personal', label: 'Personal',  icon: '👤' },
-  { id: 'vehicle',  label: 'Vehicle',   icon: '🚛' },
-  { id: 'pay',      label: 'Pay & CPM', icon: '💵' },
-  { id: 'fuel',     label: 'Fuel',      icon: '⛽' },
-  { id: 'system',   label: 'System',    icon: '⚙️' },
+  { id: 'personal',   label: 'Personal',   icon: '👤' },
+  { id: 'vehicle',    label: 'Vehicle',    icon: '🚛' },
+  { id: 'pay',        label: 'Pay & CPM',  icon: '💵' },
+  { id: 'fuel',       label: 'Fuel',       icon: '⛽' },
+  { id: 'compliance', label: 'Compliance', icon: '📋' },
+  { id: 'system',     label: 'System',     icon: '⚙️' },
 ]
 
 type Profile = { full_name: string; role: string; three_b_id: string; three_b_biz_id: string; cdl_number: string; cdl_state: string; phone: string }
@@ -63,11 +108,22 @@ export default function Settings() {
   const [tokenTestMsg,    setTokenTestMsg]    = useState('')
   const [clearTarget,     setClearTarget]     = useState('')
   const [clearConfirm,    setClearConfirm]    = useState(false)
+  // Compliance / scan state
+  const [compliance,      setCompliance]      = useState<ComplianceDocs>({})
+  const [scanMsg,         setScanMsg]         = useState<Record<string, string>>({})
+  const [scanning,        setScanning]        = useState<Record<string, boolean>>({})
+  const licenseInputRef      = useRef<HTMLInputElement>(null)
+  const registrationInputRef = useRef<HTMLInputElement>(null)
+  const insuranceInputRef    = useRef<HTMLInputElement>(null)
   const supabase = createClient()
 
   useEffect(() => {
     setS(loadSettings())
     setSamsaraToken(localStorage.getItem('samsara-api-token') ?? '')
+    try {
+      const raw = localStorage.getItem('3b-compliance-docs')
+      if (raw) setCompliance(JSON.parse(raw))
+    } catch { /* ignore */ }
   }, [])
 
   useEffect(() => {
@@ -99,6 +155,74 @@ export default function Settings() {
   }
 
   // ── save local settings ────────────────────────────────────────────────────
+  // ── License scan ──────────────────────────────────────────────────────────
+  async function handleLicenseScan(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setScanning(p => ({ ...p, license: true })); setScanMsg(p => ({ ...p, license: '' }))
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const res  = await fetch('/api/scan-license', { method: 'POST', body: fd })
+      const data = await res.json() as LicenseScan & { error?: string }
+      if (data.error) { setScanMsg(p => ({ ...p, license: `❌ ${data.error}` })); return }
+      // Auto-populate profile fields
+      setProfile(prev => ({
+        ...prev,
+        full_name:  data.full_name  ?? prev.full_name,
+        cdl_number: data.cdl_number ?? prev.cdl_number,
+        cdl_state:  data.issued_state ?? data.state ?? prev.cdl_state,
+      }))
+      // Save to compliance store
+      const next = { ...compliance, license: data }
+      setCompliance(next)
+      localStorage.setItem('3b-compliance-docs', JSON.stringify(next))
+      setScanMsg(p => ({ ...p, license: `✅ License scanned — ${data.full_name ?? 'name not read'}` }))
+    } catch { setScanMsg(p => ({ ...p, license: '❌ Scan failed — check connection' })) }
+    finally   { setScanning(p => ({ ...p, license: false })); if (licenseInputRef.current) licenseInputRef.current.value = '' }
+  }
+
+  // ── Registration scan ──────────────────────────────────────────────────────
+  async function handleRegistrationScan(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setScanning(p => ({ ...p, registration: true })); setScanMsg(p => ({ ...p, registration: '' }))
+    try {
+      const fd = new FormData(); fd.append('file', file); fd.append('docType', 'registration')
+      const res  = await fetch('/api/scan-compliance', { method: 'POST', body: fd })
+      const data = await res.json() as RegistrationScan & { error?: string }
+      if (data.error) { setScanMsg(p => ({ ...p, registration: `❌ ${data.error}` })); return }
+      // Auto-populate vehicle fields
+      if (data.vin)   setS(prev => ({ ...prev, vin:   data.vin   ?? prev.vin   }))
+      if (data.year)  setS(prev => ({ ...prev, year:  data.year  ?? prev.year  }))
+      if (data.make)  setS(prev => ({ ...prev, make:  data.make  ?? prev.make  }))
+      if (data.model) setS(prev => ({ ...prev, model: data.model ?? prev.model }))
+      setSaved(false)
+      const next = { ...compliance, registration: data }
+      setCompliance(next)
+      localStorage.setItem('3b-compliance-docs', JSON.stringify(next))
+      setScanMsg(p => ({ ...p, registration: `✅ Registration scanned — ${data.year ?? ''} ${data.make ?? ''} ${data.model ?? ''}`.trim() }))
+    } catch { setScanMsg(p => ({ ...p, registration: '❌ Scan failed — check connection' })) }
+    finally   { setScanning(p => ({ ...p, registration: false })); if (registrationInputRef.current) registrationInputRef.current.value = '' }
+  }
+
+  // ── Insurance scan ─────────────────────────────────────────────────────────
+  async function handleInsuranceScan(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setScanning(p => ({ ...p, insurance: true })); setScanMsg(p => ({ ...p, insurance: '' }))
+    try {
+      const fd = new FormData(); fd.append('file', file); fd.append('docType', 'insurance')
+      const res  = await fetch('/api/scan-compliance', { method: 'POST', body: fd })
+      const data = await res.json() as InsuranceScan & { error?: string }
+      if (data.error) { setScanMsg(p => ({ ...p, insurance: `❌ ${data.error}` })); return }
+      const next = { ...compliance, insurance: data }
+      setCompliance(next)
+      localStorage.setItem('3b-compliance-docs', JSON.stringify(next))
+      setScanMsg(p => ({ ...p, insurance: `✅ Insurance scanned — ${data.insurer ?? 'policy saved'}` }))
+    } catch { setScanMsg(p => ({ ...p, insurance: '❌ Scan failed — check connection' })) }
+    finally   { setScanning(p => ({ ...p, insurance: false })); if (insuranceInputRef.current) insuranceInputRef.current.value = '' }
+  }
+
   function handleSave(e: React.FormEvent) {
     e.preventDefault()
     // sync mpg alias so MIS gets the right value
@@ -321,6 +445,25 @@ export default function Settings() {
                   </div>
                 </div>
 
+                {/* ── Scan license ── */}
+                <div style={{ padding: '1rem', borderRadius: 12, background: 'rgba(0,232,176,.04)', border: '1px solid rgba(0,232,176,.15)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '.78rem', color: 'var(--primary)' }}>📷 Scan your CDL</div>
+                    <div style={{ fontSize: '.65rem', color: 'var(--muted)', marginTop: 2 }}>Auto-fills name, CDL number &amp; state from a photo.</div>
+                  </div>
+                  <button type="button"
+                    onClick={() => licenseInputRef.current?.click()}
+                    disabled={scanning.license}
+                    style={{ padding: '.6rem 1.2rem', borderRadius: 9, border: 'none', background: scanning.license ? 'rgba(0,232,176,.12)' : 'var(--primary)', color: scanning.license ? 'var(--primary)' : '#061210', fontWeight: 800, fontSize: '.78rem', cursor: scanning.license ? 'wait' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    {scanning.license ? '⏳ Scanning…' : '📷 Scan License'}
+                  </button>
+                </div>
+                {scanMsg.license && (
+                  <div style={{ fontSize: '.72rem', padding: '.45rem .75rem', borderRadius: 9, background: scanMsg.license.startsWith('✅') ? 'rgba(40,192,72,.07)' : 'rgba(232,64,0,.07)', border: `1px solid ${scanMsg.license.startsWith('✅') ? 'rgba(40,192,72,.2)' : 'rgba(232,64,0,.2)'}`, color: scanMsg.license.startsWith('✅') ? 'var(--success)' : 'var(--error)' }}>
+                    {scanMsg.license}
+                  </div>
+                )}
+
                 {profErr && (
                   <div style={{ padding: '.6rem .85rem', borderRadius: 10, background: 'rgba(232,64,0,.07)', border: '1px solid rgba(232,64,0,.2)', color: 'var(--error)', fontSize: '.78rem' }}>
                     {profErr}
@@ -415,6 +558,25 @@ export default function Settings() {
                   <Inp k="endorsements" ph="H, N, T, X…" />
                 </div>
               </div>
+
+              {/* ── Scan registration ── */}
+              <div style={{ padding: '1rem', borderRadius: 12, background: 'rgba(0,232,176,.04)', border: '1px solid rgba(0,232,176,.15)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '.78rem', color: 'var(--primary)' }}>📷 Scan Registration</div>
+                  <div style={{ fontSize: '.65rem', color: 'var(--muted)', marginTop: 2 }}>Auto-fills VIN, year, make &amp; model from your registration card.</div>
+                </div>
+                <button type="button"
+                  onClick={() => registrationInputRef.current?.click()}
+                  disabled={scanning.registration}
+                  style={{ padding: '.6rem 1.2rem', borderRadius: 9, border: 'none', background: scanning.registration ? 'rgba(0,232,176,.12)' : 'var(--primary)', color: scanning.registration ? 'var(--primary)' : '#061210', fontWeight: 800, fontSize: '.78rem', cursor: scanning.registration ? 'wait' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  {scanning.registration ? '⏳ Scanning…' : '📷 Scan Registration'}
+                </button>
+              </div>
+              {scanMsg.registration && (
+                <div style={{ fontSize: '.72rem', padding: '.45rem .75rem', borderRadius: 9, background: scanMsg.registration.startsWith('✅') ? 'rgba(40,192,72,.07)' : 'rgba(232,64,0,.07)', border: `1px solid ${scanMsg.registration.startsWith('✅') ? 'rgba(40,192,72,.2)' : 'rgba(232,64,0,.2)'}`, color: scanMsg.registration.startsWith('✅') ? 'var(--success)' : 'var(--error)' }}>
+                  {scanMsg.registration}
+                </div>
+              )}
             </div>
 
             <div style={card}>
@@ -596,6 +758,225 @@ export default function Settings() {
           </form>
         )}
 
+        {/* ══ COMPLIANCE TAB ══════════════════════════════════════════════════ */}
+        {tab === 'compliance' && (
+          <div style={{ display: 'grid', gap: '1rem' }}>
+
+            {/* ── CDL / Driver License ── */}
+            <div style={card}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 'var(--text-base)' }}>👤 Driver&apos;s License / CDL</div>
+                  <div style={{ fontSize: '.7rem', color: 'var(--muted)', marginTop: 2 }}>Scanned from your physical CDL — auto-populates identity fields.</div>
+                </div>
+                {compliance.license ? (
+                  <div style={{ padding: '.28rem .65rem', borderRadius: 7, fontSize: '.6rem', fontWeight: 800, letterSpacing: '.05em',
+                    background: `${expiryColor(daysUntil(compliance.license.expiry))}18`,
+                    border: `1px solid ${expiryColor(daysUntil(compliance.license.expiry))}44`,
+                    color: expiryColor(daysUntil(compliance.license.expiry)) }}>
+                    {expiryLabel(daysUntil(compliance.license.expiry), compliance.license.expiry)}
+                  </div>
+                ) : <div style={{ fontSize: '.65rem', color: 'var(--muted)' }}>Not scanned</div>}
+              </div>
+
+              {compliance.license ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.5rem' }}>
+                  {([
+                    ['Name',         compliance.license.full_name],
+                    ['CDL #',        compliance.license.cdl_number],
+                    ['Class',        compliance.license.cdl_class ? `Class ${compliance.license.cdl_class}` : null],
+                    ['State',        compliance.license.issued_state],
+                    ['Endorsements', compliance.license.endorsements],
+                    ['Restrictions', compliance.license.restrictions],
+                    ['DOB',          compliance.license.dob],
+                    ['Expires',      compliance.license.expiry],
+                  ] as [string, string | null][]).filter(([, v]) => v).map(([k, v]) => (
+                    <div key={k} style={{ padding: '.5rem .7rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: '.55rem', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em' }}>{k}</div>
+                      <div style={{ fontWeight: 700, fontSize: '.78rem', marginTop: 2, color: k === 'Expires' ? expiryColor(daysUntil(compliance.license!.expiry)) : 'var(--text)' }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: '.75rem', color: 'var(--muted)', padding: '.8rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', textAlign: 'center' }}>
+                  No license scanned yet. Go to the <strong style={{ color: 'var(--text)' }}>Personal</strong> tab to scan your CDL.
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button type="button"
+                  onClick={() => licenseInputRef.current?.click()}
+                  disabled={scanning.license}
+                  style={{ padding: '.6rem 1.2rem', borderRadius: 9, border: 'none', background: scanning.license ? 'rgba(0,232,176,.12)' : 'var(--primary)', color: scanning.license ? 'var(--primary)' : '#061210', fontWeight: 800, fontSize: '.78rem', cursor: scanning.license ? 'wait' : 'pointer' }}>
+                  {scanning.license ? '⏳ Scanning…' : compliance.license ? '🔄 Rescan License' : '📷 Scan License'}
+                </button>
+                {compliance.license && (
+                  <button type="button"
+                    onClick={() => { const next = { ...compliance }; delete next.license; setCompliance(next); localStorage.setItem('3b-compliance-docs', JSON.stringify(next)) }}
+                    style={{ padding: '.6rem .9rem', borderRadius: 9, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', fontWeight: 600, fontSize: '.75rem', cursor: 'pointer' }}>
+                    Clear
+                  </button>
+                )}
+              </div>
+              {scanMsg.license && (
+                <div style={{ fontSize: '.72rem', padding: '.45rem .75rem', borderRadius: 9, background: scanMsg.license.startsWith('✅') ? 'rgba(40,192,72,.07)' : 'rgba(232,64,0,.07)', border: `1px solid ${scanMsg.license.startsWith('✅') ? 'rgba(40,192,72,.2)' : 'rgba(232,64,0,.2)'}`, color: scanMsg.license.startsWith('✅') ? 'var(--success)' : 'var(--error)' }}>
+                  {scanMsg.license}
+                </div>
+              )}
+            </div>
+
+            {/* ── Vehicle Registration ── */}
+            <div style={card}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 'var(--text-base)' }}>🚛 Vehicle Registration</div>
+                  <div style={{ fontSize: '.7rem', color: 'var(--muted)', marginTop: 2 }}>Scanned from your registration card — auto-fills VIN, year, make &amp; model.</div>
+                </div>
+                {compliance.registration ? (
+                  <div style={{ padding: '.28rem .65rem', borderRadius: 7, fontSize: '.6rem', fontWeight: 800, letterSpacing: '.05em',
+                    background: `${expiryColor(daysUntil(compliance.registration.expiry))}18`,
+                    border: `1px solid ${expiryColor(daysUntil(compliance.registration.expiry))}44`,
+                    color: expiryColor(daysUntil(compliance.registration.expiry)) }}>
+                    {expiryLabel(daysUntil(compliance.registration.expiry), compliance.registration.expiry)}
+                  </div>
+                ) : <div style={{ fontSize: '.65rem', color: 'var(--muted)' }}>Not scanned</div>}
+              </div>
+
+              {compliance.registration ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.5rem' }}>
+                  {([
+                    ['Year',       compliance.registration.year],
+                    ['Make',       compliance.registration.make],
+                    ['Model',      compliance.registration.model],
+                    ['VIN',        compliance.registration.vin],
+                    ['Plate',      compliance.registration.plate ? `${compliance.registration.plate}${compliance.registration.plate_state ? ' · ' + compliance.registration.plate_state : ''}` : null],
+                    ['Reg. Weight', compliance.registration.registered_weight ? `${compliance.registration.registered_weight.toLocaleString()} lbs` : null],
+                    ['Owner',      compliance.registration.owner_name],
+                    ['Expires',    compliance.registration.expiry],
+                  ] as [string, string | null][]).filter(([, v]) => v).map(([k, v]) => (
+                    <div key={k} style={{ padding: '.5rem .7rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: '.55rem', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em' }}>{k}</div>
+                      <div style={{ fontWeight: 700, fontSize: '.78rem', marginTop: 2, color: k === 'Expires' ? expiryColor(daysUntil(compliance.registration!.expiry)) : 'var(--text)' }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: '.75rem', color: 'var(--muted)', padding: '.8rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', textAlign: 'center' }}>
+                  No registration scanned yet. Go to the <strong style={{ color: 'var(--text)' }}>Vehicle</strong> tab to scan your registration card.
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button type="button"
+                  onClick={() => registrationInputRef.current?.click()}
+                  disabled={scanning.registration}
+                  style={{ padding: '.6rem 1.2rem', borderRadius: 9, border: 'none', background: scanning.registration ? 'rgba(0,232,176,.12)' : 'var(--primary)', color: scanning.registration ? 'var(--primary)' : '#061210', fontWeight: 800, fontSize: '.78rem', cursor: scanning.registration ? 'wait' : 'pointer' }}>
+                  {scanning.registration ? '⏳ Scanning…' : compliance.registration ? '🔄 Rescan Registration' : '📷 Scan Registration'}
+                </button>
+                {compliance.registration && (
+                  <button type="button"
+                    onClick={() => { const next = { ...compliance }; delete next.registration; setCompliance(next); localStorage.setItem('3b-compliance-docs', JSON.stringify(next)) }}
+                    style={{ padding: '.6rem .9rem', borderRadius: 9, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', fontWeight: 600, fontSize: '.75rem', cursor: 'pointer' }}>
+                    Clear
+                  </button>
+                )}
+              </div>
+              {scanMsg.registration && (
+                <div style={{ fontSize: '.72rem', padding: '.45rem .75rem', borderRadius: 9, background: scanMsg.registration.startsWith('✅') ? 'rgba(40,192,72,.07)' : 'rgba(232,64,0,.07)', border: `1px solid ${scanMsg.registration.startsWith('✅') ? 'rgba(40,192,72,.2)' : 'rgba(232,64,0,.2)'}`, color: scanMsg.registration.startsWith('✅') ? 'var(--success)' : 'var(--error)' }}>
+                  {scanMsg.registration}
+                </div>
+              )}
+            </div>
+
+            {/* ── Insurance ── */}
+            <div style={card}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 'var(--text-base)' }}>🛡 Insurance</div>
+                  <div style={{ fontSize: '.7rem', color: 'var(--muted)', marginTop: 2 }}>Scanned from your insurance card or declaration page.</div>
+                </div>
+                {compliance.insurance ? (
+                  <div style={{ padding: '.28rem .65rem', borderRadius: 7, fontSize: '.6rem', fontWeight: 800, letterSpacing: '.05em',
+                    background: `${expiryColor(daysUntil(compliance.insurance.expiry))}18`,
+                    border: `1px solid ${expiryColor(daysUntil(compliance.insurance.expiry))}44`,
+                    color: expiryColor(daysUntil(compliance.insurance.expiry)) }}>
+                    {expiryLabel(daysUntil(compliance.insurance.expiry), compliance.insurance.expiry)}
+                  </div>
+                ) : <div style={{ fontSize: '.65rem', color: 'var(--muted)' }}>Not scanned</div>}
+              </div>
+
+              {compliance.insurance ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.5rem' }}>
+                  {([
+                    ['Insurer',       compliance.insurance.insurer],
+                    ['Policy #',      compliance.insurance.policy_number],
+                    ['Coverage',      compliance.insurance.coverage_type],
+                    ['Limit',         compliance.insurance.coverage_limit],
+                    ['Named Insured', compliance.insurance.named_insured],
+                    ['Effective',     compliance.insurance.effective],
+                    ['Expires',       compliance.insurance.expiry],
+                    ['Agent',         compliance.insurance.agent_name],
+                    ['Agent Phone',   compliance.insurance.agent_phone],
+                  ] as [string, string | null][]).filter(([, v]) => v).map(([k, v]) => (
+                    <div key={k} style={{ padding: '.5rem .7rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: '.55rem', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em' }}>{k}</div>
+                      <div style={{ fontWeight: 700, fontSize: '.78rem', marginTop: 2, color: k === 'Expires' ? expiryColor(daysUntil(compliance.insurance!.expiry)) : 'var(--text)' }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: '.75rem', color: 'var(--muted)', padding: '.8rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', textAlign: 'center' }}>
+                  No insurance scanned yet. Tap the button below to scan your insurance card.
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button type="button"
+                  onClick={() => insuranceInputRef.current?.click()}
+                  disabled={scanning.insurance}
+                  style={{ padding: '.6rem 1.2rem', borderRadius: 9, border: 'none', background: scanning.insurance ? 'rgba(0,232,176,.12)' : 'var(--primary)', color: scanning.insurance ? 'var(--primary)' : '#061210', fontWeight: 800, fontSize: '.78rem', cursor: scanning.insurance ? 'wait' : 'pointer' }}>
+                  {scanning.insurance ? '⏳ Scanning…' : compliance.insurance ? '🔄 Rescan Insurance' : '📷 Scan Insurance Card'}
+                </button>
+                {compliance.insurance && (
+                  <button type="button"
+                    onClick={() => { const next = { ...compliance }; delete next.insurance; setCompliance(next); localStorage.setItem('3b-compliance-docs', JSON.stringify(next)) }}
+                    style={{ padding: '.6rem .9rem', borderRadius: 9, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', fontWeight: 600, fontSize: '.75rem', cursor: 'pointer' }}>
+                    Clear
+                  </button>
+                )}
+              </div>
+              {scanMsg.insurance && (
+                <div style={{ fontSize: '.72rem', padding: '.45rem .75rem', borderRadius: 9, background: scanMsg.insurance.startsWith('✅') ? 'rgba(40,192,72,.07)' : 'rgba(232,64,0,.07)', border: `1px solid ${scanMsg.insurance.startsWith('✅') ? 'rgba(40,192,72,.2)' : 'rgba(232,64,0,.2)'}`, color: scanMsg.insurance.startsWith('✅') ? 'var(--success)' : 'var(--error)' }}>
+                  {scanMsg.insurance}
+                </div>
+              )}
+            </div>
+
+            {/* ── Compliance overview banner ── */}
+            {(compliance.license || compliance.registration || compliance.insurance) && (
+              <div style={{ padding: '1rem 1.2rem', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--border)', display: 'grid', gap: '.65rem' }}>
+                {secHead('Expiry Summary')}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '.4rem' }}>
+                  {[
+                    ['CDL',          compliance.license?.expiry],
+                    ['Registration', compliance.registration?.expiry],
+                    ['Insurance',    compliance.insurance?.expiry],
+                  ].map(([label, expiry]) => {
+                    const days = daysUntil(expiry as string | undefined)
+                    const color = expiryColor(days)
+                    return (
+                      <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '.75rem', padding: '.4rem .6rem', borderRadius: 8, background: expiry ? `${color}0a` : 'transparent', border: `1px solid ${expiry ? `${color}22` : 'var(--border)'}` }}>
+                        <span style={{ fontWeight: 700, color: 'var(--text)' }}>{label as string}</span>
+                        <span style={{ fontWeight: 800, color: expiry ? color : 'var(--muted)' }}>{expiry ? expiryLabel(days, expiry as string) : '—'}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ══ SYSTEM TAB ══════════════════════════════════════════════════════ */}
         {tab === 'system' && (
           <div style={{ display: 'grid', gap: '1rem' }}>
@@ -734,6 +1115,11 @@ export default function Settings() {
         )}
 
       </main>
+
+      {/* ── Hidden file inputs for camera/gallery scans ── */}
+      <input ref={licenseInputRef}      type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleLicenseScan}      />
+      <input ref={registrationInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleRegistrationScan} />
+      <input ref={insuranceInputRef}    type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleInsuranceScan}    />
     </>
   )
 }
