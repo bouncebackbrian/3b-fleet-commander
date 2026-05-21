@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { scoreLoad, getMpgDefault, fuelIntel } from '@/lib/scoreLoad'
 import type { LoadMission, SyncState, MissionStop } from '@/lib/dashboard/types'
 import { parseMission, parseFleetMission, missionToRow } from '@/lib/dashboard/helpers'
+import { getAuthUserId } from '@/lib/profile'
 import { opLog } from '@/lib/logger'
 import { validateMission, isScoreResultSafe, isFuelResultSafe } from '@/lib/guards'
 
@@ -122,9 +123,10 @@ export function useMission() {
         return
       }
 
-      // 3. Supabase
+      // 3. Supabase — attach 3B identity when signed in (nullable fallback for alpha mode)
       setSyncState('saving')
-      const row = missionToRow(m)
+      const userId = await getAuthUserId()
+      const row = missionToRow(m, { userId })
       const { error } = await supabase
         .from('fleet_missions')
         .upsert(row, { onConflict: 'id' })

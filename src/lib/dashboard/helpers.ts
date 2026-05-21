@@ -100,8 +100,15 @@ export function parseFleetMission(row: any): LoadMission {
   }
 }
 
+// ── Identity context for Supabase rows ───────────────────────────────────────
+export type RowIdentity = {
+  userId?:     string | null
+  businessId?: string | null
+}
+
 // ── Serialize a LoadMission for insert into fleet_missions ────────────────────
-export function missionToRow(m: LoadMission): Record<string, unknown> {
+// identity is optional — null/undefined when running in unauthenticated alpha mode.
+export function missionToRow(m: LoadMission, identity?: RowIdentity): Record<string, unknown> {
   return {
     id:                    m.id,
     load_number:           m.loadNumber || '',
@@ -123,6 +130,9 @@ export function missionToRow(m: LoadMission): Record<string, unknown> {
     delivery:              m.delivery  ?? null,
     commodity:             m.commodity ?? null,
     status:                'active',
+    // Attach 3B identity when logged in; null when in alpha/offline mode
+    user_id:               identity?.userId     ?? null,
+    business_id:           identity?.businessId ?? null,
     // routePreference, routeNotes, stops stored in metadata jsonb — no column migration needed
     metadata: {
       routePreference: m.routePreference ?? 'main_corridors',
