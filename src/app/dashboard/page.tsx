@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import TopBar from '@/components/layout/TopBar'
 
@@ -188,6 +188,90 @@ export default function Dashboard() {
     updateStop(stopId, { completed: true, completedAt: new Date().toISOString() })
   const handleUndoStop = (stopId: string) =>
     updateStop(stopId, { completed: false, completedAt: undefined })
+
+  // ── Quick Arrive / Leave handlers (Phase 4K) ─────────────────────────────────
+  const [quickSubmitting, setQuickSubmitting] = useState(false)
+
+  // Derive current active stop in one place — same logic as ActiveMissionCard
+  const currentActiveStop = useMemo(() => {
+    if (!mission?.stops) return null
+    return [...mission.stops].sort((a, b) => a.sequence - b.sequence).find(s => !s.completed) ?? null
+  }, [mission?.stops])
+
+  // Format dwell time for toast
+  const fmtDwell = (minutes: number): string => {
+    if (minutes < 1) return '< 1m'
+    if (minutes < 60) return `${minutes}m`
+    const h = Math.floor(minutes / 60)
+    const m = minutes % 60
+    return m > 0 ? `${h}h ${m}m` : `${h}h`
+  }
+
+  const handleQuickArrive = useCallback(async () => {
+    if (!currentActiveStop) return
+    setQuickSubmitting(true)
+    try {
+      await advanceLifecycle(currentActiveStop, 'arrived')
+      opLog.event('quick_arrived', {
+        stopId:       currentActiveStop.id,
+        stopSequence: currentActiveStop.sequence,
+        dwellMinutes: 0,
+        detentionMinutes: 0,
+      })
+      toast.success(`📍 Arrived at ${currentActiveStop.name || `Stop ${currentActiveStop.sequence}`}`)
+    } finally {
+      setQuickSubmitting(false)
+    }
+  }, [currentActiveStop, advanceLifecycle])
+
+  const handleQuickLeave = useCallback(async (forceArriveNow: boolean) => {
+    if (!currentActiveStop) return
+    setQuickSubmitting(true)
+    try {
+      // If no arrival recorded and user confirmed, log an arrived event first
+      // (stop state may not have updated yet — advanceLifecycle('departed') reads
+      //  lifecycleTimestamps.arrived from the stop object we pass, so compute arrivedAt here)
+      let arrivedAt = currentActiveStop.lifecycleTimestamps?.arrived ?? null
+      if (!arrivedAt && forceArriveNow) {
+        arrivedAt = new Date().toISOString()
+        // Manually set arrived first so the departed call can compute detention
+        await advanceLifecycle(
+          { ...currentActiveStop, lifecycleTimestamps: { ...currentActiveStop.lifecycleTimestamps, arrived: arrivedAt } },
+          'arrived',
+        )
+      }
+
+      const departedAt    = new Date().toISOString()
+      const dwellMs       = arrivedAt ? Math.max(0, new Date(departedAt).getTime() - new Date(arrivedAt).getTime()) : 0
+      const dwellMinutes  = Math.round(dwellMs / 60000)
+      const detMins       = Math.max(0, dwellMinutes - 120)
+      const detAmount     = parseFloat(((detMins / 60) * 50).toFixed(2))
+
+      // Pass the stop with arrivedAt already in it so advanceLifecycle computes detention correctly
+      const stopForDepart = arrivedAt
+        ? { ...currentActiveStop, lifecycleTimestamps: { ...(currentActiveStop.lifecycleTimestamps ?? {}), arrived: arrivedAt } }
+        : currentActiveStop
+
+      await advanceLifecycle(stopForDepart, 'departed')
+
+      opLog.event('quick_departed', {
+        stopId:          currentActiveStop.id,
+        stopSequence:    currentActiveStop.sequence,
+        dwellMinutes,
+        detentionMinutes: detMins,
+      })
+
+      const detStr = detMins > 0
+        ? driverMode
+          ? ` · ⏱ ${detMins}m detention`
+          : ` · ⏱ $${detAmount.toFixed(2)} detention`
+        : ''
+
+      toast.success(`🚛 Departed Stop ${currentActiveStop.sequence} · ${fmtDwell(dwellMinutes)}${detStr}`)
+    } finally {
+      setQuickSubmitting(false)
+    }
+  }, [currentActiveStop, advanceLifecycle, driverMode])
 
   // ── Online/offline transition toasts ────────────────────────────────────────
   const prevOnline = useRef<boolean>(true)
@@ -494,6 +578,9 @@ export default function Dashboard() {
               onAddStop={mission ? () => setShowAddStop(true) : undefined}
               onTapStop={mission ? (stop) => setSelectedStop(stop) : undefined}
               onTapLane={mission ? () => setShowLanePanel(true) : undefined}
+              onQuickArrive={mission && currentActiveStop ? handleQuickArrive : undefined}
+              onQuickLeave={mission && currentActiveStop ? handleQuickLeave : undefined}
+              quickSubmitting={quickSubmitting}
               onCompleteTrip={mission ? () => setShowTripReview(true) : undefined}
               onShowCompleted={() => setShowCompletedTrips(true)}
             />

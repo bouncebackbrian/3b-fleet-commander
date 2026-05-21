@@ -6,6 +6,7 @@ import type { LaneMetrics } from '@/hooks/useLaneIntelligence'
 import { ROUTE_RISK_META, ROUTE_PREF_META } from '@/lib/dashboard/routePreference'
 import StopTimeline from './StopTimeline'
 import LaneSummaryCard from './LaneSummaryCard'
+import QuickStopTimer  from './QuickStopTimer'
 
 interface Props {
   mission:        LoadMission | null
@@ -23,9 +24,12 @@ interface Props {
   onUndoStop?:      (stopId: string) => void
   onAddStop?:       () => void
   onTapStop?:       (stop: MissionStop) => void
-  onTapLane?:       () => void
-  onCompleteTrip?:  () => void
-  onShowCompleted?: () => void
+  onTapLane?:         () => void
+  onQuickArrive?:     () => Promise<void>
+  onQuickLeave?:      (forceArriveNow: boolean) => Promise<void>
+  quickSubmitting?:   boolean
+  onCompleteTrip?:    () => void
+  onShowCompleted?:   () => void
 }
 
 function SyncBadge({ state }: { state: SyncState }) {
@@ -49,7 +53,7 @@ function SyncBadge({ state }: { state: SyncState }) {
   )
 }
 
-export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', routeRisk, driverMode = false, laneSummary, laneLoading, onLogEvent, onShowHistory, onCompleteStop, onUndoStop, onAddStop, onTapStop, onTapLane, onCompleteTrip, onShowCompleted }: Props) {
+export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', routeRisk, driverMode = false, laneSummary, laneLoading, onLogEvent, onShowHistory, onCompleteStop, onUndoStop, onAddStop, onTapStop, onTapLane, onQuickArrive, onQuickLeave, quickSubmitting, onCompleteTrip, onShowCompleted }: Props) {
   const stops = mission?.stops ?? []
   const sortedStops = [...stops].sort((a, b) => a.sequence - b.sequence)
   const currentStop = sortedStops.find(s => !s.completed) ?? null
@@ -135,6 +139,18 @@ export default function ActiveMissionCard({ mission, missionScore, missionFuel, 
                 {routeRisk.disclaimer}
               </span>
             </div>
+          )}
+
+          {/* ── Quick Arrive / Leave timer ── */}
+          {onQuickArrive && onQuickLeave && currentStop && (
+            <QuickStopTimer
+              currentStop={currentStop}
+              totalStops={sortedStops.length}
+              driverMode={driverMode}
+              submitting={quickSubmitting}
+              onArrive={onQuickArrive}
+              onLeave={onQuickLeave}
+            />
           )}
 
           {/* ── Lane Intelligence summary strip ── */}
