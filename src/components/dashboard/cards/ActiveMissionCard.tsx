@@ -12,6 +12,7 @@ interface Props {
   insights?:      string[]
   syncState?:     SyncState
   routeRisk?:     RouteRisk | null
+  driverMode?:    boolean
   onLogEvent?:    () => void
   onShowHistory?: () => void
   onCompleteStop?: (stopId: string) => void
@@ -39,7 +40,7 @@ function SyncBadge({ state }: { state: SyncState }) {
   )
 }
 
-export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', routeRisk, onLogEvent, onShowHistory, onCompleteStop, onUndoStop }: Props) {
+export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', routeRisk, driverMode = false, onLogEvent, onShowHistory, onCompleteStop, onUndoStop }: Props) {
   const stops = mission?.stops ?? []
   const sortedStops = [...stops].sort((a, b) => a.sequence - b.sequence)
   const currentStop = sortedStops.find(s => !s.completed) ?? null
@@ -155,8 +156,8 @@ export default function ActiveMissionCard({ mission, missionScore, missionFuel, 
             <span>📍 {mission.dispatchMiles} mi{mission.deadheadMiles > 0 ? ` + ${mission.deadheadMiles} DH` : ''}</span>
           </div>
 
-          {/* Score / financials */}
-          {missionScore ? (
+          {/* Score / financials — owner-operator only */}
+          {!driverMode && (missionScore ? (
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', padding: '.7rem .9rem', background: 'var(--surface-2)', borderRadius: 12, border: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
                 <div style={{ fontWeight: 900, fontSize: '2rem', lineHeight: 1, color: missionScore.verdictColor, fontVariantNumeric: 'tabular-nums' }}>
@@ -192,17 +193,15 @@ export default function ActiveMissionCard({ mission, missionScore, missionFuel, 
             </div>
           ) : (
             <Link href="/loads" style={{ fontSize: '.85rem', color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}>Add rate + miles to score →</Link>
-          )}
+          ))}
 
-          {/* Fuel strip */}
+          {/* Fuel strip — gallons + range shown to everyone; cost only to owner-operator */}
           {missionFuel && missionFuel.totalMiles > 0 && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '.5rem .75rem', background: 'rgba(0,232,176,.04)', border: '1px solid rgba(0,232,176,.15)', borderRadius: 10, fontSize: '.8rem', color: 'var(--muted)' }}>
               <span style={{ fontWeight: 800, color: 'var(--primary)', flexShrink: 0 }}>⛽ Fuel</span>
               <span>~{missionFuel.gallonsNeeded} gal</span>
-              <span>·</span>
-              <span>${Math.round(missionFuel.fuelCostTotal)} est.</span>
-              <span>·</span>
-              <span>${missionFuel.priceUsed.toFixed(2)}/gal{missionFuel.priceIsDefault && <span style={{ color: 'var(--warn)' }}> (est.)</span>}</span>
+              {!driverMode && <><span>·</span><span>${Math.round(missionFuel.fuelCostTotal)} est.</span></>}
+              {!driverMode && <><span>·</span><span>${missionFuel.priceUsed.toFixed(2)}/gal{missionFuel.priceIsDefault && <span style={{ color: 'var(--warn)' }}> (est.)</span>}</span></>}
               {missionFuel.stops.length > 0 && missionFuel.stops[0].corridor !== 'N/A' && (
                 <><span>·</span><span style={{ color: 'var(--primary)', fontWeight: 700 }}>{missionFuel.stops[0].name}</span></>
               )}
@@ -212,8 +211,8 @@ export default function ActiveMissionCard({ mission, missionScore, missionFuel, 
             </div>
           )}
 
-          {/* Risk flags */}
-          {missionScore && (missionScore.highDeadhead || missionScore.counterOffer) && (
+          {/* Risk flags — financial, owner-operator only */}
+          {!driverMode && missionScore && (missionScore.highDeadhead || missionScore.counterOffer) && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {missionScore.highDeadhead && (
                 <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--warn)', padding: '.25rem .65rem', borderRadius: 6, background: 'rgba(245,194,0,.08)', border: '1px solid rgba(245,194,0,.2)' }}>

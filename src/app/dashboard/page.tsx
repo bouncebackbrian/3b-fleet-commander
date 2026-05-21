@@ -66,10 +66,15 @@ export default function Dashboard() {
     return () => clearInterval(id)
   }, [])
 
-  // ── LocalStorage: vehicle + active trip
+  // ── LocalStorage: settings + vehicle + active trip
+  const [driverMode, setDriverMode] = useState(false)
   const [vehicle,    setVehicle]    = useState<VehicleSetup | null>(null)
   const [activeTrip, setActiveTrip] = useState<ActiveTrip | null>(null)
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem('3b-fleet-settings')
+      if (raw) { const parsed = JSON.parse(raw); setDriverMode(!!parsed.driverMode) }
+    } catch { /* ignore */ }
     try { const v = localStorage.getItem('3b-vehicle');     if (v) setVehicle(JSON.parse(v)) }    catch { /* ignore */ }
     try { const t = localStorage.getItem('3b-active-trip'); if (t) setActiveTrip(JSON.parse(t)) } catch { /* ignore */ }
   }, [])
@@ -238,7 +243,7 @@ export default function Dashboard() {
       if (hr) high.push(`⛽ ${hr.message}`)
       else if (mr) low.push(`⛽ ${mr.message}`)
     }
-    if (missionScore?.marginFlag === 'REJECT') high.push(`💰 Load margin REJECT — below minimum RPM threshold`)
+    if (!driverMode && missionScore?.marginFlag === 'REJECT') high.push(`💰 Load margin REJECT — below minimum RPM threshold`)
     return { high, low }
   }, [hosDisplay, wx, weather, missionFuel, missionScore])
 
@@ -409,6 +414,7 @@ export default function Dashboard() {
               insights={opInsights}
               syncState={syncState}
               routeRisk={routeRisk}
+              driverMode={driverMode}
               onLogEvent={mission ? () => setShowLogEvent(true) : undefined}
               onShowHistory={mission ? () => setShowHistoryPanel(true) : undefined}
               onCompleteStop={handleCompleteStop}
@@ -442,19 +448,21 @@ export default function Dashboard() {
               onClearHos={() => { localStorage.removeItem('3b-hos-data'); setHos(null); setSamsara(null) }}
             />
             <FuelWeatherRow missionFuel={missionFuel} weather={weather} wx={wx} weatherLoading={weatherLoading} lastUpdated={weatherUpdated} onRefresh={refreshWeather} />
-            <ExpensesCard />
+            {!driverMode && <ExpensesCard />}
 
-            {/* MIS footer */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '.5rem .75rem', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, flexWrap: 'wrap', gap: 6 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--primary)', boxShadow: '0 0 5px var(--primary)' }} />
-                <span style={{ fontSize: '.65rem', fontWeight: 700, color: 'var(--primary)', letterSpacing: '.07em' }}>MIS ACTIVE</span>
+            {/* MIS footer — owner-operator only */}
+            {!driverMode && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '.5rem .75rem', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, flexWrap: 'wrap', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--primary)', boxShadow: '0 0 5px var(--primary)' }} />
+                  <span style={{ fontSize: '.65rem', fontWeight: 700, color: 'var(--primary)', letterSpacing: '.07em' }}>MIS ACTIVE</span>
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <Link href="/mis"   style={{ fontSize: '.65rem', color: 'var(--muted)', textDecoration: 'none', fontWeight: 600 }}>📊 MIS →</Link>
+                  <Link href="/audit" style={{ fontSize: '.65rem', color: 'var(--muted)', textDecoration: 'none', fontWeight: 600 }}>📋 Audit →</Link>
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <Link href="/mis"   style={{ fontSize: '.65rem', color: 'var(--muted)', textDecoration: 'none', fontWeight: 600 }}>📊 MIS →</Link>
-                <Link href="/audit" style={{ fontSize: '.65rem', color: 'var(--muted)', textDecoration: 'none', fontWeight: 600 }}>📋 Audit →</Link>
-              </div>
-            </div>
+            )}
           </div>
 
         </div>

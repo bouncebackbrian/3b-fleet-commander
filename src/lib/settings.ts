@@ -1,4 +1,6 @@
 export type AppSettings = {
+  // ── Mode ──────────────────────────────────────────
+  driverMode:   boolean   // hides financial fields — for company drivers or clean view
   // ── Personal ──────────────────────────────────────
   driverName:   string
   dispatcher:   string
@@ -38,6 +40,7 @@ export type AppSettings = {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
+  driverMode:   false,
   driverName:   '',
   dispatcher:   'Trev',
   truckNum:          '',

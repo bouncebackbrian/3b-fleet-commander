@@ -446,7 +446,7 @@ export default function Settings() {
 
         {/* ── Tab bar ─────────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', gap: '.4rem', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '.35rem' }}>
-          {TABS.map(t => (
+          {TABS.filter(t => !(s.driverMode && t.id === 'pay')).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               flex: 1, padding: '.55rem .5rem', borderRadius: 10, border: 'none', cursor: 'pointer',
               fontWeight: 700, fontSize: 'clamp(.65rem,2vw,.8rem)',
@@ -464,6 +464,42 @@ export default function Settings() {
         {/* ══ PERSONAL TAB ════════════════════════════════════════════════════ */}
         {tab === 'personal' && (
           <>
+            {/* ── Driver Mode toggle ── */}
+            <div style={{ ...card, padding: '1.2rem 1.6rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 'var(--text-base)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>🚛 Driver Mode</span>
+                    {s.driverMode && <span style={{ fontSize: '.6rem', fontWeight: 800, padding: '.18rem .55rem', borderRadius: 6, background: 'rgba(0,232,176,.1)', border: '1px solid rgba(0,232,176,.25)', color: 'var(--primary)', letterSpacing: '.06em' }}>ON</span>}
+                  </div>
+                  <div style={{ fontSize: '.7rem', color: 'var(--muted)', marginTop: 3, lineHeight: 1.5 }}>
+                    {s.driverMode
+                      ? 'Execution view — rates, margins, and financial analysis are hidden. Compliance, HOS, stops, and route are always visible.'
+                      : 'Owner-operator view — all financial analysis, CPM settings, and margin data are visible.'}
+                  </div>
+                </div>
+                <button type="button"
+                  onClick={() => {
+                    const next = { ...s, driverMode: !s.driverMode }
+                    setS(next)
+                    persistSettings({ ...next, mpg: next.mpgLoaded })
+                    setSaved(false)
+                  }}
+                  style={{
+                    flexShrink: 0, width: 52, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer',
+                    background: s.driverMode ? 'var(--primary)' : 'var(--surface-2)',
+                    boxShadow: s.driverMode ? '0 0 8px rgba(0,232,176,.4)' : 'inset 0 1px 3px rgba(0,0,0,.3)',
+                    position: 'relative', transition: 'background 200ms',
+                  }}>
+                  <span style={{
+                    position: 'absolute', top: 3, width: 22, height: 22, borderRadius: '50%', background: '#fff',
+                    boxShadow: '0 1px 4px rgba(0,0,0,.3)', transition: 'left 200ms',
+                    left: s.driverMode ? 27 : 3,
+                  }} />
+                </button>
+              </div>
+            </div>
+
             {/* Supabase identity */}
             <form onSubmit={handleProfileSave}>
               <div style={{ ...card }}>
