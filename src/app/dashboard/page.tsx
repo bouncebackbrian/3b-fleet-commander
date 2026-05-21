@@ -18,6 +18,7 @@ import { useBreakTimer }         from '@/hooks/useBreakTimer'
 import { useMission }            from '@/hooks/useMission'
 import { useOperationalMemory }  from '@/hooks/useOperationalMemory'
 import { useOnlineStatus }       from '@/hooks/useOnlineStatus'
+import { useMovementDetector }   from '@/hooks/useMovementDetector'
 
 // ── Overlays
 import EmergencySheet    from '@/components/dashboard/overlays/EmergencySheet'
@@ -44,6 +45,7 @@ import HosCard           from '@/components/dashboard/cards/HosCard'
 import FuelWeatherRow    from '@/components/dashboard/cards/FuelWeatherRow'
 import ExpensesCard      from '@/components/dashboard/cards/ExpensesCard'
 import QuickNavCard      from '@/components/dashboard/cards/QuickNavCard'
+import MovementAlert     from '@/components/dashboard/cards/MovementAlert'
 
 // ── Actions
 import StatusBar from '@/components/dashboard/actions/StatusBar'
@@ -192,6 +194,9 @@ export default function Dashboard() {
   const [showLogEvent,      setShowLogEvent]      = useState(false)
   const [showHistoryPanel,  setShowHistoryPanel]  = useState(false)
 
+  // ── Movement detector — only active when driving mode is on
+  const movement = useMovementDetector(drivingMode)
+
   // ── Derived HOS display
   const hosDisplay = (() => {
     if (eldMode === 'samsara' && samsara?.hos) {
@@ -249,6 +254,15 @@ export default function Dashboard() {
 
   return (
     <>
+      {/* ── Movement alert — fires when driving mode + GPS detects motion ── */}
+      {movement.showAlert && (
+        <MovementAlert
+          speedMph={movement.speedMph}
+          hosStatus={statusLabel}
+          onDismiss={movement.acknowledge}
+        />
+      )}
+
       {/* ── Global observability layer ── */}
       <OfflineBanner isOnline={isOnline} />
       <ToastContainer />
