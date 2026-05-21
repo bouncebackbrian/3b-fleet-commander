@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { scoreLoad, getMpgDefault, fuelIntel } from '@/lib/scoreLoad'
-import type { LoadMission, SyncState, MissionStop } from '@/lib/dashboard/types'
+import type { LoadMission, SyncState, MissionStop, TripReview } from '@/lib/dashboard/types'
 import { parseMission, parseFleetMission, missionToRow, insertStop } from '@/lib/dashboard/helpers'
 import { getFleetIdentity } from '@/lib/identity'
 import { opLog } from '@/lib/logger'
@@ -221,6 +221,73 @@ export function useMission() {
     await saveMission(updated)
   }
 
+  // ── Complete the active mission + persist trip review ───────────────────────
+  // Flow:
+  //   1. Append minimal record to 3b-completed-missions (localStorage archive, max 50)
+  //   2. Remove 3b-latest-load — dashboard clears immediately
+  //   3. Null out mission state — ActiveMissionCard goes idle
+  //   4. Upsert to fleet_missions with status='completed' + tripReview in metadata
+  const completeMission = async (review: TripReview): Promise<void> => {
+    if (!mission) return
+
+    const completed: LoadMission = {
+      ...mission,
+      status:     'completed',
+      tripReview: review,
+    }
+
+    // 1. Local completed archive — fast, offline-safe
+    try {
+      const raw     = localStorage.getItem('3b-completed-missions')
+      const archive: unknown[] = raw ? JSON.parse(raw) : []
+      archive.unshift({
+        id:          completed.id,
+        loadNumber:  completed.loadNumber,
+        origin:      completed.origin,
+        destination: completed.destination,
+        date:        completed.date,
+        tripReview:  review,
+        completedAt: review.reviewedAt,
+      })
+      localStorage.setItem('3b-completed-missions', JSON.stringify(archive.slice(0, 50)))
+    } catch { /* ignore */ }
+
+    // 2. Clear active mission from localStorage
+    try { localStorage.removeItem('3b-latest-load') } catch { /* ignore */ }
+
+    // 3. Clear state — dashboard goes idle immediately
+    setMission(null)
+    opLog.mission('Mission completed', { loadNumber: completed.loadNumber })
+
+    if (!supabase) {
+      setSyncState('local_only')
+      return
+    }
+
+    // 4. Supabase upsert — status='completed', review in metadata
+    setSyncState('saving')
+    try {
+      const { userId, businessId } = await getFleetIdentity()
+      const row = missionToRow(completed, { userId, businessId })
+      const { error } = await supabase
+        .from('fleet_missions')
+        .upsert(row, { onConflict: 'id' })
+
+      if (error) {
+        setSyncState('failed')
+        setMissionSaveError(error.message)
+        opLog.syncErr('completeMission upsert failed', { error: error.message })
+      } else {
+        setSyncState('saved')
+        opLog.sync('completeMission upsert OK', { loadNumber: completed.loadNumber })
+        setTimeout(() => setSyncState('idle'), 3000)
+      }
+    } catch (err) {
+      setSyncState('failed')
+      opLog.error('sync', 'completeMission threw', err)
+    }
+  }
+
   return {
     mission,
     missionScore,
@@ -228,6 +295,7 @@ export function useMission() {
     saveMission,
     updateStop,
     addStop,
+    completeMission,
     missionSaveError,
     syncState,
   }

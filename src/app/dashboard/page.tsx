@@ -33,7 +33,9 @@ import DocsSheet         from '@/components/dashboard/sheets/DocsSheet'
 import VoicePanel        from '@/components/dashboard/sheets/VoicePanel'
 import LogEventSheet      from '@/components/dashboard/sheets/LogEventSheet'
 import MissionHistoryPanel from '@/components/dashboard/panels/MissionHistoryPanel'
-import AddStopSheet      from '@/components/dashboard/sheets/AddStopSheet'
+import AddStopSheet        from '@/components/dashboard/sheets/AddStopSheet'
+import TripReviewSheet     from '@/components/dashboard/sheets/TripReviewSheet'
+import CompletedTripsPanel from '@/components/dashboard/panels/CompletedTripsPanel'
 import ToastContainer      from '@/components/shared/ToastContainer'
 import OfflineBanner       from '@/components/shared/OfflineBanner'
 import DebugPanel          from '@/components/debug/DebugPanel'
@@ -149,7 +151,7 @@ export default function Dashboard() {
 
   // ── Hooks
   const { weather, weatherLoading, wx, lastUpdated: weatherUpdated, refresh: refreshWeather } = useWeather()
-  const { mission, missionScore, missionFuel, saveMission, updateStop, addStop, missionSaveError, syncState } = useMission()
+  const { mission, missionScore, missionFuel, saveMission, updateStop, addStop, completeMission, missionSaveError, syncState } = useMission()
   const {
     breakActive, breakSecs, showBreakModal, setShowBreakModal,
     handleStartBreak, handleEndBreak, BREAK_TARGET, fmtBreak,
@@ -200,6 +202,8 @@ export default function Dashboard() {
   const [showLogEvent,      setShowLogEvent]      = useState(false)
   const [showHistoryPanel,  setShowHistoryPanel]  = useState(false)
   const [showAddStop,       setShowAddStop]       = useState(false)
+  const [showTripReview,    setShowTripReview]    = useState(false)
+  const [showCompletedTrips,setShowCompletedTrips] = useState(false)
 
   // ── Movement detector — only active when driving mode is on
   const movement = useMovementDetector(drivingMode)
@@ -382,6 +386,16 @@ export default function Dashboard() {
         driverMode={driverMode}
         onAdd={(stop, position) => addStop(stop, position)}
       />
+      <TripReviewSheet
+        open={showTripReview}
+        onClose={() => setShowTripReview(false)}
+        mission={mission}
+        onSubmit={completeMission}
+      />
+      <CompletedTripsPanel
+        open={showCompletedTrips}
+        onClose={() => setShowCompletedTrips(false)}
+      />
 
       {/* ═══ COMMAND CENTER SHELL ════════════════════════════════════════════ */}
       <div className="cc-main" style={{ display: drivingMode ? 'none' : undefined }}>
@@ -428,6 +442,8 @@ export default function Dashboard() {
               onCompleteStop={handleCompleteStop}
               onUndoStop={handleUndoStop}
               onAddStop={mission ? () => setShowAddStop(true) : undefined}
+              onCompleteTrip={mission ? () => setShowTripReview(true) : undefined}
+              onShowCompleted={() => setShowCompletedTrips(true)}
             />
             {activeTrip && (
               <ActiveTripCard

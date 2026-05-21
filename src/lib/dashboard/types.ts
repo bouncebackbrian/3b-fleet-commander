@@ -51,6 +51,27 @@ export type WeatherData = {
   temp: number; windSpeed: number; code: number; precip: number; lat: number; lng: number
 }
 
+// ── Mission lifecycle status ──────────────────────────────────────────────────
+export type MissionStatus = 'active' | 'planned' | 'review_required' | 'completed'
+
+// ── Post-trip review captured at completion ───────────────────────────────────
+// Stored in fleet_missions.metadata.tripReview — no migration needed.
+export type TripReview = {
+  actualStart:   string | null   // ISO datetime — when driver actually departed
+  actualEnd:     string | null   // ISO datetime — when delivery was confirmed done
+  stopsAccurate: boolean         // all planned stops executed as built?
+  detention:     boolean
+  parkingIssue:  boolean
+  routeProblem:  boolean
+  fuelIssue:     boolean
+  weatherDelay:  boolean
+  receiverDelay: boolean
+  wouldRunAgain: boolean
+  driverRating:  1 | 2 | 3 | 4 | 5
+  notes:         string
+  reviewedAt:    string          // ISO datetime when review was submitted
+}
+
 // ── Multi-Stop Mission ────────────────────────────────────────────────────────
 export type StopType = 'pickup' | 'delivery' | 'relay' | 'fuel' | 'yard' | 'rest' | 'scale' | 'repair' | 'washout' | 'other'
 
@@ -100,6 +121,9 @@ export type LoadMission = {
   routeNotes?:      string          // free-form dispatcher/driver route notes
   // Multi-stop — optional; single-dest missions leave this undefined
   stops?:           MissionStop[]
+  // Lifecycle
+  status?:          MissionStatus
+  tripReview?:      TripReview
 }
 
 export type HOSDisplay = {

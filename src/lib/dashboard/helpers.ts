@@ -1,6 +1,6 @@
 import { getDieselPrice } from '@/lib/scoreLoad'
 import type { RigType } from '@/lib/scoreLoad'
-import type { LoadMission, WeatherInfo, RoutePreference, MissionStop } from './types'
+import type { LoadMission, WeatherInfo, RoutePreference, MissionStop, MissionStatus, TripReview } from './types'
 
 export const fmtTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
@@ -61,6 +61,8 @@ export function parseMission(row: any): LoadMission {
     routePreference:     (meta.routePreference as RoutePreference) ?? 'main_corridors',
     routeNotes:          meta.routeNotes      as string | undefined,
     stops:               Array.isArray(meta.stops) ? (meta.stops as MissionStop[]) : undefined,
+    status:              (meta.status as MissionStatus)   ?? 'active',
+    tripReview:          meta.tripReview                  as TripReview | undefined,
   }
 }
 
@@ -97,6 +99,8 @@ export function parseFleetMission(row: any): LoadMission {
     stops:               Array.isArray((row.metadata as Record<string, unknown>)?.stops)
                          ? ((row.metadata as Record<string, unknown>).stops as MissionStop[])
                          : undefined,
+    status:              (row.status as MissionStatus) ?? 'active',
+    tripReview:          ((row.metadata as Record<string, unknown>)?.tripReview) as TripReview | undefined,
   }
 }
 
@@ -165,15 +169,16 @@ export function missionToRow(m: LoadMission, identity?: RowIdentity): Record<str
     pickup:                m.pickup    ?? null,
     delivery:              m.delivery  ?? null,
     commodity:             m.commodity ?? null,
-    status:                'active',
+    status:                m.status ?? 'active',
     // Attach 3B identity when logged in; null when in alpha/offline mode
     user_id:               identity?.userId     ?? null,
     business_id:           identity?.businessId ?? null,
-    // routePreference, routeNotes, stops stored in metadata jsonb — no column migration needed
+    // routePreference, routeNotes, stops, tripReview — all in metadata jsonb, no migration needed
     metadata: {
       routePreference: m.routePreference ?? 'main_corridors',
       routeNotes:      m.routeNotes      ?? null,
       stops:           m.stops           ?? null,
+      tripReview:      m.tripReview      ?? null,
     },
   }
 }

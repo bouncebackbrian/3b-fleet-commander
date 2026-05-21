@@ -15,9 +15,11 @@ interface Props {
   driverMode?:    boolean
   onLogEvent?:    () => void
   onShowHistory?: () => void
-  onCompleteStop?: (stopId: string) => void
-  onUndoStop?:    (stopId: string) => void
-  onAddStop?:     () => void
+  onCompleteStop?:  (stopId: string) => void
+  onUndoStop?:      (stopId: string) => void
+  onAddStop?:       () => void
+  onCompleteTrip?:  () => void
+  onShowCompleted?: () => void
 }
 
 function SyncBadge({ state }: { state: SyncState }) {
@@ -41,7 +43,7 @@ function SyncBadge({ state }: { state: SyncState }) {
   )
 }
 
-export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', routeRisk, driverMode = false, onLogEvent, onShowHistory, onCompleteStop, onUndoStop, onAddStop }: Props) {
+export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', routeRisk, driverMode = false, onLogEvent, onShowHistory, onCompleteStop, onUndoStop, onAddStop, onCompleteTrip, onShowCompleted }: Props) {
   const stops = mission?.stops ?? []
   const sortedStops = [...stops].sort((a, b) => a.sequence - b.sequence)
   const currentStop = sortedStops.find(s => !s.completed) ?? null
@@ -74,7 +76,14 @@ export default function ActiveMissionCard({ mission, missionScore, missionFuel, 
               <Link href="/dispatch" style={{ padding: '.5rem .9rem', borderRadius: 10, border: '1px solid var(--border)', fontSize: '.82rem', color: 'var(--text)', fontWeight: 700, textDecoration: 'none', minHeight: 40, display: 'flex', alignItems: 'center' }}>Dispatch</Link>
             </>
           ) : (
-            <Link href="/loads" style={{ padding: '.55rem 1.2rem', borderRadius: 10, border: '1px solid rgba(0,232,176,.3)', background: 'rgba(0,232,176,.07)', fontSize: '.9rem', color: 'var(--primary)', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', minHeight: 44 }}>⚡ New Load</Link>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Link href="/loads" style={{ padding: '.55rem 1.2rem', borderRadius: 10, border: '1px solid rgba(0,232,176,.3)', background: 'rgba(0,232,176,.07)', fontSize: '.9rem', color: 'var(--primary)', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', minHeight: 44 }}>⚡ New Load</Link>
+              {onShowCompleted && (
+                <button onClick={onShowCompleted} style={{ padding: '.55rem .9rem', borderRadius: 10, border: '1px solid var(--border)', background: 'none', fontSize: '.82rem', color: 'var(--muted)', fontWeight: 700, cursor: 'pointer', minHeight: 44, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  ✅ Completed
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -231,9 +240,35 @@ export default function ActiveMissionCard({ mission, missionScore, missionFuel, 
               )}
             </div>
           )}
+
+          {/* ── Complete Trip CTA — bottom of grid, intentional placement ── */}
+          {onCompleteTrip && (
+            <div style={{ paddingTop: '.25rem', borderTop: '1px solid var(--border)' }}>
+              <button
+                onClick={onCompleteTrip}
+                style={{
+                  width: '100%', padding: '.65rem', borderRadius: 10, fontWeight: 800, fontSize: '.82rem',
+                  border: '1px solid rgba(40,192,72,.3)', background: 'rgba(40,192,72,.06)',
+                  color: 'var(--success)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}
+              >
+                🏁 Complete Trip &amp; Review
+              </button>
+            </div>
+          )}
         </div>
       ) : (
-        <p style={{ fontSize: '.9rem', color: 'var(--muted)', lineHeight: 1.6 }}>Your latest load appears here with live score, net RPM, margin flag, and risk alerts.</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '.75rem' }}>
+          <p style={{ fontSize: '.9rem', color: 'var(--muted)', lineHeight: 1.6, margin: 0 }}>Your latest load appears here with live score, net RPM, margin flag, and risk alerts.</p>
+          {onShowCompleted && (
+            <button
+              onClick={onShowCompleted}
+              style={{ alignSelf: 'flex-start', padding: '.45rem .9rem', borderRadius: 9, border: '1px solid var(--border)', background: 'none', fontSize: '.78rem', color: 'var(--muted)', fontWeight: 700, cursor: 'pointer' }}
+            >
+              ✅ View Completed Trips
+            </button>
+          )}
+        </div>
       )}
     </div>
   )
