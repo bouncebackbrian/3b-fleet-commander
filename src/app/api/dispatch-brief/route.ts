@@ -62,7 +62,7 @@ DISPATCH HANDOFF BLOCK
 Load Ref:       [value or NOT PROVIDED]
 Broker:         [value]
 Origin:         [value]
-Destination:    [value]
+Destination:    [value — if multi-stop, list: Stop 1 → Stop 2 → … → Final]
 Pickup:         [date/time]
 Delivery:       [date/time]
 Weight:         [lbs]
@@ -87,11 +87,14 @@ ROUTE COMPARISON:
 4. Fuel-Efficient:   [route + estimated fuel savings]
 
 HOS PLAN:
-[Plain-English timeline. Example: "Depart 06:00 Monday. Drive 8h to Albuquerque NM — 30-min break at Love's Albuquerque. Drive 3h to El Paso TX. Total drive: 11h. 14-hr window expires 20:00. ETA 17:30 — 2.5h buffer before appointment. 10h off-duty required before next dispatch."]
+[Plain-English timeline. For multi-stop missions, include each stop with dwell time and HOS impact. Example: "Depart 06:00 Monday. Drive 8h to Albuquerque NM — 30-min break at Love's Albuquerque. Drive 3h to El Paso TX. Total drive: 11h. 14-hr window expires 20:00. ETA 17:30 — 2.5h buffer before appointment. 10h off-duty required before next dispatch."]
 
 FUEL STOPS:
-1. [Love's — City, ST] | $X.XX/gal | XX gal | $XX.XX | ETA [time]
-2. [Love's or TA — City, ST] | $X.XX/gal | XX gal | $XX.XX | ETA [time] (if needed)
+1. [Love's — City, ST] | $X.XX/gal diesel | XX gal | $XX.XX | ETA [time]
+2. [Love's or TA — City, ST] | $X.XX/gal diesel | XX gal | $XX.XX | ETA [time] (if needed)
+
+MULTI-STOP NOTES: [Only include if stops provided. List each facility stop with: name, phone if known, appointment, dwell estimate, and any dock/gate notes.]
+[Or omit section for single-destination loads]
 
 RISK FLAGS:
 - [Each flag on its own line. Be specific — no generic filler.]
@@ -105,12 +108,36 @@ MISSING FIELDS:
 RULES:
 - Never soften a REJECT. Say it clearly and say why.
 - HOS plan must be 100% FMCSA compliant. Never exceed 11h drive or 14h window.
-- When using a default fuel price, write: "(Using default — verify at pump)"
+- For multi-stop missions: factor dwell time (minimum 1h per stop, 2h for live load/unload) into HOS.
+- When using a default diesel price, write: "(Using default — verify at pump)"
 - Flag if deadhead > 15% of loaded miles.
 - Flag detention risk if wait hours > 2 or if live load with unknown wait.
-- Every field in the format must be filled — use "Not provided" if missing.`
+- Every field in the format must be filled — use "Not provided" if missing.
+- Always say "diesel" not "fuel" when referencing fuel prices and stops.`
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ── Stop type labels for multi-stop missions ─────────────────────────────────
+type StopType = 'pickup' | 'delivery' | 'relay' | 'fuel' | 'yard' | 'rest' | 'scale' | 'repair' | 'washout' | 'other'
+interface MissionStop {
+  sequence: number; type: StopType; name: string
+  address?: string; city?: string; state?: string; phone?: string
+  appointmentStart?: string; notes?: string; reference?: string
+}
+
+const STOP_EMOJI: Record<StopType, string> = {
+  pickup: '📦', delivery: '🏪', relay: '🔄', fuel: '⛽',
+  yard: '🏠', rest: '🛏️', scale: '⚖️', repair: '🔧', washout: '🚿', other: '📍',
+}
+
+function formatStop(s: MissionStop, idx: number): string {
+  const loc = [s.name, s.address, s.city && s.state ? `${s.city}, ${s.state}` : (s.city || s.state)].filter(Boolean).join(' — ')
+  const appt = s.appointmentStart ? ` | Appt: ${s.appointmentStart}` : ''
+  const phone = s.phone ? ` | ☎ ${s.phone}` : ''
+  const ref = s.reference ? ` | Ref: ${s.reference}` : ''
+  const note = s.notes ? ` | Notes: ${s.notes}` : ''
+  return `  Stop ${idx + 1} (${STOP_EMOJI[s.type] ?? '📍'} ${s.type.toUpperCase()}): ${loc}${appt}${phone}${ref}${note}`
+}
 
 export async function POST(req: NextRequest) {
   const key = process.env.ANTHROPIC_API_KEY
@@ -125,12 +152,21 @@ export async function POST(req: NextRequest) {
       mpg, fuelPrice, grossRpm, netRpm, marginFlag,
       score, verdict, waitHours, reloadKnown, reloadAreaStrength,
       driveHoursRemaining, shiftHoursRemaining, cycleHoursRemaining,
-      notes,
+      routePreference, stops, notes,
     } = body
 
     const hosCtx = driveHoursRemaining != null
       ? `Current HOS: ${(+driveHoursRemaining).toFixed(1)}h drive remaining | ${(+(shiftHoursRemaining ?? 0)).toFixed(1)}h shift remaining | ${(+(cycleHoursRemaining ?? 0)).toFixed(1)}h cycle remaining.`
       : 'HOS not provided — assume fully rested (11h drive / 14h shift / 70h cycle available).'
+
+    // Multi-stop block — only shown when stops are present
+    const stopsBlock = Array.isArray(stops) && stops.length > 0
+      ? `\nMULTI-STOP MISSION (${stops.length} stops — include all in HOS plan and route):\n${(stops as MissionStop[]).map((s, i) => formatStop(s, i)).join('\n')}`
+      : ''
+
+    const routePrefLine = routePreference && routePreference !== 'main_corridors'
+      ? `\nRoute Preference: ${routePreference.replace(/_/g, ' ').toUpperCase()} — factor this into RECOMMENDED ROUTE`
+      : ''
 
     const userPrompt = `Generate the complete Dispatch Handoff Block for this load:
 
@@ -157,7 +193,7 @@ Load Score:      ${score ?? '?'}/12 — ${verdict || 'Unknown'}
 Wait Hours:      ${waitHours || 0}h at pickup
 Reload Known:    ${reloadKnown ? 'Yes' : 'No'}
 Reload Strength: ${reloadAreaStrength || 2}/3
-Notes:           ${notes || 'None'}
+Notes:           ${notes || 'None'}${stopsBlock}${routePrefLine}
 
 ${hosCtx}
 

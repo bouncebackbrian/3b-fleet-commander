@@ -9,11 +9,31 @@ Extract every field you can see and return ONLY a valid JSON object — no markd
   "loadNumber":    "load or pro number (string or null)",
   "bolNumber":     "BOL reference number if different from load number (string or null)",
   "broker":        "broker or carrier name (string or null)",
+
   "shipper":       "shipper/sender company name (string or null)",
   "origin":        "pickup city and state as 'City, ST' (string or null)",
   "originAddress": "full pickup street address (string or null)",
+  "originPhone":   "pickup facility phone number (string or null)",
+
+  "consignee":     "receiver/consignee company name at delivery (string or null)",
   "destination":   "delivery city and state as 'City, ST' (string or null)",
   "destAddress":   "full delivery street address (string or null)",
+  "destPhone":     "delivery facility phone number (string or null)",
+
+  "stops": [
+    {
+      "sequence":  stop number starting at 1 (number),
+      "type":      "pickup" or "delivery" or "relay",
+      "name":      "facility name (string or null)",
+      "address":   "street address (string or null)",
+      "city":      "city (string or null)",
+      "state":     "2-letter state code (string or null)",
+      "phone":     "phone number (string or null)",
+      "reference": "BOL/PO/REF number for this stop (string or null)",
+      "appt":      "appointment date/time if shown (string or null)"
+    }
+  ],
+
   "commodity":     "description of freight/goods being shipped (string or null)",
   "weight":        "total weight in lbs as a number string (string or null)",
   "pieces":        "number of pieces/pallets/units (string or null)",
@@ -25,7 +45,10 @@ Extract every field you can see and return ONLY a valid JSON object — no markd
   "notes":         "any special instructions, hazmat info, temperature, or requirements (string or null)"
 }
 
-If a field is not visible or unclear, return null for that field.
+Rules:
+- "stops" should only be populated if the BOL shows explicit multi-stop routing with 3 or more location entries. For simple origin→destination documents, return stops as an empty array [].
+- originPhone and destPhone: look for phone numbers near the shipper/consignee address blocks.
+- If a field is not visible or unclear, return null for that field.
 Return only the JSON object. No extra text.`
 
 export async function POST(req: NextRequest) {

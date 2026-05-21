@@ -49,7 +49,11 @@ Respond ONLY with valid JSON matching this exact shape:
   "summary": "One sentence plain-English verdict",
   "parsed": {
     "origin": string | null,
+    "originName": string | null,
+    "originPhone": string | null,
     "dest": string | null,
+    "destName": string | null,
+    "destPhone": string | null,
     "miles": number | null,
     "cpm": number | null,
     "weight": number | null,
@@ -58,7 +62,20 @@ Respond ONLY with valid JSON matching this exact shape:
     "commodity": string | null,
     "depart": string | null,
     "deadhead": number | null,
-    "totalPay": number | null
+    "totalPay": number | null,
+    "stops": [
+      {
+        "sequence": number,
+        "type": "pickup" | "delivery" | "relay" | "other",
+        "name": string | null,
+        "address": string | null,
+        "city": string | null,
+        "state": string | null,
+        "phone": string | null,
+        "appt": string | null,
+        "reference": string | null
+      }
+    ]
   },
   "financials": {
     "grossPay": number | null,
@@ -83,7 +100,13 @@ Respond ONLY with valid JSON matching this exact shape:
   "greenFlags": string[],
   "reasons": string[],
   "suggestedReply": string
-}`
+}
+
+Rules for parsed fields:
+- originName/destName: the facility or company name at each location (separate from the city/state address string).
+- originPhone/destPhone: phone number for the pickup or delivery facility if mentioned.
+- stops: populate only if the load text explicitly describes 3+ locations or a multi-stop sequence. Otherwise return an empty array [].
+- "fuelCost" in financials refers to diesel cost — calculate as (miles / mpg) × dieselPrice.`
 
     const response = await client.messages.create({
       model: 'claude-opus-4-7',

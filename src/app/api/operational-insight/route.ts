@@ -34,8 +34,20 @@ export async function POST(req: NextRequest) {
       return `${label}: ${lines.join(', ')}${notes.length ? ` | Notes: ${notes.join('; ')}` : ''}`
     }
 
+    // Build stop summary for multi-stop missions
+    type MissionStopBrief = { sequence?: number; type?: string; name?: string; city?: string; state?: string; phone?: string; appointmentStart?: string }
+    const stopsArr: MissionStopBrief[] = mission?.stops ?? []
+    const stopsLine = stopsArr.length > 0
+      ? `Stops (${stopsArr.length}): ${stopsArr.map((s: MissionStopBrief) => {
+          const loc = [s.name, s.city && s.state ? `${s.city} ${s.state}` : (s.city || s.state)].filter(Boolean).join(', ')
+          const ph = s.phone ? ` ☎${s.phone}` : ''
+          const appt = s.appointmentStart ? ` appt:${s.appointmentStart}` : ''
+          return `#${s.sequence ?? '?'} ${(s.type ?? 'stop').toUpperCase()} ${loc}${ph}${appt}`
+        }).join(' | ')}`
+      : ''
+
     const prompt = `Lane: ${mission?.origin ?? '?'} → ${mission?.destination ?? '?'}
-Rig: ${mission?.rigType ?? 'semi-solo'} | ${mission?.dispatchMiles ?? 0} loaded mi | $${mission?.grossRate ?? 0} gross
+Rig: ${mission?.rigType ?? 'semi-solo'} | ${mission?.dispatchMiles ?? 0} loaded mi | $${mission?.grossRate ?? 0} gross${stopsLine ? `\n${stopsLine}` : ''}
 
 ${summariseEvents(events, 'Current mission events')}
 ${summariseEvents(history, 'Prior lane history (last 50 events)')}
