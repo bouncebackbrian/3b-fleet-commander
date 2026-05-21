@@ -37,6 +37,8 @@ async function fetchActiveMission(): Promise<{ mission: LoadMission | null; tier
   } catch { /* table may not exist yet */ }
 
   // Tier 2 — loads (legacy META-encoded)
+  // Guard: skip any load whose ID is already archived as completed in fleet_missions.
+  // This prevents a legacy row from reappearing after completeMission() runs.
   try {
     const { data: load, error: loadErr } = await supabase
       .from('loads')
@@ -46,9 +48,20 @@ async function fetchActiveMission(): Promise<{ mission: LoadMission | null; tier
       .single()
 
     if (!loadErr && load) {
-      const m = parseMission(load)
-      opLog.mission('Loaded from loads (legacy tier)', { id: m.id })
-      return { mission: m, tier: 'loads' }
+      // Check whether this id was completed in fleet_missions
+      const { data: archived } = await supabase
+        .from('fleet_missions')
+        .select('id')
+        .eq('id', load.id)
+        .eq('status', 'completed')
+        .maybeSingle()
+
+      if (!archived) {
+        const m = parseMission(load)
+        opLog.mission('Loaded from loads (legacy tier)', { id: m.id })
+        return { mission: m, tier: 'loads' }
+      }
+      opLog.mission('Loads tier skipped — mission already completed in fleet_missions', { id: load.id })
     }
   } catch { /* ignore */ }
 
