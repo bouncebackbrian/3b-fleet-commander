@@ -48,6 +48,8 @@ type Truck = {
 
 type TripOptions = { pet: boolean; team: boolean; haz: boolean; multiStop: boolean }
 
+type DestEntry  = { name: string; address: string; phone: string }
+
 type Stop = {
   type: StopType; icon: string; color: string; label: string
   location: string; address?: string; eta: string; dur: string
@@ -1058,9 +1060,7 @@ export default function TripPlanner() {
   const [origin,      setOrigin]      = useState('')
   const [originName,  setOriginName]  = useState('')
   const [originPhone, setOriginPhone] = useState('')
-  const [dest,        setDest]        = useState('')
-  const [destName,    setDestName]    = useState('')
-  const [destPhone,   setDestPhone]   = useState('')
+  const [destinations, setDestinations] = useState<DestEntry[]>([{ name: '', address: '', phone: '' }])
   const [miles,     setMiles]     = useState('')
   const [depart,    setDepart]    = useState('07:00')
   const [loadNum,   setLoadNum]   = useState('')
@@ -1080,6 +1080,9 @@ export default function TripPlanner() {
   const [showModal, setShowModal] = useState(false)
   const [plan,      setPlan]      = useState<Plan | null>(null)
   const [copiedGPS, setCopiedGPS] = useState(false)
+
+  // Derived — last destination's address drives routing
+  const dest = destinations.at(-1)?.address.trim() ?? ''
 
   // Mission Stops — same persistence path as dashboard (localStorage + Supabase async)
   const { mission, addStop, updateStop } = useMission()
@@ -1132,7 +1135,7 @@ export default function TripPlanner() {
 
   const fill = useCallback((f: Parsed) => {
     if (f.origin)    setOrigin(f.origin)
-    if (f.dest)      setDest(f.dest)
+    if (f.dest)      setDestinations(prev => [{ ...prev[0], address: f.dest! }, ...prev.slice(1)])
     if (f.miles)     setMiles(f.miles)
     if (f.loadNum)   setLoadNum(f.loadNum)
     if (f.cpm)       setCpm(f.cpm)
@@ -1144,6 +1147,7 @@ export default function TripPlanner() {
 
   const runBuild = useCallback(() => {
     const totalMiles = parseFloat(miles)
+    const dest = destinations.at(-1)?.address.trim() ?? ''
     if (!origin || !dest || !totalMiles) return
     const [dh, dm] = depart.split(':').map(Number)
     const p = buildPlan({
@@ -1182,7 +1186,7 @@ export default function TripPlanner() {
       })),
     }))
     setPlan(p)
-  }, [origin, dest, miles, depart, cpm, loadNum, broker, commodity, weight, deadhead, opts, truck])
+  }, [origin, destinations, miles, depart, cpm, loadNum, broker, commodity, weight, deadhead, opts, truck])
 
   const saveTruck = () => {
     setTruck(truckForm)
@@ -1675,13 +1679,25 @@ export default function TripPlanner() {
                     <div><label style={S.lbl}>Phone Number</label><input style={S.inp} type="text" inputMode="tel" value={originPhone} onChange={e=>setOriginPhone(e.target.value)} placeholder="(800) 555-0100" /></div>
                   </div>
 
-                  {/* ── DESTINATION ── */}
-                  <div style={{ display:'grid', gap:'.45rem', padding:'.65rem .75rem', borderRadius:11, background:'rgba(40,192,72,.04)', border:'1px solid rgba(40,192,72,.15)' }}>
-                    <div style={{ fontSize:'.58rem', fontWeight:900, color:'var(--success)', textTransform:'uppercase', letterSpacing:'.1em' }}>🏁 Destination</div>
-                    <div><label style={S.lbl}>Facility / Location Name</label><input style={S.inp} value={destName} onChange={e=>setDestName(e.target.value)} placeholder="Walmart DC Sparks, Receiver…" /></div>
-                    <div><label style={S.lbl}>Address / City, ST *</label><input style={S.inp} value={dest} onChange={e=>setDest(e.target.value)} placeholder="Walmart DC Sparks, NV" /></div>
-                    <div><label style={S.lbl}>Phone Number</label><input style={S.inp} type="text" inputMode="tel" value={destPhone} onChange={e=>setDestPhone(e.target.value)} placeholder="(800) 555-0100" /></div>
-                  </div>
+                  {/* ── DESTINATIONS (dynamic) ── */}
+                  {destinations.map((d, i) => (
+                    <div key={i} style={{ display:'grid', gap:'.45rem', padding:'.65rem .75rem', borderRadius:11, background:'rgba(40,192,72,.04)', border:'1px solid rgba(40,192,72,.15)' }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                        <span style={{ fontSize:'.58rem', fontWeight:900, color:'var(--success)', textTransform:'uppercase', letterSpacing:'.1em' }}>
+                          🏁 {destinations.length > 1 ? `Destination ${i + 1}` : 'Destination'}
+                        </span>
+                        {destinations.length > 1 && (
+                          <button onClick={()=>setDestinations(prev=>prev.filter((_,idx)=>idx!==i))} style={{ background:'none', border:'none', color:'var(--muted)', cursor:'pointer', fontSize:'.75rem', padding:'.1rem .3rem', lineHeight:1 }}>✕</button>
+                        )}
+                      </div>
+                      <div><label style={S.lbl}>Facility / Location Name</label><input style={S.inp} value={d.name} onChange={e=>setDestinations(prev=>prev.map((x,idx)=>idx===i?{...x,name:e.target.value}:x))} placeholder="Walmart DC, Receiver…" /></div>
+                      <div><label style={S.lbl}>Address / City, ST *</label><input style={S.inp} value={d.address} onChange={e=>setDestinations(prev=>prev.map((x,idx)=>idx===i?{...x,address:e.target.value}:x))} placeholder="Sparks, NV" /></div>
+                      <div><label style={S.lbl}>Phone Number</label><input style={S.inp} type="text" inputMode="tel" value={d.phone} onChange={e=>setDestinations(prev=>prev.map((x,idx)=>idx===i?{...x,phone:e.target.value}:x))} placeholder="(800) 555-0100" /></div>
+                    </div>
+                  ))}
+                  <button onClick={()=>setDestinations(prev=>[...prev,{name:'',address:'',phone:''}])} style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6, width:'100%', padding:'.5rem', borderRadius:10, border:'1px dashed rgba(40,192,72,.35)', background:'rgba(40,192,72,.03)', color:'var(--success)', fontWeight:700, fontSize:'.78rem', cursor:'pointer' }}>
+                    ➕ Add Destination
+                  </button>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
                     <div><label style={S.lbl}>Total miles *</label><input style={S.inp} type="text" inputMode="numeric" value={miles} onChange={e=>setMiles(e.target.value)} placeholder="335" /></div>
                     <div><label style={S.lbl}>Departure</label><input style={S.inp} type="time" value={depart} onChange={e=>setDepart(e.target.value)} /></div>
@@ -1718,7 +1734,7 @@ export default function TripPlanner() {
               <div style={S.card}>
                 <div style={S.sec}>Saved Lanes</div>
                 {SAVED_LANES.map(l => (
-                  <button key={l.label} onClick={()=>{ setOrigin(l.origin); setDest(l.dest); setMiles(String(l.miles)) }} style={{ ...S.btn, display:'block', width:'100%', textAlign:'left', marginBottom:'.4rem', padding:'.6rem .85rem' }}>
+                  <button key={l.label} onClick={()=>{ setOrigin(l.origin); setDestinations([{ name: '', address: l.dest, phone: '' }]); setMiles(String(l.miles)) }} style={{ ...S.btn, display:'block', width:'100%', textAlign:'left', marginBottom:'.4rem', padding:'.6rem .85rem' }}>
                     <strong style={{ fontSize:'var(--text-xs)' }}>{l.label}</strong>
                     <span style={{ color:'var(--muted)', fontSize:'var(--text-xs)', marginLeft:8 }}>{l.miles} mi</span>
                   </button>

@@ -230,9 +230,19 @@ export default function NewLoadSheet({ open, onClose, onSave }: Props) {
       // Seed with a pickup + delivery
       const pickup   = makeStop(1, 'pickup')
       const delivery = makeStop(2, 'delivery')
-      // Pre-fill from origin/dest if already entered
-      if (origin.trim()) { pickup.name = ''; pickup.city = origin.split(',')[0].trim(); pickup.state = origin.split(',')[1]?.trim() ?? '' }
-      if (dest.trim())   { delivery.city = dest.split(',')[0].trim(); delivery.state = dest.split(',')[1]?.trim() ?? '' }
+      // Pre-fill from origin/dest and name/phone if already entered
+      if (origin.trim()) {
+        pickup.name  = originName.trim() || ''
+        pickup.city  = origin.split(',')[0].trim()
+        pickup.state = origin.split(',')[1]?.trim() ?? ''
+        if (originPhone.trim()) pickup.phone = originPhone.trim()
+      }
+      if (dest.trim()) {
+        delivery.name  = destName.trim() || ''
+        delivery.city  = dest.split(',')[0].trim()
+        delivery.state = dest.split(',')[1]?.trim() ?? ''
+        if (destPhone.trim()) delivery.phone = destPhone.trim()
+      }
       setStops([pickup, delivery])
     }
   }
@@ -412,6 +422,16 @@ export default function NewLoadSheet({ open, onClose, onSave }: Props) {
                   style={{ width: '100%', padding: '.55rem .75rem', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface-off)', color: 'var(--text)', fontSize: '.85rem' }} />
               </div>
             </div>
+          )}
+
+          {/* Add Destination — shortcut to enable multi-stop when user wants multiple drops */}
+          {!multiStop && (
+            <button
+              onClick={enableMultiStop}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', padding: '.45rem', borderRadius: 9, border: '1px dashed rgba(40,192,72,.3)', background: 'rgba(40,192,72,.03)', color: 'var(--success)', fontWeight: 700, fontSize: '.75rem', cursor: 'pointer' }}
+            >
+              ➕ Add Destination / Multi-Stop
+            </button>
           )}
 
           {/* Rate / Miles */}
