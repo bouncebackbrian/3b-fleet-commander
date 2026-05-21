@@ -1,7 +1,8 @@
 'use client'
 import Link from 'next/link'
-import type { LoadMission, SyncState } from '@/lib/dashboard/types'
+import type { LoadMission, SyncState, RouteRisk } from '@/lib/dashboard/types'
 import type { ScoreResult, FuelIntelResult, ScoreVerdict, MarginFlag } from '@/lib/scoreLoad'
+import { ROUTE_RISK_META, ROUTE_PREF_META } from '@/lib/dashboard/routePreference'
 
 interface Props {
   mission:        LoadMission | null
@@ -9,6 +10,7 @@ interface Props {
   missionFuel:    FuelIntelResult | null
   insights?:      string[]
   syncState?:     SyncState
+  routeRisk?:     RouteRisk | null
   onLogEvent?:    () => void
   onShowHistory?: () => void
 }
@@ -34,7 +36,7 @@ function SyncBadge({ state }: { state: SyncState }) {
   )
 }
 
-export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', onLogEvent, onShowHistory }: Props) {
+export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', routeRisk, onLogEvent, onShowHistory }: Props) {
   return (
     <div className="cc-card" style={{ border: `1px solid ${mission ? 'rgba(0,232,176,.25)' : 'var(--border)'}`, boxShadow: mission ? '0 2px 20px rgba(0,232,176,.06)' : 'none' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.8rem', flexWrap: 'wrap', gap: 8 }}>
@@ -75,7 +77,34 @@ export default function ActiveMissionCard({ mission, missionScore, missionFuel, 
             <span style={{ color: 'var(--primary)', fontWeight: 900, fontSize: '1.5rem' }}>→</span>
             <span style={{ fontWeight: 900, fontSize: 'clamp(1.25rem,3vw,1.75rem)', color: 'var(--text)', lineHeight: 1.15 }}>{mission.destination.split(',')[0]}</span>
             {mission.broker && <span style={{ fontSize: '.72rem', color: 'var(--muted)', padding: '.2rem .55rem', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, flexShrink: 0 }}>{mission.broker}</span>}
+            {/* Route risk badge */}
+            {routeRisk && routeRisk.level !== 'LOW' && (() => {
+              const rm = ROUTE_RISK_META[routeRisk.level]
+              return (
+                <span style={{ fontSize: '.6rem', fontWeight: 800, padding: '.15rem .5rem', borderRadius: 5, background: rm.bg, color: rm.color, border: `1px solid ${rm.border}`, flexShrink: 0 }}>
+                  {routeRisk.level === 'HIGH' ? '🔴' : '🟡'} {rm.label}
+                </span>
+              )
+            })()}
+            {/* Route preference badge — always shown when mission active */}
+            {mission.routePreference && mission.routePreference !== 'main_corridors' && (() => {
+              const pm = ROUTE_PREF_META[mission.routePreference]
+              return (
+                <span style={{ fontSize: '.6rem', fontWeight: 700, padding: '.15rem .5rem', borderRadius: 5, background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)', flexShrink: 0 }}>
+                  {pm.emoji} {pm.label}
+                </span>
+              )
+            })()}
           </div>
+          {/* Route disclaimer if risk warning active */}
+          {routeRisk?.showWarning && routeRisk.disclaimer && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '.35rem .7rem', borderRadius: 7, background: routeRisk.level === 'HIGH' ? 'rgba(232,64,0,.07)' : 'rgba(245,194,0,.07)', border: `1px solid ${ROUTE_RISK_META[routeRisk.level].border}` }}>
+              <span style={{ fontSize: '.78rem', flexShrink: 0 }}>{routeRisk.level === 'HIGH' ? '🔴' : '🟡'}</span>
+              <span style={{ fontSize: '.7rem', fontWeight: 700, color: ROUTE_RISK_META[routeRisk.level].color, lineHeight: 1.35 }}>
+                {routeRisk.disclaimer}
+              </span>
+            </div>
+          )}
 
           {/* Operational insight pills */}
           {insights.length > 0 && (

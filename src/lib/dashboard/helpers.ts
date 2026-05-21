@@ -1,6 +1,6 @@
 import { getDieselPrice } from '@/lib/scoreLoad'
 import type { RigType } from '@/lib/scoreLoad'
-import type { LoadMission, WeatherInfo } from './types'
+import type { LoadMission, WeatherInfo, RoutePreference } from './types'
 
 export const fmtTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
@@ -55,9 +55,11 @@ export function parseMission(row: any): LoadMission {
     reloadAreaStrength:  (meta.reloadAreaStrength as 1 | 2 | 3) || 2,
     hasOvernightParking: Boolean(meta.hasOvernightParking),
     loadType:            String(meta.loadType || 'FTL'),
-    pickup:              meta.pickup   as string | undefined,
-    delivery:            meta.delivery as string | undefined,
-    commodity:           meta.commodity as string | undefined,
+    pickup:              meta.pickup          as string | undefined,
+    delivery:            meta.delivery        as string | undefined,
+    commodity:           meta.commodity       as string | undefined,
+    routePreference:     (meta.routePreference as RoutePreference) ?? 'main_corridors',
+    routeNotes:          meta.routeNotes      as string | undefined,
   }
 }
 
@@ -81,9 +83,16 @@ export function parseFleetMission(row: any): LoadMission {
     reloadAreaStrength:  (row.reload_area_strength as 1 | 2 | 3) || 2,
     hasOvernightParking: Boolean(row.has_overnight_parking),
     loadType:            row.load_type              || 'FTL',
-    pickup:              row.pickup   ?? undefined,
-    delivery:            row.delivery ?? undefined,
+    pickup:              row.pickup    ?? undefined,
+    delivery:            row.delivery  ?? undefined,
     commodity:           row.commodity ?? undefined,
+    // Route preference — column may not exist yet; fall back to metadata jsonb
+    routePreference:     (row.route_preference as RoutePreference)
+                         ?? ((row.metadata as Record<string, unknown>)?.routePreference as RoutePreference)
+                         ?? 'main_corridors',
+    routeNotes:          row.route_notes
+                         ?? ((row.metadata as Record<string, unknown>)?.routeNotes as string | undefined)
+                         ?? undefined,
   }
 }
 
@@ -106,9 +115,14 @@ export function missionToRow(m: LoadMission): Record<string, unknown> {
     reload_area_strength:  m.reloadAreaStrength,
     has_overnight_parking: m.hasOvernightParking,
     load_type:             m.loadType,
-    pickup:                m.pickup   ?? null,
-    delivery:              m.delivery ?? null,
+    pickup:                m.pickup    ?? null,
+    delivery:              m.delivery  ?? null,
     commodity:             m.commodity ?? null,
     status:                'active',
+    // routePreference + routeNotes stored in metadata jsonb — no column migration needed
+    metadata: {
+      routePreference: m.routePreference ?? 'main_corridors',
+      routeNotes:      m.routeNotes      ?? null,
+    },
   }
 }

@@ -9,6 +9,8 @@ import type { EldMode, VehicleSetup, HOSData, SamsaraData, ActiveTrip } from '@/
 import { opLog } from '@/lib/logger'
 import { validateHOS } from '@/lib/guards'
 import { toast } from '@/hooks/useToast'
+import { computeRouteRisk } from '@/lib/dashboard/routePreference'
+import type { RoutePreference } from '@/lib/dashboard/types'
 
 // ── Hooks
 import { useWeather }            from '@/hooks/useWeather'
@@ -149,6 +151,16 @@ export default function Dashboard() {
     aiInsight, insightLoading, logEvent, generateInsight,
   } = useOperationalMemory(mission)
   const isOnline = useOnlineStatus()
+
+  // ── Route risk (deterministic, zero cost) ───────────────────────────────────
+  const routeRisk = mission
+    ? computeRouteRisk(mission.routeNotes, mission.routePreference ?? 'main_corridors')
+    : null
+
+  const changeRoutePreference = (pref: RoutePreference) => {
+    if (!mission) return
+    saveMission({ ...mission, routePreference: pref })
+  }
 
   // ── Online/offline transition toasts ────────────────────────────────────────
   const prevOnline = useRef<boolean>(true)
@@ -293,6 +305,8 @@ export default function Dashboard() {
         open={showFuelSheet}
         onClose={() => setShowFuelSheet(false)}
         missionFuel={missionFuel}
+        mission={mission}
+        onChangePreference={mission ? changeRoutePreference : undefined}
       />
       <HosDetailSheet
         open={showHosDetail}
@@ -373,6 +387,7 @@ export default function Dashboard() {
               missionFuel={missionFuel}
               insights={opInsights}
               syncState={syncState}
+              routeRisk={routeRisk}
               onLogEvent={mission ? () => setShowLogEvent(true) : undefined}
               onShowHistory={mission ? () => setShowHistoryPanel(true) : undefined}
             />

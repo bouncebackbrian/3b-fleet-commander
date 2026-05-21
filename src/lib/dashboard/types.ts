@@ -51,6 +51,23 @@ export type WeatherData = {
   temp: number; windSpeed: number; code: number; precip: number; lat: number; lng: number
 }
 
+// ── Route Preference ─────────────────────────────────────────────────────────
+export type RoutePreference =
+  | 'main_corridors'   // DEFAULT — interstates + major US highways
+  | 'fastest'          // minimize drive time, any route
+  | 'fuel_saver'       // optimize for MPG / fuel cost
+  | 'avoid_cities'     // bypass metro congestion
+  | 'manual_review'    // dispatcher must approve before dispatch
+
+export type RouteRiskLevel = 'LOW' | 'MODERATE' | 'HIGH'
+
+export type RouteRisk = {
+  level:       RouteRiskLevel
+  reasons:     string[]
+  disclaimer:  string | null
+  showWarning: boolean
+}
+
 export type LoadMission = {
   id: string; loadNumber: string; broker?: string
   origin: string; destination: string; date: string
@@ -59,6 +76,9 @@ export type LoadMission = {
   waitHours: number; reloadKnown: boolean; reloadAreaStrength: 1 | 2 | 3
   hasOvernightParking: boolean; loadType: string
   pickup?: string; delivery?: string; commodity?: string
+  // Route preference — defaults to 'main_corridors'
+  routePreference?: RoutePreference
+  routeNotes?:      string          // free-form dispatcher/driver route notes
 }
 
 export type HOSDisplay = {
