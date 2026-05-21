@@ -88,7 +88,7 @@ function StopEditor({
               </button>
             ))}
           </div>
-          {/* Name + address */}
+          {/* Name + address + phone */}
           <div style={{ display: 'grid', gap: 6 }}>
             <input value={stop.name} onChange={e => u('name', e.target.value)} placeholder="Facility / store name"
               style={{ width: '100%', padding: '.5rem .7rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-off)', color: 'var(--text)', fontSize: '.82rem', fontWeight: 600 }} />
@@ -100,6 +100,8 @@ function StopEditor({
               <input value={stop.state ?? ''} onChange={e => u('state', e.target.value)} placeholder="ST" maxLength={2}
                 style={{ padding: '.5rem .7rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-off)', color: 'var(--text)', fontSize: '.82rem', textTransform: 'uppercase' }} />
             </div>
+            <input type="text" inputMode="tel" value={stop.phone ?? ''} onChange={e => u('phone', e.target.value)} placeholder="Phone number (optional)"
+              style={{ width: '100%', padding: '.5rem .7rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-off)', color: 'var(--text)', fontSize: '.82rem' }} />
           </div>
           {/* Appointment + reference */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
@@ -126,7 +128,11 @@ function StopEditor({
 // ── Main sheet ────────────────────────────────────────────────────────────────
 export default function NewLoadSheet({ open, onClose, onSave }: Props) {
   const [origin,      setOrigin]      = useState('')
+  const [originName,  setOriginName]  = useState('')
+  const [originPhone, setOriginPhone] = useState('')
   const [dest,        setDest]        = useState('')
+  const [destName,    setDestName]    = useState('')
+  const [destPhone,   setDestPhone]   = useState('')
   const [rate,        setRate]        = useState('')
   const [miles,       setMiles]       = useState('')
   const [routePref,   setRoutePref]   = useState<RoutePreference>('main_corridors')
@@ -367,18 +373,44 @@ export default function NewLoadSheet({ open, onClose, onSave }: Props) {
           </div>
 
           {/* Origin */}
-          <div>
-            <label style={{ fontSize: '.62rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'block', marginBottom: 4 }}>Origin *</label>
-            <input value={origin} onChange={e => setOrigin(e.target.value)} placeholder="City, ST"
-              style={{ width: '100%', padding: '.65rem .8rem', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface-off)', color: 'var(--text)', fontSize: '.9rem', fontWeight: 600 }} />
+          <div style={{ display: 'grid', gap: 6, padding: '.6rem .7rem', borderRadius: 10, background: 'rgba(0,232,176,.04)', border: '1px solid rgba(0,232,176,.15)' }}>
+            <div style={{ fontSize: '.58rem', fontWeight: 900, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.1em' }}>📍 Origin</div>
+            <div>
+              <label style={{ fontSize: '.62rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'block', marginBottom: 4 }}>Facility / Location Name</label>
+              <input value={originName} onChange={e => setOriginName(e.target.value)} placeholder="Shipper name, facility…"
+                style={{ width: '100%', padding: '.55rem .75rem', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface-off)', color: 'var(--text)', fontSize: '.85rem', fontWeight: 600 }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '.62rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'block', marginBottom: 4 }}>Address / City, ST *</label>
+              <input value={origin} onChange={e => setOrigin(e.target.value)} placeholder="City, ST or full address"
+                style={{ width: '100%', padding: '.55rem .75rem', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface-off)', color: 'var(--text)', fontSize: '.85rem', fontWeight: 600 }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '.62rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'block', marginBottom: 4 }}>Phone Number</label>
+              <input type="text" inputMode="tel" value={originPhone} onChange={e => setOriginPhone(e.target.value)} placeholder="(800) 555-0100"
+                style={{ width: '100%', padding: '.55rem .75rem', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface-off)', color: 'var(--text)', fontSize: '.85rem' }} />
+            </div>
           </div>
 
           {/* Destination — hidden in multi-stop mode (auto-derived) */}
           {!multiStop && (
-            <div>
-              <label style={{ fontSize: '.62rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'block', marginBottom: 4 }}>Destination *</label>
-              <input value={dest} onChange={e => setDest(e.target.value)} placeholder="City, ST"
-                style={{ width: '100%', padding: '.65rem .8rem', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface-off)', color: 'var(--text)', fontSize: '.9rem', fontWeight: 600 }} />
+            <div style={{ display: 'grid', gap: 6, padding: '.6rem .7rem', borderRadius: 10, background: 'rgba(40,192,72,.04)', border: '1px solid rgba(40,192,72,.15)' }}>
+              <div style={{ fontSize: '.58rem', fontWeight: 900, color: 'var(--success)', textTransform: 'uppercase', letterSpacing: '.1em' }}>🏁 Destination</div>
+              <div>
+                <label style={{ fontSize: '.62rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'block', marginBottom: 4 }}>Facility / Location Name</label>
+                <input value={destName} onChange={e => setDestName(e.target.value)} placeholder="Receiver, DC name…"
+                  style={{ width: '100%', padding: '.55rem .75rem', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface-off)', color: 'var(--text)', fontSize: '.85rem', fontWeight: 600 }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '.62rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'block', marginBottom: 4 }}>Address / City, ST *</label>
+                <input value={dest} onChange={e => setDest(e.target.value)} placeholder="City, ST or full address"
+                  style={{ width: '100%', padding: '.55rem .75rem', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface-off)', color: 'var(--text)', fontSize: '.85rem', fontWeight: 600 }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '.62rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'block', marginBottom: 4 }}>Phone Number</label>
+                <input type="text" inputMode="tel" value={destPhone} onChange={e => setDestPhone(e.target.value)} placeholder="(800) 555-0100"
+                  style={{ width: '100%', padding: '.55rem .75rem', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface-off)', color: 'var(--text)', fontSize: '.85rem' }} />
+              </div>
             </div>
           )}
 

@@ -118,6 +118,7 @@ export type MissionStop = {
   address?:         string        // street address
   city?:            string
   state?:           string
+  phone?:           string        // facility phone number
   appointmentStart?: string       // ISO datetime or "YYYY-MM-DD HH:mm"
   appointmentEnd?:   string
   notes?:           string

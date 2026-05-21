@@ -45,8 +45,10 @@ const LABEL: React.CSSProperties = {
 export default function AddStopSheet({ open, onClose, onAdd, driverMode = false }: Props) {
   const [type,     setType]     = useState<StopType>('fuel')
   const [name,     setName]     = useState('')
+  const [address,  setAddress]  = useState('')
   const [city,     setCity]     = useState('')
   const [stateCd,  setStateCd]  = useState('')
+  const [phone,    setPhone]    = useState('')
   const [appt,     setAppt]     = useState('')
   const [notes,    setNotes]    = useState('')
   const [position, setPosition] = useState<Position>('after_current')
@@ -56,8 +58,8 @@ export default function AddStopSheet({ open, onClose, onAdd, driverMode = false 
     : STOP_TYPES
 
   const reset = () => {
-    setType('fuel'); setName(''); setCity(''); setStateCd(''); setAppt(''); setNotes('')
-    setPosition('after_current')
+    setType('fuel'); setName(''); setAddress(''); setCity(''); setStateCd('')
+    setPhone(''); setAppt(''); setNotes(''); setPosition('after_current')
   }
 
   const handleAdd = () => {
@@ -67,10 +69,12 @@ export default function AddStopSheet({ open, onClose, onAdd, driverMode = false 
       sequence:         0,           // re-sequenced by insertStop
       type,
       name:             name.trim(),
-      city:             city.trim()    || undefined,
-      state:            stateCd.trim() || undefined,
-      appointmentStart: appt           || undefined,
-      notes:            notes.trim()   || undefined,
+      address:          address.trim()  || undefined,
+      city:             city.trim()     || undefined,
+      state:            stateCd.trim()  || undefined,
+      phone:            phone.trim()    || undefined,
+      appointmentStart: appt            || undefined,
+      notes:            notes.trim()    || undefined,
     }
     onAdd(stop, position)
     reset()
@@ -140,6 +144,17 @@ export default function AddStopSheet({ open, onClose, onAdd, driverMode = false 
           />
         </div>
 
+        {/* Street address */}
+        <div style={{ marginBottom: '.85rem' }}>
+          <label style={LABEL}>Street Address</label>
+          <input
+            value={address}
+            onChange={e => setAddress(e.target.value)}
+            placeholder="123 Industrial Blvd, Building A…"
+            style={INPUT}
+          />
+        </div>
+
         {/* City + State */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 72px', gap: '.65rem', marginBottom: '.85rem' }}>
           <div>
@@ -161,6 +176,19 @@ export default function AddStopSheet({ open, onClose, onAdd, driverMode = false 
               style={{ ...INPUT, textTransform: 'uppercase' }}
             />
           </div>
+        </div>
+
+        {/* Phone number */}
+        <div style={{ marginBottom: '.85rem' }}>
+          <label style={LABEL}>Phone Number</label>
+          <input
+            type="text"
+            inputMode="tel"
+            value={phone}
+            onChange={e => setPhone(e.target.value)}
+            placeholder="(800) 555-0100"
+            style={INPUT}
+          />
         </div>
 
         {/* Appointment */}

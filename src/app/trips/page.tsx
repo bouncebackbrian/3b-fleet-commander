@@ -1055,8 +1055,12 @@ export default function TripPlanner() {
 
   // Input
   const [tab,       setTab]       = useState<InputTab>('form')
-  const [origin,    setOrigin]    = useState('')
-  const [dest,      setDest]      = useState('')
+  const [origin,      setOrigin]      = useState('')
+  const [originName,  setOriginName]  = useState('')
+  const [originPhone, setOriginPhone] = useState('')
+  const [dest,        setDest]        = useState('')
+  const [destName,    setDestName]    = useState('')
+  const [destPhone,   setDestPhone]   = useState('')
   const [miles,     setMiles]     = useState('')
   const [depart,    setDepart]    = useState('07:00')
   const [loadNum,   setLoadNum]   = useState('')
@@ -1662,8 +1666,22 @@ export default function TripPlanner() {
               <div style={S.card}>
                 <div style={S.sec}>Route Details</div>
                 <div style={{ display:'grid', gap:'.75rem' }}>
-                  <div><label style={S.lbl}>Origin *</label><input style={S.inp} value={origin} onChange={e=>setOrigin(e.target.value)} placeholder="Amargosa Valley, NV" /></div>
-                  <div><label style={S.lbl}>Destination *</label><input style={S.inp} value={dest} onChange={e=>setDest(e.target.value)} placeholder="Walmart DC Sparks, NV" /></div>
+
+                  {/* ── ORIGIN ── */}
+                  <div style={{ display:'grid', gap:'.45rem', padding:'.65rem .75rem', borderRadius:11, background:'rgba(0,232,176,.04)', border:'1px solid rgba(0,232,176,.15)' }}>
+                    <div style={{ fontSize:'.58rem', fontWeight:900, color:'var(--primary)', textTransform:'uppercase', letterSpacing:'.1em' }}>📍 Origin</div>
+                    <div><label style={S.lbl}>Facility / Location Name</label><input style={S.inp} value={originName} onChange={e=>setOriginName(e.target.value)} placeholder="PetSmart DC41, Shipper Name…" /></div>
+                    <div><label style={S.lbl}>Address / City, ST *</label><input style={S.inp} value={origin} onChange={e=>setOrigin(e.target.value)} placeholder="Amargosa Valley, NV" /></div>
+                    <div><label style={S.lbl}>Phone Number</label><input style={S.inp} type="text" inputMode="tel" value={originPhone} onChange={e=>setOriginPhone(e.target.value)} placeholder="(800) 555-0100" /></div>
+                  </div>
+
+                  {/* ── DESTINATION ── */}
+                  <div style={{ display:'grid', gap:'.45rem', padding:'.65rem .75rem', borderRadius:11, background:'rgba(40,192,72,.04)', border:'1px solid rgba(40,192,72,.15)' }}>
+                    <div style={{ fontSize:'.58rem', fontWeight:900, color:'var(--success)', textTransform:'uppercase', letterSpacing:'.1em' }}>🏁 Destination</div>
+                    <div><label style={S.lbl}>Facility / Location Name</label><input style={S.inp} value={destName} onChange={e=>setDestName(e.target.value)} placeholder="Walmart DC Sparks, Receiver…" /></div>
+                    <div><label style={S.lbl}>Address / City, ST *</label><input style={S.inp} value={dest} onChange={e=>setDest(e.target.value)} placeholder="Walmart DC Sparks, NV" /></div>
+                    <div><label style={S.lbl}>Phone Number</label><input style={S.inp} type="text" inputMode="tel" value={destPhone} onChange={e=>setDestPhone(e.target.value)} placeholder="(800) 555-0100" /></div>
+                  </div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
                     <div><label style={S.lbl}>Total miles *</label><input style={S.inp} type="text" inputMode="numeric" value={miles} onChange={e=>setMiles(e.target.value)} placeholder="335" /></div>
                     <div><label style={S.lbl}>Departure</label><input style={S.inp} type="time" value={depart} onChange={e=>setDepart(e.target.value)} /></div>
