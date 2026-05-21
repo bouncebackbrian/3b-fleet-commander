@@ -11,14 +11,16 @@ const QUICK_ACTIONS = [
 ]
 
 interface Props {
-  onMusic?: () => void
-  onGym?:   () => void
+  onMusic?:      () => void
+  onGym?:        () => void
+  onSettlement?: () => void
 }
 
-export default function QuickNavCard({ onMusic, onGym }: Props) {
+export default function QuickNavCard({ onMusic, onGym, onSettlement }: Props) {
   const PANEL_ACTIONS = [
-    onMusic && { icon: '🎵', label: 'Music',  onClick: onMusic },
-    onGym   && { icon: '💪', label: 'Gym',    onClick: onGym   },
+    onMusic      && { icon: '🎵', label: 'Music',      onClick: onMusic      },
+    onGym        && { icon: '💪', label: 'Gym',        onClick: onGym        },
+    onSettlement && { icon: '📋', label: 'Settlement', onClick: onSettlement },
   ].filter(Boolean) as { icon: string; label: string; onClick: () => void }[]
 
   return (

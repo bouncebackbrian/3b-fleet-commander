@@ -42,6 +42,7 @@ import CompletedTripsPanel from '@/components/dashboard/panels/CompletedTripsPan
 import MusicPanel              from '@/components/dashboard/panels/MusicPanel'
 import GymFinderPanel          from '@/components/dashboard/panels/GymFinderPanel'
 import LaneIntelligencePanel   from '@/components/dashboard/panels/LaneIntelligencePanel'
+import SettlementPanel         from '@/components/dashboard/panels/SettlementPanel'
 import ToastContainer      from '@/components/shared/ToastContainer'
 import OfflineBanner       from '@/components/shared/OfflineBanner'
 import DebugPanel          from '@/components/debug/DebugPanel'
@@ -301,9 +302,10 @@ export default function Dashboard() {
   const [showTripReview,    setShowTripReview]    = useState(false)
   const [showCompletedTrips,setShowCompletedTrips] = useState(false)
   const [selectedStop,      setSelectedStop]      = useState<MissionStop | null>(null)
-  const [showMusicPanel,    setShowMusicPanel]    = useState(false)
-  const [showGymFinder,     setShowGymFinder]     = useState(false)
-  const [showLanePanel,     setShowLanePanel]     = useState(false)
+  const [showMusicPanel,      setShowMusicPanel]      = useState(false)
+  const [showGymFinder,       setShowGymFinder]       = useState(false)
+  const [showLanePanel,       setShowLanePanel]       = useState(false)
+  const [showSettlementPanel, setShowSettlementPanel] = useState(false)
 
   // ── Movement detector — only active when driving mode is on
   const movement = useMovementDetector(drivingMode)
@@ -529,6 +531,11 @@ export default function Dashboard() {
         loading={laneLoading}
         driverMode={driverMode}
       />
+      <SettlementPanel
+        open={showSettlementPanel}
+        onClose={() => setShowSettlementPanel(false)}
+        driverMode={driverMode}
+      />
 
       {/* ═══ COMMAND CENTER SHELL ════════════════════════════════════════════ */}
       <div className="cc-main" style={{ display: drivingMode ? 'none' : undefined }}>
@@ -597,6 +604,7 @@ export default function Dashboard() {
             <QuickNavCard
               onMusic={() => setShowMusicPanel(true)}
               onGym={() => setShowGymFinder(true)}
+              onSettlement={() => setShowSettlementPanel(true)}
             />
           </div>
 
