@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { opLog } from '@/lib/logger'
 
 const MOVING_MPH_THRESHOLD  = 8     // must exceed this to count as "moving"
 const STOPPED_MPH_THRESHOLD = 3     // hysteresis — must drop below this to count as "stopped"
@@ -51,11 +52,17 @@ export function useMovementDetector(enabled: boolean): MovementData {
     currentAlertType.current = null
   }, [])
 
-  const fireAlert = useCallback((type: AlertType) => {
+  const fireAlert = useCallback((type: AlertType, speedAtFire: number | null = null) => {
     if (Date.now() < snoozeUntil.current) return
     currentAlertType.current = type
     setAlertType(type)
     setShowAlert(true)
+    // Operational log — proof of alert delivery for compliance review
+    opLog.movement(`movement_alert: ${type}`, {
+      alertType:  type,
+      speedMph:   speedAtFire,
+      timestamp:  new Date().toISOString(),
+    })
   }, [])
 
   const clearStoppedTimer = () => {
@@ -102,7 +109,7 @@ export function useMovementDetector(enabled: boolean): MovementData {
 
           // Edge-trigger: fire only on transition stopped → moving
           if (!wasMoving.current) {
-            fireAlert('started_moving')
+            fireAlert('started_moving', Math.round(mph))
           }
           wasMoving.current = true
           return
@@ -127,7 +134,7 @@ export function useMovementDetector(enabled: boolean): MovementData {
             // This ignores red lights, toll booths, brief pauses
             clearStoppedTimer()
             stoppedTimerId.current = setTimeout(() => {
-              fireAlert('just_stopped')
+              fireAlert('just_stopped', 0)
             }, STOPPED_DEBOUNCE_MS)
           }
         }

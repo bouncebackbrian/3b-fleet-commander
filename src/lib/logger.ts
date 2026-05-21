@@ -14,7 +14,7 @@
 //   guard    — runtime validation failures (NaN, missing fields, duplicate calls)
 
 export type LogLevel    = 'info' | 'warn' | 'error' | 'debug'
-export type LogCategory = 'mission' | 'event' | 'break' | 'fuel' | 'hos' | 'ai' | 'sync' | 'render' | 'guard'
+export type LogCategory = 'mission' | 'event' | 'break' | 'fuel' | 'hos' | 'ai' | 'sync' | 'render' | 'guard' | 'movement'
 
 export interface LogEntry {
   id:       string
@@ -76,8 +76,9 @@ export const opLog = {
   ai:      (msg: string, data?: unknown) => _write('info',  'ai',      msg, data),
   sync:    (msg: string, data?: unknown) => _write('info',  'sync',    msg, data),
   syncErr: (msg: string, data?: unknown) => _write('error', 'sync',    msg, data),
-  guard:   (msg: string, data?: unknown) => _write('warn',  'guard',   msg, data),
-  render:  (msg: string, data?: unknown) => _write('debug', 'render',  msg, data),
+  guard:    (msg: string, data?: unknown) => _write('warn',  'guard',    msg, data),
+  render:   (msg: string, data?: unknown) => _write('debug', 'render',   msg, data),
+  movement: (msg: string, data?: unknown) => _write('info',  'movement', msg, data),
 }
 
 /** Snapshot of current in-memory log entries (newest first). */
