@@ -6,8 +6,8 @@ import TopBar from '@/components/layout/TopBar'
 import { loadSettings } from '@/lib/settings'
 import StopTimeline from '@/components/dashboard/cards/StopTimeline'
 import AddStopSheet  from '@/components/dashboard/sheets/AddStopSheet'
-import { insertStop } from '@/lib/dashboard/helpers'
-import type { MissionStop, LoadMission } from '@/lib/dashboard/types'
+import type { MissionStop } from '@/lib/dashboard/types'
+import { useMission } from '@/hooks/useMission'
 
 // Leaflet must be client-side only
 const RouteMap = dynamic(() => import('@/components/map/RouteMap'), { ssr: false })
@@ -1070,8 +1070,8 @@ export default function TripPlanner() {
   const [plan,      setPlan]      = useState<Plan | null>(null)
   const [copiedGPS, setCopiedGPS] = useState(false)
 
-  // Mission Stops (reads/writes the active mission in localStorage)
-  const [tripMission,      setTripMission]      = useState<LoadMission | null>(null)
+  // Mission Stops — same persistence path as dashboard (localStorage + Supabase async)
+  const { mission, addStop, updateStop } = useMission()
   const [showTripAddStop,  setShowTripAddStop]  = useState(false)
 
   // AI Load Prep
@@ -1115,39 +1115,9 @@ export default function TripPlanner() {
         }
       }
     } catch { /* ignore */ }
-    // Load active mission for Mission Stops panel
-    try {
-      const raw = localStorage.getItem('3b-latest-load')
-      if (raw) setTripMission(JSON.parse(raw) as LoadMission)
-    } catch { /* ignore */ }
   }, [])
 
-  // Persist updated mission back to localStorage (no Supabase sync from trips page)
-  const saveTripMission = (m: LoadMission) => {
-    try { localStorage.setItem('3b-latest-load', JSON.stringify(m)) } catch { /* ignore */ }
-    setTripMission(m)
-  }
-
-  const handleAddTripStop = (stop: MissionStop, position: 'after_current' | 'before_final' | 'end') => {
-    if (!tripMission) return
-    saveTripMission(insertStop(tripMission, stop, position))
-  }
-
-  const handleCompleteTripStop = (stopId: string) => {
-    if (!tripMission) return
-    const stops = (tripMission.stops ?? []).map(s =>
-      s.id === stopId ? { ...s, completed: true, completedAt: new Date().toISOString() } : s,
-    )
-    saveTripMission({ ...tripMission, stops })
-  }
-
-  const handleUndoTripStop = (stopId: string) => {
-    if (!tripMission) return
-    const stops = (tripMission.stops ?? []).map(s =>
-      s.id === stopId ? { ...s, completed: false, completedAt: undefined } : s,
-    )
-    saveTripMission({ ...tripMission, stops })
-  }
+  // Mission stop handlers — routed through useMission for localStorage + Supabase parity with dashboard
 
   const fill = useCallback((f: Parsed) => {
     if (f.origin)    setOrigin(f.origin)
@@ -1606,7 +1576,7 @@ export default function TripPlanner() {
       <AddStopSheet
         open={showTripAddStop}
         onClose={() => setShowTripAddStop(false)}
-        onAdd={handleAddTripStop}
+        onAdd={(stop, position) => addStop(stop, position)}
       />
 
       <style>{`
@@ -2210,32 +2180,32 @@ export default function TripPlanner() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.75rem' }}>
                   <span style={{ fontSize: 'var(--cc-meta)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--muted)' }}>
                     Mission Stops
-                    {tripMission && (
+                    {mission && (
                       <span style={{ fontWeight: 600, textTransform: 'none', letterSpacing: 0, marginLeft: 6 }}>
-                        — {tripMission.loadNumber || 'Active Load'}
+                        — {mission.loadNumber || 'Active Load'}
                       </span>
                     )}
                   </span>
                   <button
                     onClick={() => setShowTripAddStop(true)}
-                    disabled={!tripMission}
+                    disabled={!mission}
                     style={{
                       fontSize: '.72rem', fontWeight: 800, padding: '.28rem .7rem', borderRadius: 7,
                       border: '1px dashed rgba(0,232,176,.45)', background: 'rgba(0,232,176,.06)',
-                      color: tripMission ? 'var(--primary)' : 'var(--muted)',
-                      cursor: tripMission ? 'pointer' : 'not-allowed',
+                      color: mission ? 'var(--primary)' : 'var(--muted)',
+                      cursor: mission ? 'pointer' : 'not-allowed',
                     }}
                   >
                     + Add Stop
                   </button>
                 </div>
 
-                {tripMission ? (
-                  tripMission.stops && tripMission.stops.length > 0 ? (
+                {mission ? (
+                  mission.stops && mission.stops.length > 0 ? (
                     <StopTimeline
-                      stops={tripMission.stops}
-                      onComplete={handleCompleteTripStop}
-                      onUndo={handleUndoTripStop}
+                      stops={mission.stops}
+                      onComplete={id => updateStop(id, { completed: true, completedAt: new Date().toISOString() })}
+                      onUndo={id => updateStop(id, { completed: false, completedAt: undefined })}
                       onAddStop={() => setShowTripAddStop(true)}
                     />
                   ) : (
