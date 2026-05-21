@@ -10,7 +10,17 @@ const QUICK_ACTIONS = [
   { href: '/delays',   icon: '⏱',  label: 'Delay'     },
 ]
 
-export default function QuickNavCard() {
+interface Props {
+  onMusic?: () => void
+  onGym?:   () => void
+}
+
+export default function QuickNavCard({ onMusic, onGym }: Props) {
+  const PANEL_ACTIONS = [
+    onMusic && { icon: '🎵', label: 'Music',  onClick: onMusic },
+    onGym   && { icon: '💪', label: 'Gym',    onClick: onGym   },
+  ].filter(Boolean) as { icon: string; label: string; onClick: () => void }[]
+
   return (
     <div className="cc-card" style={{ padding: '.75rem' }}>
       <div style={{ fontSize: '.58rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.5rem' }}>Quick Access</div>
@@ -20,6 +30,16 @@ export default function QuickNavCard() {
             <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>{a.icon}</span>
             <span style={{ fontSize: '.85rem', fontWeight: 700, color: 'var(--muted)' }}>{a.label}</span>
           </Link>
+        ))}
+        {PANEL_ACTIONS.map(a => (
+          <button
+            key={a.label}
+            onClick={a.onClick}
+            style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '.65rem .85rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', cursor: 'pointer', minHeight: 56, textAlign: 'left' }}
+          >
+            <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>{a.icon}</span>
+            <span style={{ fontSize: '.85rem', fontWeight: 700, color: 'var(--muted)' }}>{a.label}</span>
+          </button>
         ))}
       </div>
     </div>

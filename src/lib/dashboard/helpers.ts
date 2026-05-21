@@ -148,8 +148,14 @@ export type RowIdentity = {
 
 // ── Serialize a LoadMission for insert into fleet_missions ────────────────────
 // identity is optional — null/undefined when running in unauthenticated alpha mode.
+//
+// business_id is omitted from the row when null/undefined.
+// Reason: the column may not exist yet on every deployment, or it may exist as
+// uuid (older schema) rather than text (newer schema). Omitting a null value
+// is safe — Postgres uses the column default (null) when the field is absent
+// from the upsert payload, so no data is lost.
 export function missionToRow(m: LoadMission, identity?: RowIdentity): Record<string, unknown> {
-  return {
+  const row: Record<string, unknown> = {
     id:                    m.id,
     load_number:           m.loadNumber || '',
     broker:                m.broker ?? null,
@@ -170,10 +176,8 @@ export function missionToRow(m: LoadMission, identity?: RowIdentity): Record<str
     delivery:              m.delivery  ?? null,
     commodity:             m.commodity ?? null,
     status:                m.status ?? 'active',
-    // Attach 3B identity when logged in; null when in alpha/offline mode
-    user_id:               identity?.userId     ?? null,
-    business_id:           identity?.businessId ?? null,
-    // routePreference, routeNotes, stops, tripReview — all in metadata jsonb, no migration needed
+    user_id:               identity?.userId ?? null,
+    // routePreference, routeNotes, stops, tripReview — all in metadata jsonb
     metadata: {
       routePreference: m.routePreference ?? 'main_corridors',
       routeNotes:      m.routeNotes      ?? null,
@@ -181,4 +185,12 @@ export function missionToRow(m: LoadMission, identity?: RowIdentity): Record<str
       tripReview:      m.tripReview      ?? null,
     },
   }
+
+  // Only include business_id when a real value exists — avoids type conflicts
+  // between deployments where the column is uuid vs text.
+  if (identity?.businessId) {
+    row.business_id = identity.businessId
+  }
+
+  return row
 }

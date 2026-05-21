@@ -4,7 +4,7 @@ import Link from 'next/link'
 import TopBar from '@/components/layout/TopBar'
 
 // ── Types
-import type { EldMode, VehicleSetup, HOSData, SamsaraData, ActiveTrip } from '@/lib/dashboard/types'
+import type { EldMode, VehicleSetup, HOSData, SamsaraData, ActiveTrip, MissionStop } from '@/lib/dashboard/types'
 // ── Observability
 import { opLog } from '@/lib/logger'
 import { validateHOS } from '@/lib/guards'
@@ -16,6 +16,7 @@ import type { RoutePreference } from '@/lib/dashboard/types'
 import { useWeather }            from '@/hooks/useWeather'
 import { useBreakTimer }         from '@/hooks/useBreakTimer'
 import { useMission }            from '@/hooks/useMission'
+import { useStopEvents }         from '@/hooks/useStopEvents'
 import { useOperationalMemory }  from '@/hooks/useOperationalMemory'
 import { useOnlineStatus }       from '@/hooks/useOnlineStatus'
 import { useMovementDetector }   from '@/hooks/useMovementDetector'
@@ -33,9 +34,12 @@ import DocsSheet         from '@/components/dashboard/sheets/DocsSheet'
 import VoicePanel        from '@/components/dashboard/sheets/VoicePanel'
 import LogEventSheet      from '@/components/dashboard/sheets/LogEventSheet'
 import MissionHistoryPanel from '@/components/dashboard/panels/MissionHistoryPanel'
-import AddStopSheet        from '@/components/dashboard/sheets/AddStopSheet'
+import AddStopSheet         from '@/components/dashboard/sheets/AddStopSheet'
+import StopLifecyclePanel  from '@/components/dashboard/sheets/StopLifecyclePanel'
 import TripReviewSheet     from '@/components/dashboard/sheets/TripReviewSheet'
 import CompletedTripsPanel from '@/components/dashboard/panels/CompletedTripsPanel'
+import MusicPanel          from '@/components/dashboard/panels/MusicPanel'
+import GymFinderPanel      from '@/components/dashboard/panels/GymFinderPanel'
 import ToastContainer      from '@/components/shared/ToastContainer'
 import OfflineBanner       from '@/components/shared/OfflineBanner'
 import DebugPanel          from '@/components/debug/DebugPanel'
@@ -152,6 +156,7 @@ export default function Dashboard() {
   // ── Hooks
   const { weather, weatherLoading, wx, lastUpdated: weatherUpdated, refresh: refreshWeather } = useWeather()
   const { mission, missionScore, missionFuel, saveMission, updateStop, addStop, completeMission, missionSaveError, syncState } = useMission()
+  const { advanceLifecycle } = useStopEvents()
   const {
     breakActive, breakSecs, showBreakModal, setShowBreakModal,
     handleStartBreak, handleEndBreak, BREAK_TARGET, fmtBreak,
@@ -204,6 +209,9 @@ export default function Dashboard() {
   const [showAddStop,       setShowAddStop]       = useState(false)
   const [showTripReview,    setShowTripReview]    = useState(false)
   const [showCompletedTrips,setShowCompletedTrips] = useState(false)
+  const [selectedStop,      setSelectedStop]      = useState<MissionStop | null>(null)
+  const [showMusicPanel,    setShowMusicPanel]    = useState(false)
+  const [showGymFinder,     setShowGymFinder]     = useState(false)
 
   // ── Movement detector — only active when driving mode is on
   const movement = useMovementDetector(drivingMode)
@@ -386,6 +394,22 @@ export default function Dashboard() {
         driverMode={driverMode}
         onAdd={(stop, position) => addStop(stop, position)}
       />
+      {selectedStop && (
+        <StopLifecyclePanel
+          stop={selectedStop}
+          open={selectedStop !== null}
+          onClose={() => setSelectedStop(null)}
+          driverMode={driverMode}
+          onAdvance={async (status, notes) => {
+            await advanceLifecycle(selectedStop, status, notes)
+            // Refresh selectedStop from mission so the panel shows updated timestamps
+            if (mission?.stops) {
+              const updated = mission.stops.find(s => s.id === selectedStop.id)
+              if (updated) setSelectedStop(updated)
+            }
+          }}
+        />
+      )}
       <TripReviewSheet
         open={showTripReview}
         onClose={() => setShowTripReview(false)}
@@ -395,6 +419,16 @@ export default function Dashboard() {
       <CompletedTripsPanel
         open={showCompletedTrips}
         onClose={() => setShowCompletedTrips(false)}
+      />
+      <MusicPanel
+        open={showMusicPanel}
+        onClose={() => setShowMusicPanel(false)}
+        drivingMode={drivingMode}
+      />
+      <GymFinderPanel
+        open={showGymFinder}
+        onClose={() => setShowGymFinder(false)}
+        drivingMode={drivingMode}
       />
 
       {/* ═══ COMMAND CENTER SHELL ════════════════════════════════════════════ */}
@@ -442,6 +476,7 @@ export default function Dashboard() {
               onCompleteStop={handleCompleteStop}
               onUndoStop={handleUndoStop}
               onAddStop={mission ? () => setShowAddStop(true) : undefined}
+              onTapStop={mission ? (stop) => setSelectedStop(stop) : undefined}
               onCompleteTrip={mission ? () => setShowTripReview(true) : undefined}
               onShowCompleted={() => setShowCompletedTrips(true)}
             />
@@ -453,7 +488,10 @@ export default function Dashboard() {
               />
             )}
             <AlertsCard operationalAlerts={operationalAlerts} onOpenHos={() => setShowHosDetail(true)} />
-            <QuickNavCard />
+            <QuickNavCard
+              onMusic={() => setShowMusicPanel(true)}
+              onGym={() => setShowGymFinder(true)}
+            />
           </div>
 
           {/* ══ RIGHT COLUMN ══ */}

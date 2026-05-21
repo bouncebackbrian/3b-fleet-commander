@@ -1,5 +1,6 @@
 'use client'
 import type { MissionStop, StopType } from '@/lib/dashboard/types'
+import DetentionClock from '@/components/dashboard/clocks/DetentionClock'
 
 const STOP_META: Record<StopType, { emoji: string; label: string; color: string }> = {
   pickup:   { emoji: '📦', label: 'Pickup',   color: 'var(--primary)' },
@@ -28,10 +29,11 @@ interface Props {
   onComplete?:  (stopId: string) => void
   onUndo?:      (stopId: string) => void
   onAddStop?:   () => void
+  onTapStop?:   (stop: MissionStop) => void   // opens StopLifecyclePanel
   compact?:     boolean
 }
 
-export default function StopTimeline({ stops, onComplete, onUndo, onAddStop, compact = false }: Props) {
+export default function StopTimeline({ stops, onComplete, onUndo, onAddStop, onTapStop, compact = false }: Props) {
   if (!stops.length) return null
 
   const sorted       = [...stops].sort((a, b) => a.sequence - b.sequence)
@@ -63,13 +65,21 @@ export default function StopTimeline({ stops, onComplete, onUndo, onAddStop, com
           const isCurrent = !isDone && i === currentIndex
           const isNext    = !isDone && i === currentIndex + 1
 
+          const hasClock = !compact && stop.lifecycleTimestamps?.arrived && stop.lifecycleStatus !== 'departed'
+
           return (
-            <div key={stop.id} style={{
-              position: 'relative', zIndex: 1,
-              display: 'flex', gap: 10, alignItems: 'flex-start',
-              padding: compact ? '.45rem 0' : '.55rem 0',
-              opacity: isDone ? .65 : 1,
-            }}>
+            <div
+              key={stop.id}
+              onClick={onTapStop ? () => onTapStop(stop) : undefined}
+              style={{
+                position: 'relative', zIndex: 1,
+                display: 'flex', gap: 10, alignItems: 'flex-start',
+                padding: compact ? '.45rem 0' : '.55rem 0',
+                opacity: isDone ? .65 : 1,
+                cursor: onTapStop ? 'pointer' : undefined,
+                borderRadius: onTapStop ? 8 : undefined,
+              }}
+            >
               {/* Node */}
               <div style={{
                 width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
@@ -137,6 +147,43 @@ export default function StopTimeline({ stops, onComplete, onUndo, onAddStop, com
                     </span>
                   )}
                 </div>
+
+                {/* Lifecycle status chip */}
+                {stop.lifecycleStatus && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3, flexWrap: 'wrap' }}>
+                    <span style={{
+                      fontSize: '.58rem', fontWeight: 800, padding: '.1rem .4rem', borderRadius: 4,
+                      background: stop.lifecycleStatus === 'departed'
+                        ? 'rgba(40,192,72,.12)'
+                        : 'rgba(0,232,176,.1)',
+                      color: stop.lifecycleStatus === 'departed'
+                        ? 'var(--success)'
+                        : 'var(--primary)',
+                      border: stop.lifecycleStatus === 'departed'
+                        ? '1px solid rgba(40,192,72,.3)'
+                        : '1px solid rgba(0,232,176,.25)',
+                      textTransform: 'uppercase', letterSpacing: '.05em',
+                    }}>
+                      {stop.lifecycleStatus.replace('_', ' ')}
+                    </span>
+                    {/* Compact detention badge — shown while at facility */}
+                    {stop.lifecycleTimestamps?.arrived && stop.lifecycleStatus !== 'departed' && (
+                      <DetentionClock
+                        arrivedAt={stop.lifecycleTimestamps.arrived}
+                        departedAt={stop.lifecycleTimestamps.departed}
+                        freeMinutes={stop.detentionSummary?.freeMinutes ?? 120}
+                        ratePerHour={stop.detentionSummary?.ratePerHour ?? 50}
+                        compact
+                      />
+                    )}
+                    {/* Final detention amount on departed stops */}
+                    {stop.lifecycleStatus === 'departed' && stop.detentionSummary && stop.detentionSummary.detentionMinutes > 0 && (
+                      <span style={{ fontSize: '.58rem', fontWeight: 800, padding: '.1rem .4rem', borderRadius: 4, background: 'rgba(232,64,0,.1)', color: 'var(--error)', border: '1px solid rgba(232,64,0,.2)' }}>
+                        ⏱ {stop.detentionSummary.detentionMinutes}m · ${stop.detentionSummary.detentionAmount.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* Notes */}
                 {stop.notes && !compact && (

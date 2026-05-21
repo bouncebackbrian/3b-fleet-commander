@@ -72,6 +72,41 @@ export type TripReview = {
   reviewedAt:    string          // ISO datetime when review was submitted
 }
 
+// ── Stop lifecycle ────────────────────────────────────────────────────────────
+// Ordered progression — arrived is always first, departed always last.
+// 'waiting' is optional and may be skipped without breaking the sequence.
+export type StopLifecycleStatus =
+  | 'arrived'
+  | 'checked_in'
+  | 'waiting'
+  | 'docked'
+  | 'work_started'
+  | 'work_ended'
+  | 'departed'
+
+export type StopDetentionSummary = {
+  arrivedAt:        string   // ISO — when detention clock started
+  departedAt:       string   // ISO — when clock stopped
+  dwellMinutes:     number   // total time at facility
+  freeMinutes:      number   // agreed free time (default 120)
+  detentionMinutes: number   // max(0, dwellMinutes - freeMinutes)
+  detentionAmount:  number   // detentionMinutes / 60 * ratePerHour
+  ratePerHour:      number   // default 50
+}
+
+// ── stop_events row (audit log — never mutated once written) ──────────────────
+export type StopEvent = {
+  id:           string
+  missionId:    string
+  stopId:       string
+  stopSequence: number
+  eventType:    StopLifecycleStatus
+  occurredAt:   string   // ISO
+  payload?:     Record<string, unknown>
+  notes?:       string
+  createdAt:    string
+}
+
 // ── Multi-Stop Mission ────────────────────────────────────────────────────────
 export type StopType = 'pickup' | 'delivery' | 'relay' | 'fuel' | 'yard' | 'rest' | 'scale' | 'repair' | 'washout' | 'other'
 
@@ -87,8 +122,12 @@ export type MissionStop = {
   appointmentEnd?:   string
   notes?:           string
   reference?:       string        // BOL / REF# / PO#
-  completed?:       boolean
-  completedAt?:     string        // ISO datetime when marked done
+  completed?:           boolean
+  completedAt?:         string                // ISO datetime when marked done
+  // Lifecycle (Phase 4G)
+  lifecycleStatus?:     StopLifecycleStatus
+  lifecycleTimestamps?: Partial<Record<StopLifecycleStatus, string>>  // ISO per step
+  detentionSummary?:    StopDetentionSummary
 }
 
 // ── Route Preference ─────────────────────────────────────────────────────────

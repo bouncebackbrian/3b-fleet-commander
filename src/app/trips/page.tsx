@@ -46,7 +46,7 @@ type Truck = {
   maxWeight: number; gvwr: number; cdlClass: string; endorsements: string
 }
 
-type TripOptions = { pet: boolean; team: boolean; haz: boolean }
+type TripOptions = { pet: boolean; team: boolean; haz: boolean; multiStop: boolean }
 
 type Stop = {
   type: StopType; icon: string; color: string; label: string
@@ -137,7 +137,7 @@ function buildPlan(inputs: {
   const stops: Stop[] = []
   const warnings: string[] = []
   let clock = departMin, drive = 0, hos = 0, onDuty = 0, miles = 0
-  let nextStretch = 120, nextPet = hasPet ? 120 : 999999
+  let nextStretch = 180, nextPet = hasPet ? 180 : 999999
 
   const rangePerTank  = tankGal * mpg
   const numFuel       = Math.max(1, Math.ceil(totalMiles / (rangePerTank * 0.85)))
@@ -188,8 +188,8 @@ function buildPlan(inputs: {
         note: 'FMCSA §395.3(a)(3): Required before 8h consecutive drive. Log off-duty or sleeper berth.',
         tag: 'DOT REQUIRED — log in ELD',
       })
-      clock += 30; onDuty += 30; drive = 0; nextStretch = 120
-      if (hasPet) nextPet = 120
+      clock += 30; onDuty += 30; drive = 0; nextStretch = 180
+      if (hasPet) nextPet = 180
       continue
     }
 
@@ -205,8 +205,8 @@ function buildPlan(inputs: {
         note: 'FMCSA §395.3: 11h driving reached. Must rest 10 consecutive off-duty hours before resuming.',
         tag: 'HOS VIOLATION RISK',
       })
-      clock += 600; hos = 0; drive = 0; onDuty = 0; nextStretch = 120
-      if (hasPet) nextPet = 120
+      clock += 600; hos = 0; drive = 0; onDuty = 0; nextStretch = 180
+      if (hasPet) nextPet = 180
       continue
     }
 
@@ -222,12 +222,12 @@ function buildPlan(inputs: {
         note: 'FMCSA §395.3(b): 14-hour on-duty window expired. No driving until 10-hr off-duty complete.',
         tag: '14-HR WINDOW EXPIRED',
       })
-      clock += 600; hos = 0; drive = 0; onDuty = 0; nextStretch = 120
-      if (hasPet) nextPet = 120
+      clock += 600; hos = 0; drive = 0; onDuty = 0; nextStretch = 180
+      if (hasPet) nextPet = 180
       continue
     }
 
-    // Stretch every 2h
+    // Stretch every 3h
     if (drive >= nextStretch) {
       stops.push({
         type: 'stretch', icon: '🚶', color: '#e8af34',
@@ -235,10 +235,10 @@ function buildPlan(inputs: {
         location: `Mile ~${Math.round(miles)} — exit or rest area`,
         eta: minsToTime(clock), dur: '10–15 min', mi: Math.round(miles),
         hosStr: hosLabel(hos),
-        note: 'Recommended every 2h: stretch, hydrate, walk the trailer. Quick visual cargo inspection.',
+        note: 'Recommended every 3h: stretch, hydrate, walk the trailer. Quick visual cargo inspection.',
       })
-      clock += 12; onDuty += 12; nextStretch = drive + 120
-      if (hasPet) nextPet = drive + 60
+      clock += 12; onDuty += 12; nextStretch = drive + 180
+      if (hasPet) nextPet = drive + 180
       continue
     }
 
@@ -252,7 +252,7 @@ function buildPlan(inputs: {
         hosStr: hosLabel(hos),
         note: 'Walk, water, waste. Never leave pet in cab above 70°F ambient. Use rest areas with grass.',
       })
-      clock += 20; onDuty += 20; nextPet = drive + 120
+      clock += 20; onDuty += 20; nextPet = drive + 180
       continue
     }
     break
@@ -1063,7 +1063,7 @@ export default function TripPlanner() {
   const [fileName,  setFileName]  = useState('')
 
   // App state
-  const [opts,      setOpts]      = useState<TripOptions>({ pet:false, team:false, haz:false })
+  const [opts,      setOpts]      = useState<TripOptions>({ pet:false, team:false, haz:false, multiStop:false })
   const [truck,     setTruck]     = useState<Truck | null>(null)
   const [truckForm, setTruckForm] = useState<Truck>(DEFAULT_TRUCK)
   const [showModal, setShowModal] = useState(false)
@@ -1679,7 +1679,7 @@ export default function TripPlanner() {
               {/* Driver options */}
               <div style={S.card}>
                 <div style={S.sec}>Driver Options</div>
-                {([['pet','🐾 Pet aboard — add breaks every 2h'],['team','👥 Team driving — split HOS'],['haz','⚠ Hazmat — restricted routes apply']] as [keyof TripOptions,string][]).map(([k,label]) => (
+                {([['pet','🐾 Pet aboard — pet-friendly stop locations'],['team','👥 Team driving — split HOS'],['haz','⚠ Hazmat — restricted routes apply'],['multiStop','📦 Multi-stop load — manage mission stops']] as [keyof TripOptions,string][]).map(([k,label]) => (
                   <label key={k} onClick={()=>setOpts(p=>({...p,[k]:!p[k]}))} style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', fontSize:'var(--text-sm)', marginBottom:'.7rem' }}>
                     <div style={{ width:40, height:22, background:opts[k]?'var(--primary)':'var(--border)', borderRadius:11, position:'relative', flexShrink:0, transition:'background .18s' }}>
                       <div style={{ position:'absolute', top:3, left:opts[k]?20:3, width:16, height:16, borderRadius:'50%', background:'#fff', transition:'left .18s', boxShadow:'0 1px 4px rgba(0,0,0,.4)' }} />
@@ -1699,6 +1699,46 @@ export default function TripPlanner() {
                   </button>
                 ))}
               </div>
+
+              {/* Mission Stops — shown inline when multi-stop is toggled ON */}
+              {opts.multiStop && (
+                <div style={{ ...S.card, border: '1px solid rgba(0,232,176,.3)', background: 'rgba(0,232,176,.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '.5rem', borderBottom: '1px solid var(--border)', marginBottom: '.9rem' }}>
+                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: 'var(--primary)' }}>
+                      📦 Mission Stops
+                      {mission && <span style={{ fontWeight: 600, textTransform: 'none', letterSpacing: 0, marginLeft: 6, color: 'var(--muted)' }}>— {mission.loadNumber || 'Active Load'}</span>}
+                    </span>
+                    <button
+                      onClick={() => setShowTripAddStop(true)}
+                      disabled={!mission}
+                      style={{ fontSize: '.72rem', fontWeight: 800, padding: '.28rem .7rem', borderRadius: 7, border: '1px dashed rgba(0,232,176,.45)', background: 'rgba(0,232,176,.06)', color: mission ? 'var(--primary)' : 'var(--muted)', cursor: mission ? 'pointer' : 'not-allowed' }}
+                    >
+                      + Add Stop
+                    </button>
+                  </div>
+                  {mission ? (
+                    mission.stops && mission.stops.length > 0 ? (
+                      <StopTimeline
+                        stops={mission.stops}
+                        onComplete={id => updateStop(id, { completed: true, completedAt: new Date().toISOString() })}
+                        onUndo={id => updateStop(id, { completed: false, completedAt: undefined })}
+                        onAddStop={() => setShowTripAddStop(true)}
+                      />
+                    ) : (
+                      <div style={{ fontSize: '.82rem', color: 'var(--muted)', textAlign: 'center', padding: '.5rem 0' }}>
+                        No stops yet.{' '}
+                        <button onClick={() => setShowTripAddStop(true)} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: '.82rem' }}>
+                          Add first stop →
+                        </button>
+                      </div>
+                    )
+                  ) : (
+                    <div style={{ fontSize: '.82rem', color: 'var(--muted)', textAlign: 'center', padding: '.5rem 0' }}>
+                      No active mission. Save a load first to add stops.
+                    </div>
+                  )}
+                </div>
+              )}
 
               <button onClick={runBuild} style={{ ...S.btnPri, width:'100%', padding:'.9rem', fontSize:'var(--text-sm)', textAlign:'center' }}>
                 🗺 Build trip plan

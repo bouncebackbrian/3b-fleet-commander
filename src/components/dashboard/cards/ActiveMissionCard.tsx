@@ -18,6 +18,7 @@ interface Props {
   onCompleteStop?:  (stopId: string) => void
   onUndoStop?:      (stopId: string) => void
   onAddStop?:       () => void
+  onTapStop?:       (stop: MissionStop) => void
   onCompleteTrip?:  () => void
   onShowCompleted?: () => void
 }
@@ -43,7 +44,7 @@ function SyncBadge({ state }: { state: SyncState }) {
   )
 }
 
-export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', routeRisk, driverMode = false, onLogEvent, onShowHistory, onCompleteStop, onUndoStop, onAddStop, onCompleteTrip, onShowCompleted }: Props) {
+export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', routeRisk, driverMode = false, onLogEvent, onShowHistory, onCompleteStop, onUndoStop, onAddStop, onTapStop, onCompleteTrip, onShowCompleted }: Props) {
   const stops = mission?.stops ?? []
   const sortedStops = [...stops].sort((a, b) => a.sequence - b.sequence)
   const currentStop = sortedStops.find(s => !s.completed) ?? null
@@ -136,6 +137,7 @@ export default function ActiveMissionCard({ mission, missionScore, missionFuel, 
             <div style={{ padding: '.75rem .9rem', borderRadius: 12, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
               <StopTimeline
                 stops={sortedStops}
+                onTapStop={onTapStop}
                 onComplete={onCompleteStop}
                 onUndo={onUndoStop}
                 onAddStop={onAddStop}

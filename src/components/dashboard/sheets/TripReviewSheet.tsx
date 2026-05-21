@@ -50,11 +50,16 @@ function makeDefaults(mission: LoadMission | null): Omit<TripReview, 'reviewedAt
     ? `${mission.date}T08:00`
     : ''
 
+  // Auto-flag detention if any stop accumulated detention time during the trip
+  const hadDetention = (mission?.stops ?? []).some(
+    s => (s.detentionSummary?.detentionMinutes ?? 0) > 0,
+  )
+
   return {
     actualStart:   startDate,
     actualEnd:     localNow,
     stopsAccurate: true,
-    detention:     false,
+    detention:     hadDetention,
     parkingIssue:  false,
     routeProblem:  false,
     fuelIssue:     false,
@@ -69,6 +74,11 @@ function makeDefaults(mission: LoadMission | null): Omit<TripReview, 'reviewedAt
 export default function TripReviewSheet({ open, onClose, mission, onSubmit }: Props) {
   const [form,       setForm]       = useState(() => makeDefaults(mission))
   const [submitting, setSubmitting] = useState(false)
+
+  // Pre-computed detention total from stop lifecycle data
+  const detentionTotal = (mission?.stops ?? []).reduce(
+    (sum, s) => sum + (s.detentionSummary?.detentionAmount ?? 0), 0,
+  )
 
   // Reset form whenever sheet opens for a new mission
   useEffect(() => {
@@ -170,6 +180,13 @@ export default function TripReviewSheet({ open, onClose, mission, onSubmit }: Pr
               </span>
             )}
           </div>
+          {/* Detention amount hint — shown when detention flag is active and lifecycle data exists */}
+          {form.detention && detentionTotal > 0 && (
+            <div style={{ marginBottom: '.65rem', padding: '.5rem .75rem', borderRadius: 9, background: 'rgba(245,194,0,.07)', border: '1px solid rgba(245,194,0,.2)', fontSize: '.72rem', color: 'var(--warn)', fontWeight: 700 }}>
+              ⏱ ${detentionTotal.toFixed(2)} detention logged from stop records — document for broker claim
+            </div>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '.45rem' }}>
             {ISSUE_FLAGS.map(({ key, emoji, label }) => {
               const active = form[key] as boolean
