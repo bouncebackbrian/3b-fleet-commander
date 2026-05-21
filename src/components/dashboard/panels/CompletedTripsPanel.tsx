@@ -47,8 +47,8 @@ async function fetchCompleted(): Promise<CompletedTrip[]> {
     try {
       const { data, error } = await supabase
         .from('fleet_missions')
-        .select('id, load_number, origin, destination, date, status, metadata')
-        .eq('status', 'completed')
+        .select('id, load_number, origin, destination, date, mission_status, metadata')
+        .eq('mission_status', 'completed')
         .order('created_at', { ascending: false })
         .limit(30)
 

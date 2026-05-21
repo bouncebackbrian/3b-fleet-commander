@@ -99,7 +99,7 @@ export function parseFleetMission(row: any): LoadMission {
     stops:               Array.isArray((row.metadata as Record<string, unknown>)?.stops)
                          ? ((row.metadata as Record<string, unknown>).stops as MissionStop[])
                          : undefined,
-    status:              (row.status as MissionStatus) ?? 'active',
+    status:              (row.mission_status as MissionStatus) ?? 'active',
     tripReview:          ((row.metadata as Record<string, unknown>)?.tripReview) as TripReview | undefined,
   }
 }
@@ -175,7 +175,7 @@ export function missionToRow(m: LoadMission, identity?: RowIdentity): Record<str
     pickup:                m.pickup    ?? null,
     delivery:              m.delivery  ?? null,
     commodity:             m.commodity ?? null,
-    status:                m.status ?? 'active',
+    mission_status:        m.status ?? 'active',
     user_id:               identity?.userId ?? null,
     // routePreference, routeNotes, stops, tripReview — all in metadata jsonb
     metadata: {

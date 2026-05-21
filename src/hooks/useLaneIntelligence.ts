@@ -272,7 +272,7 @@ export function useLaneIntelligence(origin?: string, destination?: string) {
           const { data } = await supabase
             .from('fleet_missions')
             .select('*')
-            .eq('status', 'completed')
+            .eq('mission_status', 'completed')
             .order('date', { ascending: false })
             .limit(200)
           if (data) {

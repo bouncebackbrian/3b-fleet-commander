@@ -24,7 +24,7 @@ async function fetchActiveMission(): Promise<{ mission: LoadMission | null; tier
     const { data: fm, error: fmErr } = await supabase
       .from('fleet_missions')
       .select('*')
-      .in('status', ['active', 'planned'])
+      .in('mission_status', ['active', 'planned'])
       .order('created_at', { ascending: false })
       .limit(1)
       .single()
@@ -53,7 +53,7 @@ async function fetchActiveMission(): Promise<{ mission: LoadMission | null; tier
         .from('fleet_missions')
         .select('id')
         .eq('id', load.id)
-        .eq('status', 'completed')
+        .eq('mission_status', 'completed')
         .maybeSingle()
 
       if (!archived) {
