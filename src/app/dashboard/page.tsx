@@ -254,9 +254,10 @@ export default function Dashboard() {
 
   return (
     <>
-      {/* ── Movement alert — fires when driving mode + GPS detects motion ── */}
+      {/* ── Movement alert — fires on start moving (ELD check) and stop (ELD verify) ── */}
       {movement.showAlert && (
         <MovementAlert
+          alertType={movement.alertType}
           speedMph={movement.speedMph}
           hosStatus={statusLabel}
           onDismiss={movement.acknowledge}
