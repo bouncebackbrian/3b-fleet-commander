@@ -5,6 +5,7 @@ import { getDieselPrice } from '@/lib/scoreLoad'
 import type { LoadMission, RoutePreference, MissionStop, StopType } from '@/lib/dashboard/types'
 import { todayISO } from '@/lib/dashboard/helpers'
 import { computeRouteRisk, ROUTE_PREF_META, ROUTE_RISK_META } from '@/lib/dashboard/routePreference'
+import { generateOrderNumber, getTimezone } from '@/lib/dashboard/orderUtils'
 
 interface Props {
   open:    boolean
@@ -127,19 +128,22 @@ function StopEditor({
 
 // ── Main sheet ────────────────────────────────────────────────────────────────
 export default function NewLoadSheet({ open, onClose, onSave }: Props) {
-  const [origin,      setOrigin]      = useState('')
-  const [originName,  setOriginName]  = useState('')
-  const [originPhone, setOriginPhone] = useState('')
-  const [dest,        setDest]        = useState('')
-  const [destName,    setDestName]    = useState('')
-  const [destPhone,   setDestPhone]   = useState('')
-  const [rate,        setRate]        = useState('')
-  const [miles,       setMiles]       = useState('')
-  const [routePref,   setRoutePref]   = useState<RoutePreference>('main_corridors')
-  const [routeNotes,  setRouteNotes]  = useState('')
-  const [multiStop,   setMultiStop]   = useState(false)
-  const [stops,       setStops]       = useState<MissionStop[]>([])
-  const [saving,      setSaving]      = useState(false)
+  const [origin,        setOrigin]        = useState('')
+  const [originName,    setOriginName]    = useState('')
+  const [originPhone,   setOriginPhone]   = useState('')
+  const [dest,          setDest]          = useState('')
+  const [destName,      setDestName]      = useState('')
+  const [destPhone,     setDestPhone]     = useState('')
+  const [rate,          setRate]          = useState('')
+  const [miles,         setMiles]         = useState('')
+  const [routePref,     setRoutePref]     = useState<RoutePreference>('main_corridors')
+  const [routeNotes,    setRouteNotes]    = useState('')
+  const [multiStop,     setMultiStop]     = useState(false)
+  const [stops,         setStops]         = useState<MissionStop[]>([])
+  const [saving,        setSaving]        = useState(false)
+  // Per-order trailer assignment
+  const [orderTrailerNum,   setOrderTrailerNum]   = useState('')
+  const [orderTrailerPlate, setOrderTrailerPlate] = useState('')
   // BOL scan
   const [bolScanning, setBolScanning] = useState(false)
   const [bolMsg,      setBolMsg]      = useState<{ text: string; ok: boolean } | null>(null)
@@ -162,15 +166,38 @@ export default function NewLoadSheet({ open, onClose, onSave }: Props) {
       }
       // Fill any field that came back with a value
       const filled: string[] = []
-      if (data.origin)      { setOrigin(data.origin);       filled.push('origin') }
-      if (data.destination) { setDest(data.destination);    filled.push('destination') }
-      if (data.grossRate)   { setRate(data.grossRate);       filled.push('rate') }
-      if (data.miles)       { setMiles(data.miles);          filled.push('miles') }
-      // If multi-stop is on and we have stop addresses, seed origin stop
-      if (multiStop && stops.length > 0 && data.originAddress) {
+      if (data.origin)      { setOrigin(data.origin);           filled.push('origin') }
+      if (data.shipper)     { setOriginName(data.shipper);       filled.push('shipper') }
+      if (data.originPhone) { setOriginPhone(data.originPhone);  filled.push('origin phone') }
+      if (data.destination) { setDest(data.destination);         filled.push('destination') }
+      if (data.consignee)   { setDestName(data.consignee);       filled.push('consignee') }
+      if (data.destPhone)   { setDestPhone(data.destPhone);      filled.push('dest phone') }
+      if (data.grossRate)   { setRate(data.grossRate);            filled.push('rate') }
+      if (data.miles)       { setMiles(data.miles);               filled.push('miles') }
+
+      // If BOL has multi-stop data, enable multi-stop and seed stops
+      if (Array.isArray(data.stops) && data.stops.length >= 2) {
+        setMultiStop(true)
+        const seeded: MissionStop[] = data.stops.map((s: { sequence: number; type: StopType; name?: string; address?: string; city?: string; state?: string; phone?: string; reference?: string; appt?: string }, i: number) => ({
+          id:               crypto.randomUUID(),
+          sequence:         s.sequence ?? (i + 1),
+          type:             (s.type as StopType) ?? (i === 0 ? 'pickup' : 'delivery'),
+          name:             s.name ?? '',
+          address:          s.address ?? '',
+          city:             s.city ?? '',
+          state:            s.state ?? '',
+          phone:            s.phone ?? '',
+          reference:        s.reference ?? '',
+          appointmentStart: s.appt ?? '',
+        }))
+        setStops(seeded)
+        filled.push(`${seeded.length} stops`)
+      } else if (multiStop && stops.length > 0 && data.originAddress) {
+        // Single-stop BOL — seed origin stop address/name if multi-stop already on
         changeStop(stops[0].id, {
           address: data.originAddress,
           name:    data.shipper ?? stops[0].name,
+          phone:   data.originPhone ?? stops[0].phone,
         })
       }
       setBolMsg({
@@ -262,6 +289,21 @@ export default function NewLoadSheet({ open, onClose, onSave }: Props) {
     if (!canSave) return
     setSaving(true)
     const finalDest = effectiveDest.trim() || dest.trim()
+    const now       = new Date().toISOString()
+    const orderNumber = generateOrderNumber()
+    // Snapshot driver/tractor from settings for this order
+    let driverName = '', tractorId = ''
+    try {
+      const raw = localStorage.getItem('3b-fleet-settings')
+      if (raw) { const s = JSON.parse(raw); driverName = s.driverName ?? ''; tractorId = s.truckNum ?? '' }
+    } catch { /* ignore */ }
+
+    // Stamp stops with mission context
+    const stampedStops = (multiStop && stops.length > 0 ? stops : undefined)?.map((s, i) => ({
+      ...s,
+      loggedAt:    s.loggedAt    ?? now,
+    }))
+
     const nm: LoadMission = {
       id:                  crypto.randomUUID(),
       loadNumber:          '',
@@ -281,14 +323,27 @@ export default function NewLoadSheet({ open, onClose, onSave }: Props) {
       loadType:            'FTL',
       routePreference:     routePref,
       routeNotes:          routeNotes.trim() || undefined,
-      stops:               multiStop && stops.length > 0 ? stops : undefined,
+      stops:               stampedStops,
+      // ── Phase 5C: order identity ──────────────────────────────────────────
+      orderNumber,
+      driverName:          driverName || undefined,
+      tractorId:           tractorId  || undefined,
+      trailerNum:          orderTrailerNum.trim()   || undefined,
+      trailerPlate:        orderTrailerPlate.trim() || undefined,
+      timestamps: {
+        orderCreatedAt: now,
+        lastUpdatedAt:  now,
+      },
     }
     try { localStorage.setItem('3b-latest-load', JSON.stringify(nm)) } catch { /* ignore */ }
     onSave(nm)
     // Reset
-    setOrigin(''); setDest(''); setRate(''); setMiles('')
+    setOrigin(''); setOriginName(''); setOriginPhone('')
+    setDest('');   setDestName('');   setDestPhone('')
+    setRate('');   setMiles('')
     setRoutePref('main_corridors'); setRouteNotes('')
     setMultiStop(false); setStops([])
+    setOrderTrailerNum(''); setOrderTrailerPlate('')
     setSaving(false)
     onClose()
   }
@@ -555,6 +610,36 @@ export default function NewLoadSheet({ open, onClose, onSave }: Props) {
               </div>
             </div>
           )}
+
+          {/* ── Trailer Assignment (per-order) ── */}
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+            <div style={{ fontSize: '.62rem', fontWeight: 900, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 7 }}>
+              🚛 Trailer — This Order
+            </div>
+            <div style={{ fontSize: '.62rem', color: 'var(--muted)', marginBottom: 8, lineHeight: 1.4 }}>
+              Overrides your default trailer for this order only. Leave blank to use settings trailer.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div>
+                <label style={{ fontSize: '.58rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 3 }}>Trailer #</label>
+                <input
+                  value={orderTrailerNum}
+                  onChange={e => setOrderTrailerNum(e.target.value)}
+                  placeholder="e.g. 260692"
+                  style={{ width: '100%', padding: '.5rem .65rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-off)', color: 'var(--text)', fontSize: '.85rem', fontWeight: 600 }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '.58rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 3 }}>Plate</label>
+                <input
+                  value={orderTrailerPlate}
+                  onChange={e => setOrderTrailerPlate(e.target.value.toUpperCase())}
+                  placeholder="e.g. TX-TR1234"
+                  style={{ width: '100%', padding: '.5rem .65rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-off)', color: 'var(--text)', fontSize: '.85rem', textTransform: 'uppercase' }}
+                />
+              </div>
+            </div>
+          </div>
 
           {/* ── Save / Full Form ── */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, marginTop: 2 }}>

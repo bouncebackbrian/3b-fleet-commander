@@ -41,10 +41,61 @@ export type ActiveTrip = {
   }[]
 }
 
+// ── Movement mode for expenses / fuel ────────────────────────────────────────
+// Describes the truck's operational state when the cost was incurred.
+export type MovementMode = 'loaded' | 'empty' | 'bobtail' | 'personal' | 'yard'
+
 export type Expense = {
   id: string; date: string; category: string; amount: number
   description: string; location: string; loadNumber: string
   deductPct: number; isDeductible: boolean; createdAt: string
+  // Order-centered attachment (Phase 5C) — all optional for backward compat
+  missionId?:    string
+  orderNumber?:  string
+  stopId?:       string
+  movementMode?: MovementMode   // loaded | empty | bobtail | personal | yard
+  occurredAt?:   string         // ISO — when the expense happened
+  loggedAt?:     string         // ISO — when it was entered in app
+  timezone?:     string         // e.g. "America/Chicago"
+}
+
+// ── Fuel entry (separate from generic expenses for detailed tracking) ─────────
+export type FuelEntry = {
+  id:           string
+  missionId?:   string
+  orderNumber?: string
+  stopId?:      string
+  date:         string          // YYYY-MM-DD
+  location:     string          // station name / address
+  gallons:      number
+  pricePerGal:  number
+  totalCost:    number
+  movementMode: MovementMode    // loaded | empty | bobtail | personal | yard
+  occurredAt:   string          // ISO — actual pump time
+  loggedAt:     string          // ISO — when entered in app
+  timezone?:    string
+  notes?:       string
+}
+
+// ── Doc record ────────────────────────────────────────────────────────────────
+export type DocType =
+  | 'bol' | 'rate_con' | 'pod' | 'lumper_receipt' | 'scale_ticket'
+  | 'fuel_receipt' | 'inspection' | 'incident' | 'other'
+
+export type DocRecord = {
+  id:            string
+  missionId?:    string
+  orderNumber?:  string
+  stopId?:       string
+  docType:       DocType
+  fileName?:     string
+  fileUrl?:      string
+  thumbnailUrl?: string
+  notes?:        string
+  createdAt:     string
+  occurredAt?:   string   // when the document event happened
+  loggedAt:      string   // when it was entered in app
+  timezone?:     string
 }
 
 export type WeatherData = {
@@ -98,10 +149,13 @@ export type StopDetentionSummary = {
 export type StopEvent = {
   id:           string
   missionId:    string
+  orderNumber?: string   // Phase 5C — order context
   stopId:       string
   stopSequence: number
   eventType:    StopLifecycleStatus
-  occurredAt:   string   // ISO
+  occurredAt:   string   // ISO — when it happened
+  loggedAt?:    string   // ISO — when entered in app (may differ from occurredAt)
+  timezone?:    string
   payload?:     Record<string, unknown>
   notes?:       string
   createdAt:    string
@@ -125,9 +179,15 @@ export type MissionStop = {
   reference?:       string        // BOL / REF# / PO#
   completed?:           boolean
   completedAt?:         string                // ISO datetime when marked done
+  // Order-centered context (Phase 5C)
+  missionId?:           string
+  orderNumber?:         string
+  loggedAt?:            string   // ISO — when stop was added to the record
   // Lifecycle (Phase 4G)
   lifecycleStatus?:     StopLifecycleStatus
-  lifecycleTimestamps?: Partial<Record<StopLifecycleStatus, string>>  // ISO per step
+  // ISO timestamps per lifecycle step — keys map to human labels:
+  //   arrived | checked_in | waiting | docked | work_started | work_ended | departed
+  lifecycleTimestamps?: Partial<Record<StopLifecycleStatus, string>>
   detentionSummary?:    StopDetentionSummary
 }
 
@@ -148,6 +208,23 @@ export type RouteRisk = {
   showWarning: boolean
 }
 
+// ── Order timestamp ledger (Phase 5C) ────────────────────────────────────────
+// Top-level timestamps for the whole order lifecycle.
+// Per-stop timestamps live in MissionStop.lifecycleTimestamps.
+export type OrderTimestamps = {
+  orderCreatedAt?:      string   // ISO — when mission record was created
+  orderAcceptedAt?:     string   // ISO — when driver accepted the load
+  pickupScheduledAt?:   string   // ISO — appointment time at first pickup
+  pickupArrivedAt?:     string   // ISO — driver arrived at first pickup
+  pickupDepartedAt?:    string   // ISO — driver departed first pickup
+  deliveryScheduledAt?: string   // ISO — appointment time at final delivery
+  deliveryArrivedAt?:   string   // ISO — driver arrived at final delivery
+  deliveryDepartedAt?:  string   // ISO — driver departed final delivery
+  completedAt?:         string   // ISO — order fully complete
+  reviewCompletedAt?:   string   // ISO — post-trip review submitted
+  lastUpdatedAt?:       string   // ISO — any record write updates this
+}
+
 export type LoadMission = {
   id: string; loadNumber: string; broker?: string
   origin: string; destination: string; date: string
@@ -164,6 +241,13 @@ export type LoadMission = {
   // Lifecycle
   status?:          MissionStatus
   tripReview?:      TripReview
+  // ── Order-centered identity (Phase 5C) ──────────────────────────────────────
+  orderNumber?:     string          // human-readable order ID (e.g. ORD-20260521-A3X9)
+  driverName?:      string          // snapshot at dispatch — settings.driverName
+  tractorId?:       string          // snapshot at dispatch — settings.truckNum
+  trailerNum?:      string          // order-specific trailer (overrides settings default)
+  trailerPlate?:    string          // order-specific trailer plate
+  timestamps?:      OrderTimestamps // full order timestamp ledger
 }
 
 export type HOSDisplay = {
@@ -204,6 +288,7 @@ export type EventSeverity = 'info' | 'warn' | 'critical'
 export type OperationalEvent = {
   id:          string
   missionId:   string | null
+  orderNumber?: string          // Phase 5C
   loadNumber:  string
   origin:      string
   destination: string
@@ -213,4 +298,7 @@ export type OperationalEvent = {
   location:    string | null
   createdBy:   string | null
   createdAt:   string
+  occurredAt?:  string          // ISO — when the event actually happened
+  loggedAt?:    string          // ISO — when entered in app
+  timezone?:    string
 }

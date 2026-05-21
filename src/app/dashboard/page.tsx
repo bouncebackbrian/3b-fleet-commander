@@ -43,6 +43,7 @@ import MusicPanel              from '@/components/dashboard/panels/MusicPanel'
 import GymFinderPanel          from '@/components/dashboard/panels/GymFinderPanel'
 import LaneIntelligencePanel   from '@/components/dashboard/panels/LaneIntelligencePanel'
 import SettlementPanel         from '@/components/dashboard/panels/SettlementPanel'
+import OrderTimelinePanel      from '@/components/dashboard/panels/OrderTimelinePanel'
 import ToastContainer      from '@/components/shared/ToastContainer'
 import OfflineBanner       from '@/components/shared/OfflineBanner'
 import DebugPanel          from '@/components/debug/DebugPanel'
@@ -306,6 +307,7 @@ export default function Dashboard() {
   const [showGymFinder,       setShowGymFinder]       = useState(false)
   const [showLanePanel,       setShowLanePanel]       = useState(false)
   const [showSettlementPanel, setShowSettlementPanel] = useState(false)
+  const [showTimeline,        setShowTimeline]        = useState(false)
 
   // ── Movement detector — only active when driving mode is on
   const movement = useMovementDetector(drivingMode)
@@ -536,6 +538,13 @@ export default function Dashboard() {
         onClose={() => setShowSettlementPanel(false)}
         driverMode={driverMode}
       />
+      <OrderTimelinePanel
+        open={showTimeline}
+        onClose={() => setShowTimeline(false)}
+        mission={mission ?? null}
+        events={opEvents}
+        driverMode={driverMode}
+      />
 
       {/* ═══ COMMAND CENTER SHELL ════════════════════════════════════════════ */}
       <div className="cc-main" style={{ display: drivingMode ? 'none' : undefined }}>
@@ -605,6 +614,7 @@ export default function Dashboard() {
               onMusic={() => setShowMusicPanel(true)}
               onGym={() => setShowGymFinder(true)}
               onSettlement={() => setShowSettlementPanel(true)}
+              onTimeline={mission ? () => setShowTimeline(true) : undefined}
             />
           </div>
 

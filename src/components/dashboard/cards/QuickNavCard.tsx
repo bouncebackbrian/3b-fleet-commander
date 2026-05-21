@@ -14,13 +14,15 @@ interface Props {
   onMusic?:      () => void
   onGym?:        () => void
   onSettlement?: () => void
+  onTimeline?:   () => void
 }
 
-export default function QuickNavCard({ onMusic, onGym, onSettlement }: Props) {
+export default function QuickNavCard({ onMusic, onGym, onSettlement, onTimeline }: Props) {
   const PANEL_ACTIONS = [
     onMusic      && { icon: '🎵', label: 'Music',      onClick: onMusic      },
     onGym        && { icon: '💪', label: 'Gym',        onClick: onGym        },
     onSettlement && { icon: '📋', label: 'Settlement', onClick: onSettlement },
+    onTimeline   && { icon: '📅', label: 'Timeline',   onClick: onTimeline   },
   ].filter(Boolean) as { icon: string; label: string; onClick: () => void }[]
 
   return (
