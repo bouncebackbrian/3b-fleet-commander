@@ -73,12 +73,15 @@ create policy "stop_events_insert" on public.stop_events
 -- Detention evidence must not be editable once written.
 
 -- ── event_type constraint ─────────────────────────────────────
--- Run AFTER initial lifecycle test passes (so test rows don't block the ALTER).
+-- Applied while the table was empty — zero risk, instant ALTER.
 -- Closes the gap between text column and the 7 valid lifecycle values.
---
---   alter table public.stop_events
---     add constraint stop_events_event_type_check
---     check (event_type in (
---       'arrived','checked_in','waiting','docked',
---       'work_started','work_ended','departed'
---     ));
+-- Mirrors the StopLifecycleStatus union in src/lib/dashboard/types.ts.
+alter table public.stop_events
+  drop constraint if exists stop_events_event_type_check;
+
+alter table public.stop_events
+  add constraint stop_events_event_type_check
+  check (event_type in (
+    'arrived','checked_in','waiting','docked',
+    'work_started','work_ended','departed'
+  ));
