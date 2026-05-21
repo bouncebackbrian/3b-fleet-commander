@@ -270,12 +270,12 @@ export default function NewLoadSheet({ open, onClose, onSave }: Props) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div>
               <label style={{ fontSize: '.62rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'block', marginBottom: 4 }}>Gross Rate</label>
-              <input type="number" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} placeholder="$0.00"
+              <input type="text" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} placeholder="0.00"
                 style={{ width: '100%', padding: '.65rem .8rem', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface-off)', color: 'var(--text)', fontSize: '.9rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }} />
             </div>
             <div>
               <label style={{ fontSize: '.62rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'block', marginBottom: 4 }}>Total Miles</label>
-              <input type="number" inputMode="numeric" value={miles} onChange={e => setMiles(e.target.value)} placeholder="0 mi"
+              <input type="text" inputMode="numeric" value={miles} onChange={e => setMiles(e.target.value)} placeholder="0"
                 style={{ width: '100%', padding: '.65rem .8rem', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface-off)', color: 'var(--text)', fontSize: '.9rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }} />
             </div>
           </div>

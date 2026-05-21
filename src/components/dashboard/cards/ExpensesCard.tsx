@@ -87,7 +87,7 @@ export default function ExpensesCard() {
             ))}
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <input type="number" inputMode="decimal" placeholder="$0.00"
+            <input type="text" inputMode="decimal" placeholder="0.00"
               value={qaAmount} onChange={e => setQaAmount(e.target.value)}
               style={{ flex: '0 0 90px', padding: '.4rem .6rem', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface-off)', color: 'var(--text)', fontSize: '.85rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }} />
             <input type="text" placeholder="Note"
