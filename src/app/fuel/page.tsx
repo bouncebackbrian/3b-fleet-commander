@@ -290,7 +290,7 @@ export default function Fuel() {
                 value={form.totalCost}
                 onChange={e => set('totalCost', e.target.value)}
                 placeholder={liveTotal > 0 ? liveTotal.toFixed(2) : ''}
-                type="number" step="0.01" style={inp} />
+                type="text" inputMode="decimal" style={inp} />
               {liveTotal > 0 && !form.totalCost && (
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)', marginTop: 4 }}>
                   Auto: {fmtM(liveTotal)} — override if receipt differs

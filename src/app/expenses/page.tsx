@@ -252,7 +252,7 @@ export default function ExpensesPage() {
                 <span style={{ position: 'absolute', left: '.85rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', fontWeight: 700, fontSize: 'var(--text-sm)' }}>$</span>
                 <input
                   ref={amountRef}
-                  type="number" step="0.01" min="0"
+                  type="text" inputMode="decimal"
                   value={amount}
                   onChange={e => setAmount(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && addExpense()}

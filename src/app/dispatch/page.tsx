@@ -717,7 +717,7 @@ export default function DispatchMessages() {
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>Est. delay (mins)</label>
-                  <input type="number" value={delayMins} onChange={e => setDelayMins(e.target.value)} style={inpStyle} />
+                  <input type="text" inputMode="numeric" value={delayMins} onChange={e => setDelayMins(e.target.value)} style={inpStyle} />
                 </div>
               </div>
             </div>

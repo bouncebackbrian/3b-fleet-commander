@@ -777,14 +777,20 @@ ${p.brief ? `<div class="sec">
   const totalFuel   = loads.reduce((a, l) => a + (l.fuelCost || 0), 0)
 
   // ── Field helper ──────────────────────────────────────────────────────────
-  const fi = (k: keyof F, label: string, type = 'text', ph?: string, req?: boolean) => (
-    <div key={k}>
-      <label style={lbl}>{label}{req && <span style={{ color:'var(--error)', marginLeft:2 }}>*</span>}</label>
-      <input value={String(form[k])} onChange={e => set(k, e.target.value)}
-        type={type} placeholder={ph} required={req}
-        min={type === 'number' ? '0' : undefined} style={inp} />
-    </div>
-  )
+  // Always renders type="text" to avoid browser "invalid" validation popups and
+  // the React controlled-input focus-loss bug where type="number" returns "" for
+  // intermediate values like "3." causing a re-render that steals focus.
+  const fi = (k: keyof F, label: string, type = 'text', ph?: string, req?: boolean) => {
+    const isNumeric = type === 'number'
+    return (
+      <div key={k}>
+        <label style={lbl}>{label}{req && <span style={{ color:'var(--error)', marginLeft:2 }}>*</span>}</label>
+        <input value={String(form[k])} onChange={e => set(k, e.target.value)}
+          type="text" inputMode={isNumeric ? 'decimal' : 'text'}
+          placeholder={ph} required={req} style={inp} />
+      </div>
+    )
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   return (

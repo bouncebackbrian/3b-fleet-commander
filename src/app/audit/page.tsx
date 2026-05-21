@@ -322,11 +322,11 @@ export default function Audit() {
               <form onSubmit={handleVerify} style={{ display: 'grid', gap: '1rem' }}>
                 <div>
                   <label style={lbl}>Paid miles (from settlement)</label>
-                  <input value={form.paidMiles} onChange={e => setForm(f => ({ ...f, paidMiles: e.target.value }))} type="number" step="1" style={inp} />
+                  <input value={form.paidMiles} onChange={e => setForm(f => ({ ...f, paidMiles: e.target.value }))} type="text" inputMode="numeric" style={inp} />
                 </div>
                 <div>
                   <label style={lbl}>Settlement pay $</label>
-                  <input value={form.settlementPay} onChange={e => setForm(f => ({ ...f, settlementPay: e.target.value }))} type="number" step="0.01" style={inp} />
+                  <input value={form.settlementPay} onChange={e => setForm(f => ({ ...f, settlementPay: e.target.value }))} type="text" inputMode="decimal" style={inp} />
                 </div>
                 <div>
                   <label style={lbl}>Dispute notes</label>

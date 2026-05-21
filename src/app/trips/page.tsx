@@ -545,17 +545,17 @@ function ScaleWeightTab({ truck, origin, dest }: { truck: Truck | null; origin: 
         <div style={{ display: 'grid', gap: '.65rem', marginBottom: '.85rem' }}>
           <div>
             <label style={S.lbl}>Steer Axle (lbs) — max 12,000</label>
-            <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="number" value={steer} onChange={e => setSteer(e.target.value)} placeholder="e.g. 11200" />
+            <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="text" inputMode="numeric" value={steer} onChange={e => setSteer(e.target.value)} placeholder="e.g. 11200" />
           </div>
           {mode === 'simple' ? (
             <>
               <div>
                 <label style={S.lbl}>Drive Tandem Total (lbs) — max 34,000</label>
-                <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="number" value={d1} onChange={e => setD1(e.target.value)} placeholder="e.g. 33600" />
+                <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="text" inputMode="numeric" value={d1} onChange={e => setD1(e.target.value)} placeholder="e.g. 33600" />
               </div>
               <div>
                 <label style={S.lbl}>Trailer Tandem Total (lbs) — max 34,000</label>
-                <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="number" value={t1} onChange={e => setT1(e.target.value)} placeholder="e.g. 31800" />
+                <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="text" inputMode="numeric" value={t1} onChange={e => setT1(e.target.value)} placeholder="e.g. 31800" />
               </div>
             </>
           ) : (
@@ -563,28 +563,28 @@ function ScaleWeightTab({ truck, origin, dest }: { truck: Truck | null; origin: 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.65rem' }}>
                 <div>
                   <label style={S.lbl}>Drive Axle 1 (lbs)</label>
-                  <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="number" value={d1} onChange={e => setD1(e.target.value)} placeholder="e.g. 16800" />
+                  <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="text" inputMode="numeric" value={d1} onChange={e => setD1(e.target.value)} placeholder="e.g. 16800" />
                 </div>
                 <div>
                   <label style={S.lbl}>Drive Axle 2 (lbs)</label>
-                  <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="number" value={d2} onChange={e => setD2(e.target.value)} placeholder="e.g. 16800" />
+                  <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="text" inputMode="numeric" value={d2} onChange={e => setD2(e.target.value)} placeholder="e.g. 16800" />
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.65rem' }}>
                 <div>
                   <label style={S.lbl}>Trailer Axle 1 (lbs)</label>
-                  <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="number" value={t1} onChange={e => setT1(e.target.value)} placeholder="e.g. 15900" />
+                  <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="text" inputMode="numeric" value={t1} onChange={e => setT1(e.target.value)} placeholder="e.g. 15900" />
                 </div>
                 <div>
                   <label style={S.lbl}>Trailer Axle 2 (lbs)</label>
-                  <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="number" value={t2} onChange={e => setT2(e.target.value)} placeholder="e.g. 15900" />
+                  <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="text" inputMode="numeric" value={t2} onChange={e => setT2(e.target.value)} placeholder="e.g. 15900" />
                 </div>
               </div>
             </>
           )}
           <div>
             <label style={S.lbl}>Gross (lbs) — max 80,000 <span style={{ color: 'var(--faint)', fontWeight: 400 }}>(auto-calc if blank)</span></label>
-            <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="number" value={gross} onChange={e => setGross(e.target.value)} placeholder="leave blank to calculate" />
+            <input style={{ ...S.inp, fontVariantNumeric: 'tabular-nums', fontWeight: 800 }} type="text" inputMode="numeric" value={gross} onChange={e => setGross(e.target.value)} placeholder="leave blank to calculate" />
           </div>
         </div>
 
@@ -931,16 +931,19 @@ function PlaybooksTab({ plan, origin, dest }: { plan: Plan | null; origin: strin
 }
 
 // ─── Truck field — defined OUTSIDE modal to prevent focus-loss on re-render ───
-function TruckField({ label, k, form, onChange, type='text', step, ph }: {
+// Always renders type="text" with inputMode to avoid browser "invalid" tooltips
+// and the React type="number" focus-loss bug on intermediate inputs like "13.".
+function TruckField({ label, k, form, onChange, type='text', ph }: {
   label:string; k:keyof Truck; form:Truck; onChange:(k:keyof Truck,v:string|number)=>void
   type?:string; step?:string; ph?:string
 }) {
+  const isNumeric = type === 'number'
   return (
     <div>
       <label style={S.lbl}>{label}</label>
-      <input style={S.inp} type={type} step={step} placeholder={ph}
+      <input style={S.inp} type="text" inputMode={isNumeric ? 'decimal' : 'text'} placeholder={ph}
         value={String(form[k])}
-        onChange={e => onChange(k, type === 'number' ? (parseFloat(e.target.value) || 0) : e.target.value)} />
+        onChange={e => onChange(k, e.target.value)} />
     </div>
   )
 }
@@ -950,8 +953,12 @@ function TruckModal({ form, onChange, onSave, onClose }: {
   form: Truck; onChange: (k: keyof Truck, v: string | number) => void
   onSave: () => void; onClose: () => void
 }) {
-  const Field = ({ label, k, type='text', step, ph }: { label:string; k:keyof Truck; type?:string; step?:string; ph?:string }) => (
-    <TruckField label={label} k={k} form={form} onChange={onChange} type={type} step={step} ph={ph} />
+  // Field is intentionally NOT defined here — it was previously defined as a
+  // component inside TruckModal which caused focus-loss on every keystroke
+  // (React unmounts/remounts when the component type changes each render).
+  // TruckField is at module scope and used directly instead.
+  const tf = (label: string, k: keyof Truck, type = 'text', ph?: string) => (
+    <TruckField key={k} label={label} k={k} form={form} onChange={onChange} type={type} ph={ph} />
   )
   return (
     <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:100, background:'rgba(0,0,0,.65)', backdropFilter:'blur(8px)', display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
@@ -968,8 +975,8 @@ function TruckModal({ form, onChange, onSave, onClose }: {
         {/* Tractor */}
         <div style={S.sec}>Tractor</div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
-          <Field label="Truck number" k="truckNum" ph="T-001" />
-          <Field label="Year" k="year" type="number" ph="2022" />
+          {tf('Truck number', 'truckNum', 'text', 'T-001')}
+          {tf('Year', 'year', 'number', '2022')}
         </div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
           <div>
@@ -979,26 +986,26 @@ function TruckModal({ form, onChange, onSave, onClose }: {
               {['Peterbilt','Kenworth','Freightliner','International','Mack','Volvo','Western Star','Other'].map(m=><option key={m}>{m}</option>)}
             </select>
           </div>
-          <Field label="Model" k="model" ph="389, T680, Cascadia" />
+          {tf('Model', 'model', 'text', '389, T680, Cascadia')}
         </div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
-          <Field label="VIN (last 8)" k="vin" ph="optional" />
-          <Field label="Horsepower" k="hp" ph="550" />
+          {tf('VIN (last 8)', 'vin', 'text', 'optional')}
+          {tf('Horsepower', 'hp', 'text', '550')}
         </div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'.75rem' }}>
-          <Field label="MPG loaded"     k="mpgLoaded"  type="number" step="0.1" />
-          <Field label="MPG empty"      k="mpgEmpty"   type="number" step="0.1" />
-          <Field label="Tank (gal)"     k="tankGal"    type="number" step="1"   />
+          {tf('MPG loaded',  'mpgLoaded', 'number')}
+          {tf('MPG empty',   'mpgEmpty',  'number')}
+          {tf('Tank (gal)',  'tankGal',   'number')}
         </div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
-          <Field label="Fuel price ($/gal)" k="fuelPrice"    type="number" step="0.01" />
-          <Field label="Truck height (ft)"  k="truckHeight"  type="number" step="0.1"  />
+          {tf('Fuel price ($/gal)', 'fuelPrice',  'number')}
+          {tf('Truck height (ft)',  'truckHeight', 'number')}
         </div>
 
         {/* Trailer */}
         <div style={{ ...S.sec, marginTop:'.25rem' }}>Trailer</div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
-          <Field label="Trailer number" k="trailerNum" ph="260692" />
+          {tf('Trailer number', 'trailerNum', 'text', '260692')}
           <div>
             <label style={S.lbl}>Trailer type</label>
             <select style={S.inp} value={form.trailerType} onChange={e => onChange('trailerType', e.target.value)}>
@@ -1007,8 +1014,8 @@ function TruckModal({ form, onChange, onSave, onClose }: {
           </div>
         </div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'.75rem' }}>
-          <Field label="Trailer length (ft)"  k="trailerLen"    type="number" />
-          <Field label="Trailer height (ft)"  k="trailerHeight" type="number" step="0.1" />
+          {tf('Trailer length (ft)',  'trailerLen',    'number')}
+          {tf('Trailer height (ft)',  'trailerHeight', 'number')}
           <div>
             <label style={S.lbl}>Axles</label>
             <select style={S.inp} value={form.axles} onChange={e => onChange('axles', e.target.value)}>
@@ -1017,8 +1024,8 @@ function TruckModal({ form, onChange, onSave, onClose }: {
           </div>
         </div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
-          <Field label="Max legal weight (lbs)" k="maxWeight" type="number" />
-          <Field label="GVWR (lbs)"             k="gvwr"      type="number" />
+          {tf('Max legal weight (lbs)', 'maxWeight', 'number')}
+          {tf('GVWR (lbs)',             'gvwr',      'number')}
         </div>
 
         {/* Licensing */}
@@ -1030,7 +1037,7 @@ function TruckModal({ form, onChange, onSave, onClose }: {
               <option value="A">Class A</option><option value="B">Class B</option>
             </select>
           </div>
-          <Field label="Endorsements" k="endorsements" ph="H, N, T, X" />
+          {tf('Endorsements', 'endorsements', 'text', 'H, N, T, X')}
         </div>
 
         <button onClick={onSave} style={{ ...S.btnPri, padding:'.85rem', fontSize:'var(--text-sm)', marginTop:'.25rem', textAlign:'center' }}>
@@ -1658,7 +1665,7 @@ export default function TripPlanner() {
                   <div><label style={S.lbl}>Origin *</label><input style={S.inp} value={origin} onChange={e=>setOrigin(e.target.value)} placeholder="Amargosa Valley, NV" /></div>
                   <div><label style={S.lbl}>Destination *</label><input style={S.inp} value={dest} onChange={e=>setDest(e.target.value)} placeholder="Walmart DC Sparks, NV" /></div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
-                    <div><label style={S.lbl}>Total miles *</label><input style={S.inp} type="number" value={miles} onChange={e=>setMiles(e.target.value)} placeholder="335" /></div>
+                    <div><label style={S.lbl}>Total miles *</label><input style={S.inp} type="text" inputMode="numeric" value={miles} onChange={e=>setMiles(e.target.value)} placeholder="335" /></div>
                     <div><label style={S.lbl}>Departure</label><input style={S.inp} type="time" value={depart} onChange={e=>setDepart(e.target.value)} /></div>
                   </div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
@@ -1667,11 +1674,11 @@ export default function TripPlanner() {
                   </div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
                     <div><label style={S.lbl}>Commodity</label><input style={S.inp} value={commodity} onChange={e=>setCommodity(e.target.value)} placeholder="General merchandise" /></div>
-                    <div><label style={S.lbl}>Load weight (lbs)</label><input style={S.inp} type="number" value={weight} onChange={e=>setWeight(e.target.value)} placeholder="42000" /></div>
+                    <div><label style={S.lbl}>Load weight (lbs)</label><input style={S.inp} type="text" inputMode="numeric" value={weight} onChange={e=>setWeight(e.target.value)} placeholder="42000" /></div>
                   </div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'.75rem' }}>
-                    <div><label style={S.lbl}>CPM rate ($)</label><input style={S.inp} type="number" step="0.01" value={cpm} onChange={e=>setCpm(e.target.value)} /></div>
-                    <div><label style={S.lbl}>Deadhead miles</label><input style={S.inp} type="number" value={deadhead} onChange={e=>setDeadhead(e.target.value)} placeholder="0" /></div>
+                    <div><label style={S.lbl}>CPM rate ($)</label><input style={S.inp} type="text" inputMode="decimal" value={cpm} onChange={e=>setCpm(e.target.value)} /></div>
+                    <div><label style={S.lbl}>Deadhead miles</label><input style={S.inp} type="text" inputMode="numeric" value={deadhead} onChange={e=>setDeadhead(e.target.value)} placeholder="0" /></div>
                   </div>
                 </div>
               </div>

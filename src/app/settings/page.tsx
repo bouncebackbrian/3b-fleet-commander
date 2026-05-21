@@ -67,6 +67,18 @@ const inp: React.CSSProperties = {
   border: '1px solid var(--border)', background: 'var(--surface-2)',
   color: 'var(--text)', fontSize: 'var(--text-sm)', outline: 'none', boxSizing: 'border-box',
 }
+
+// ── Module-scope input — prevents focus-loss from inline component re-creation.
+// Always type="text" + inputMode to avoid browser "invalid" validation popups.
+function SettingsInp({ k, type = 'text', ph, s, set }: {
+  k: keyof AppSettings; type?: string; ph?: string
+  s: AppSettings; set: (k: keyof AppSettings, v: string) => void
+}) {
+  return (
+    <input style={inp} type="text" inputMode={type === 'number' ? 'decimal' : 'text'}
+      placeholder={ph} value={String(s[k])} onChange={e => set(k, e.target.value)} />
+  )
+}
 const lbl: React.CSSProperties = {
   display: 'block', fontSize: '.68rem', color: 'var(--muted)',
   textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 700, marginBottom: 5,
@@ -432,12 +444,7 @@ export default function Settings() {
     setClearTarget(''); setClearConfirm(false)
   }
 
-  // ── field components (defined outside render to avoid focus loss) ──────────
-  const Inp = ({ k, type = 'text', ph, step }: { k: keyof AppSettings; type?: string; ph?: string; step?: string }) => (
-    <input style={inp} type={type} step={step} placeholder={ph}
-      value={String(s[k])}
-      onChange={e => set(k, e.target.value)} />
-  )
+  // SettingsInp is at module scope above — see function SettingsInp.
 
   return (
     <>
@@ -583,11 +590,11 @@ export default function Settings() {
                 </div>
                 <div>
                   <label style={lbl}>Company / DBA name</label>
-                  <Inp k="driverName" ph="3B Transport LLC" />
+                  <SettingsInp k="driverName" ph="3B Transport LLC"  s={s} set={set} />
                 </div>
                 <div>
                   <label style={lbl}>Dispatcher name</label>
-                  <Inp k="dispatcher" ph="Trev" />
+                  <SettingsInp k="dispatcher" ph="Trev"  s={s} set={set} />
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <button type="submit" style={{ padding: '.75rem 1.8rem', borderRadius: 10, background: saved ? 'var(--success)' : 'var(--primary)', color: '#061210', fontWeight: 800, fontSize: '.85rem', border: 'none', cursor: 'pointer' }}>
@@ -615,11 +622,11 @@ export default function Settings() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.85rem' }}>
                 <div>
                   <label style={lbl}>Truck number</label>
-                  <Inp k="truckNum" ph="T-001" />
+                  <SettingsInp k="truckNum" ph="T-001"  s={s} set={set} />
                 </div>
                 <div>
                   <label style={lbl}>Year</label>
-                  <Inp k="year" type="number" ph="2022" />
+                  <SettingsInp k="year" type="number" ph="2022"  s={s} set={set} />
                 </div>
                 <div>
                   <label style={lbl}>Make</label>
@@ -630,23 +637,23 @@ export default function Settings() {
                 </div>
                 <div>
                   <label style={lbl}>Model</label>
-                  <Inp k="model" ph="389, T680, Cascadia" />
+                  <SettingsInp k="model" ph="389, T680, Cascadia"  s={s} set={set} />
                 </div>
                 <div>
                   <label style={lbl}>VIN (last 8)</label>
-                  <Inp k="vin" ph="optional" />
+                  <SettingsInp k="vin" ph="optional"  s={s} set={set} />
                 </div>
                 <div>
                   <label style={lbl}>Horsepower</label>
-                  <Inp k="hp" ph="550" />
+                  <SettingsInp k="hp" ph="550"  s={s} set={set} />
                 </div>
                 <div>
                   <label style={lbl}>Truck height (ft)</label>
-                  <Inp k="truckHeight" type="number" step="0.1" />
+                  <SettingsInp k="truckHeight" type="number"  s={s} set={set} />
                 </div>
                 <div>
                   <label style={lbl}>Tractor plate #</label>
-                  <Inp k="tractorPlate" ph="ABC1234" />
+                  <SettingsInp k="tractorPlate" ph="ABC1234"  s={s} set={set} />
                 </div>
                 <div>
                   <label style={lbl}>Plate state</label>
@@ -660,7 +667,7 @@ export default function Settings() {
                 </div>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={lbl}>Endorsements</label>
-                  <Inp k="endorsements" ph="H, N, T, X…" />
+                  <SettingsInp k="endorsements" ph="H, N, T, X…"  s={s} set={set} />
                 </div>
               </div>
 
@@ -689,7 +696,7 @@ export default function Settings() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.85rem' }}>
                 <div>
                   <label style={lbl}>Trailer number</label>
-                  <Inp k="trailerNum" ph="260692" />
+                  <SettingsInp k="trailerNum" ph="260692"  s={s} set={set} />
                 </div>
                 <div>
                   <label style={lbl}>Trailer type</label>
@@ -699,15 +706,15 @@ export default function Settings() {
                 </div>
                 <div>
                   <label style={lbl}>Trailer length (ft)</label>
-                  <Inp k="trailerLen" type="number" />
+                  <SettingsInp k="trailerLen" type="number"  s={s} set={set} />
                 </div>
                 <div>
                   <label style={lbl}>Trailer height (ft)</label>
-                  <Inp k="trailerHeight" type="number" step="0.1" />
+                  <SettingsInp k="trailerHeight" type="number"  s={s} set={set} />
                 </div>
                 <div>
                   <label style={lbl}>Trailer plate #</label>
-                  <Inp k="trailerPlate" ph="TR12345" />
+                  <SettingsInp k="trailerPlate" ph="TR12345"  s={s} set={set} />
                 </div>
                 <div>
                   <label style={lbl}>Plate state</label>
@@ -721,11 +728,11 @@ export default function Settings() {
                 </div>
                 <div>
                   <label style={lbl}>Max legal weight (lbs)</label>
-                  <Inp k="maxWeight" type="number" />
+                  <SettingsInp k="maxWeight" type="number"  s={s} set={set} />
                 </div>
                 <div>
                   <label style={lbl}>GVWR (lbs)</label>
-                  <Inp k="gvwr" type="number" />
+                  <SettingsInp k="gvwr" type="number"  s={s} set={set} />
                 </div>
               </div>
             </div>
@@ -758,23 +765,23 @@ export default function Settings() {
               {secHead('What you receive')}
               <div>
                 <label style={lbl}>CPM I receive (contracted rate)</label>
-                <Inp k="cpmReceived" type="number" step="0.001" ph="0.55" />
+                <SettingsInp k="cpmReceived" type="number" ph="0.55"  s={s} set={set} />
                 <div style={{ fontSize: '.65rem', color: 'var(--muted)', marginTop: 4 }}>Used by MIS to calculate underpayments vs what you were actually paid per mile.</div>
               </div>
 
               {secHead('Analysis range')}
               <div>
                 <label style={lbl}>Default CPM (pre-fills new loads)</label>
-                <Inp k="defaultCpm" type="number" step="0.001" />
+                <SettingsInp k="defaultCpm" type="number"  s={s} set={set} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
                   <label style={lbl}>Low CPM (floor)</label>
-                  <Inp k="cpmLow" type="number" step="0.001" />
+                  <SettingsInp k="cpmLow" type="number"  s={s} set={set} />
                 </div>
                 <div>
                   <label style={lbl}>High CPM (target)</label>
-                  <Inp k="cpmHigh" type="number" step="0.001" />
+                  <SettingsInp k="cpmHigh" type="number"  s={s} set={set} />
                 </div>
               </div>
               <div style={{ padding: '.7rem .9rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: '.7rem', color: 'var(--muted)' }}>
@@ -784,7 +791,7 @@ export default function Settings() {
               {secHead('Other')}
               <div>
                 <label style={lbl}>Detention rate ($/hr)</label>
-                <Inp k="detentionRate" type="number" step="0.01" />
+                <SettingsInp k="detentionRate" type="number"  s={s} set={set} />
               </div>
             </div>
 
@@ -826,7 +833,7 @@ export default function Settings() {
               {secHead('Fuel price')}
               <div>
                 <label style={lbl}>Diesel price ($/gal)</label>
-                <Inp k="fuelPrice" type="number" step="0.001" />
+                <SettingsInp k="fuelPrice" type="number"  s={s} set={set} />
                 <div style={{ fontSize: '.65rem', color: 'var(--muted)', marginTop: 4 }}>Update this whenever you fuel up for accurate cost tracking.</div>
               </div>
 
@@ -834,15 +841,15 @@ export default function Settings() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '.85rem' }}>
                 <div>
                   <label style={lbl}>Loaded MPG</label>
-                  <Inp k="mpgLoaded" type="number" step="0.1" />
+                  <SettingsInp k="mpgLoaded" type="number"  s={s} set={set} />
                 </div>
                 <div>
                   <label style={lbl}>Empty MPG</label>
-                  <Inp k="mpgEmpty" type="number" step="0.1" />
+                  <SettingsInp k="mpgEmpty" type="number"  s={s} set={set} />
                 </div>
                 <div>
                   <label style={lbl}>Tank (gal)</label>
-                  <Inp k="tankGal" type="number" step="1" />
+                  <SettingsInp k="tankGal" type="number"  s={s} set={set} />
                 </div>
               </div>
 
