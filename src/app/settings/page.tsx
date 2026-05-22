@@ -583,7 +583,7 @@ export default function Settings() {
                     onClick={() => licenseInputRef.current?.click()}
                     disabled={scanning.license}
                     style={{ padding: '.6rem 1.2rem', borderRadius: 9, border: 'none', background: scanning.license ? 'rgba(0,232,176,.12)' : 'var(--primary)', color: scanning.license ? 'var(--primary)' : '#061210', fontWeight: 800, fontSize: '.78rem', cursor: scanning.license ? 'wait' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                    {scanning.license ? '⏳ Scanning…' : '📷 Scan License'}
+                    {scanning.license ? '⏳ Scanning…' : '📷 Scan or Upload'}
                   </button>
                 </div>
                 {scanMsg.license && (
@@ -705,7 +705,7 @@ export default function Settings() {
                   onClick={() => registrationInputRef.current?.click()}
                   disabled={scanning.registration}
                   style={{ padding: '.6rem 1.2rem', borderRadius: 9, border: 'none', background: scanning.registration ? 'rgba(0,232,176,.12)' : 'var(--primary)', color: scanning.registration ? 'var(--primary)' : '#061210', fontWeight: 800, fontSize: '.78rem', cursor: scanning.registration ? 'wait' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                  {scanning.registration ? '⏳ Scanning…' : '📷 Scan Registration'}
+                  {scanning.registration ? '⏳ Scanning…' : '📷 Scan or Upload'}
                 </button>
               </div>
               {scanMsg.registration && (
@@ -952,7 +952,7 @@ export default function Settings() {
                   onClick={() => licenseInputRef.current?.click()}
                   disabled={scanning.license}
                   style={{ padding: '.6rem 1.2rem', borderRadius: 9, border: 'none', background: scanning.license ? 'rgba(0,232,176,.12)' : 'var(--primary)', color: scanning.license ? 'var(--primary)' : '#061210', fontWeight: 800, fontSize: '.78rem', cursor: scanning.license ? 'wait' : 'pointer' }}>
-                  {scanning.license ? '⏳ Scanning…' : compliance.license ? '🔄 Rescan License' : '📷 Scan License'}
+                  {scanning.license ? '⏳ Scanning…' : compliance.license ? '🔄 Rescan / Upload' : '📷 Scan or Upload'}
                 </button>
                 {compliance.license && (
                   <button type="button"
@@ -1015,7 +1015,7 @@ export default function Settings() {
                   onClick={() => registrationInputRef.current?.click()}
                   disabled={scanning.registration}
                   style={{ padding: '.6rem 1.2rem', borderRadius: 9, border: 'none', background: scanning.registration ? 'rgba(0,232,176,.12)' : 'var(--primary)', color: scanning.registration ? 'var(--primary)' : '#061210', fontWeight: 800, fontSize: '.78rem', cursor: scanning.registration ? 'wait' : 'pointer' }}>
-                  {scanning.registration ? '⏳ Scanning…' : compliance.registration ? '🔄 Rescan Registration' : '📷 Scan Registration'}
+                  {scanning.registration ? '⏳ Scanning…' : compliance.registration ? '🔄 Rescan / Upload' : '📷 Scan or Upload'}
                 </button>
                 {compliance.registration && (
                   <button type="button"
@@ -1079,7 +1079,7 @@ export default function Settings() {
                   onClick={() => insuranceInputRef.current?.click()}
                   disabled={scanning.insurance}
                   style={{ padding: '.6rem 1.2rem', borderRadius: 9, border: 'none', background: scanning.insurance ? 'rgba(0,232,176,.12)' : 'var(--primary)', color: scanning.insurance ? 'var(--primary)' : '#061210', fontWeight: 800, fontSize: '.78rem', cursor: scanning.insurance ? 'wait' : 'pointer' }}>
-                  {scanning.insurance ? '⏳ Scanning…' : compliance.insurance ? '🔄 Rescan Insurance' : '📷 Scan Insurance Card'}
+                  {scanning.insurance ? '⏳ Scanning…' : compliance.insurance ? '🔄 Rescan / Upload' : '📷 Scan or Upload'}
                 </button>
                 {compliance.insurance && (
                   <button type="button"
@@ -1142,7 +1142,7 @@ export default function Settings() {
                   onClick={() => medicalInputRef.current?.click()}
                   disabled={scanning.medical}
                   style={{ padding: '.6rem 1.2rem', borderRadius: 9, border: 'none', background: scanning.medical ? 'rgba(0,232,176,.12)' : 'var(--primary)', color: scanning.medical ? 'var(--primary)' : '#061210', fontWeight: 800, fontSize: '.78rem', cursor: scanning.medical ? 'wait' : 'pointer' }}>
-                  {scanning.medical ? '⏳ Scanning…' : compliance.medical ? '🔄 Rescan Medical Card' : '📷 Scan Medical Card'}
+                  {scanning.medical ? '⏳ Scanning…' : compliance.medical ? '🔄 Rescan / Upload' : '📷 Scan or Upload'}
                 </button>
                 {compliance.medical && (
                   <button type="button"
@@ -1429,11 +1429,11 @@ export default function Settings() {
 
       </main>
 
-      {/* ── Hidden file inputs for camera/gallery scans ── */}
-      <input ref={licenseInputRef}      type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleLicenseScan}      />
-      <input ref={registrationInputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleRegistrationScan} />
-      <input ref={insuranceInputRef}    type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleInsuranceScan}    />
-      <input ref={medicalInputRef}      type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleMedicalScan}      />
+      {/* ── Hidden file inputs — no capture= so iOS shows: Take Photo / Library / Browse ── */}
+      <input ref={licenseInputRef}      type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={handleLicenseScan}      />
+      <input ref={registrationInputRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={handleRegistrationScan} />
+      <input ref={insuranceInputRef}    type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={handleInsuranceScan}    />
+      <input ref={medicalInputRef}      type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={handleMedicalScan}      />
     </>
   )
 }
