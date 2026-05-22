@@ -6,6 +6,7 @@ import TopBar from '@/components/layout/TopBar'
 import { loadSettings } from '@/lib/settings'
 import StopTimeline from '@/components/dashboard/cards/StopTimeline'
 import AddStopSheet  from '@/components/dashboard/sheets/AddStopSheet'
+import TimelineFeed  from '@/components/timeline/TimelineFeed'
 import type { MissionStop } from '@/lib/dashboard/types'
 import { useMission } from '@/hooks/useMission'
 
@@ -2342,6 +2343,36 @@ export default function TripPlanner() {
           )}
         </div>
       </main>
+
+      {/* ── Operational Activity Feed — full width, below route planner ── */}
+      <section style={{ padding: '0 1.4rem 2rem' }}>
+        <div style={{
+          borderRadius: 16,
+          border:       '1px solid var(--border)',
+          overflow:     'hidden',
+          background:   'var(--surface)',
+        }}>
+          <div style={{
+            padding:    '.75rem 1rem',
+            fontWeight: 900,
+            fontSize:   '.88rem',
+            color:      'var(--text)',
+            background: 'var(--surface-2)',
+            borderBottom: '1px solid var(--border)',
+            display:    'flex',
+            alignItems: 'center',
+            gap:        8,
+          }}>
+            <span style={{ fontSize: '1rem' }}>⚡</span>
+            Operational Activity
+            <span style={{ fontSize: '.65rem', color: 'var(--muted)', fontWeight: 700, marginLeft: 'auto' }}>
+              Local · last 50 events
+            </span>
+          </div>
+          <TimelineFeed limit={50} />
+        </div>
+      </section>
+
     </>
   )
 }

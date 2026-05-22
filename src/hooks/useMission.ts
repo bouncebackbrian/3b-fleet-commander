@@ -8,6 +8,7 @@ import { parseMission, parseFleetMission, missionToRow, insertStop } from '@/lib
 import { getFleetIdentity } from '@/lib/identity'
 import { opLog } from '@/lib/logger'
 import { validateMission, isScoreResultSafe, isFuelResultSafe } from '@/lib/guards'
+import { logTimelineEvent } from '@/lib/timeline'
 
 // Auth-aware browser client for fleet_active_missions
 const db = createClient()
@@ -114,7 +115,17 @@ export function useMission() {
 
   // Initial load
   useEffect(() => {
-    fetchActiveMission().then(({ mission: m }) => { if (m) setMission(m) })
+    fetchActiveMission().then(({ mission: m, tier }) => {
+      if (m) {
+        setMission(m)
+        void logTimelineEvent('mission_restored', 'mission_loader', {
+          tier,
+          loadNumber: m.loadNumber,
+          origin:     m.origin,
+          destination: m.destination,
+        }, m.id ?? m.loadNumber)
+      }
+    })
   }, [])
 
   // ── Save a new active mission ─────────────────────────────────────────────
@@ -153,6 +164,12 @@ export function useMission() {
       // 2. Optimistic UI
       setMission(m)
       opLog.mission('Mission saved locally', { loadNumber: m.loadNumber, origin: m.origin, dest: m.destination })
+      void logTimelineEvent('mission_saved', 'mission_loader', {
+        loadNumber:  m.loadNumber,
+        origin:      m.origin,
+        destination: m.destination,
+        grossRate:   m.grossRate,
+      }, m.id ?? m.loadNumber)
 
       if (!legacySupabase) {
         setSyncState('local_only')
@@ -315,6 +332,13 @@ export function useMission() {
     // 3. Clear state — dashboard goes idle immediately
     setMission(null)
     opLog.mission('Mission completed', { loadNumber: completed.loadNumber })
+    void logTimelineEvent('mission_completed', 'mission_loader', {
+      loadNumber:   completed.loadNumber,
+      origin:       completed.origin,
+      destination:  completed.destination,
+      driverRating: review.driverRating,
+      wouldRunAgain: review.wouldRunAgain,
+    }, completed.id ?? completed.loadNumber)
 
     if (!legacySupabase) {
       setSyncState('local_only')

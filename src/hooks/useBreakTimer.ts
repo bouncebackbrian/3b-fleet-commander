@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { opLog } from '@/lib/logger'
 import { toast } from '@/hooks/useToast'
+import { logTimelineEvent } from '@/lib/timeline'
 
 export const BREAK_TARGET = 30 * 60 // 30 min in seconds
 
@@ -38,6 +39,7 @@ export function useBreakTimer() {
     setShowBreakModal(true)
     opLog.break('Break timer started')
     toast.success('Break timer started — 30 min clock running')
+    void logTimelineEvent('break_started', 'break_timer', { startedAt: new Date(now).toISOString() })
     try {
       localStorage.setItem(
         '3b-hos-event',
@@ -51,11 +53,17 @@ export function useBreakTimer() {
     setBreakActive(false)
     setShowBreakModal(false)
     opLog.break(`Break ended — ${mins} min elapsed`, { breakSecs })
-    if (breakSecs >= BREAK_TARGET) {
+    const complete = breakSecs >= BREAK_TARGET
+    if (complete) {
       toast.success(`Break complete — ${mins} min logged ✓`)
     } else {
       toast.warn(`Break ended early — ${mins} min (need 30)`)
     }
+    void logTimelineEvent('break_ended', 'break_timer', {
+      durationSecs: breakSecs,
+      durationMins: parseFloat(mins),
+      complete,
+    })
     try {
       localStorage.setItem(
         '3b-hos-event',

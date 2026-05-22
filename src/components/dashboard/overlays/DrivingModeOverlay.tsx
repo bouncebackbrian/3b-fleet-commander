@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { fmtTime } from '@/lib/dashboard/helpers'
 import type { HOSDisplay, WeatherInfo, LoadMission, ActiveTrip } from '@/lib/dashboard/types'
 import type { FuelIntelResult } from '@/lib/scoreLoad'
@@ -203,14 +203,31 @@ export default function DrivingModeOverlay({
   const [mapOpen,    setMapOpen]    = useState(false)
   const [returnApp,  setReturnApp]  = useState<string | null>(null)
   const [dismissed,  setDismissed]  = useState<Set<AlertId>>(new Set())
+  const loggedAlerts = useRef<Set<AlertId>>(new Set())
 
   // Derive alerts — re-runs every second via liveClock re-render
   const allAlerts = deriveDrivingAlerts(hosDisplay, weather, wx, missionFuel, mission)
   const alerts    = allAlerts.filter(a => !dismissed.has(a.id))
 
+  // Log each unique alert exactly once (not every re-render second)
+  alerts.forEach(alert => {
+    if (!loggedAlerts.current.has(alert.id)) {
+      loggedAlerts.current.add(alert.id)
+      void logTimelineEvent('alert_shown', 'alert_layer', {
+        alertId:  alert.id,
+        severity: alert.severity,
+        text:     alert.text,
+      }, mission?.loadNumber)
+    }
+  })
+
   function handleAlertAction(alert: DrivingAlert) {
     if (alert.actionKey === 'dismiss') {
       setDismissed(prev => new Set([...prev, alert.id]))
+      void logTimelineEvent('alert_dismissed', 'alert_layer', {
+        alertId:   alert.id,
+        severity:  alert.severity,
+      }, mission?.loadNumber)
     } else if (alert.actionKey === 'break') {
       onStartBreak ? onStartBreak() : onEmergency()
     } else if (alert.actionKey === 'fuel') {

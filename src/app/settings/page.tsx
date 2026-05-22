@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { loadSettings, persistSettings, DEFAULT_SETTINGS, type AppSettings } from '@/lib/settings'
 import { createClient } from '@/lib/supabase-browser'
+import { logTimelineEvent } from '@/lib/timeline'
 
 // ── Compliance doc types ───────────────────────────────────────────────────────
 type LicenseScan = {
@@ -167,6 +168,12 @@ export default function Settings() {
 
   // ── persistCompliance: localStorage-first → Supabase async ──────────────
   async function persistCompliance(docs: ComplianceDocs) {
+    // Detect newly added doc types for timeline (compare against current state)
+    const added = (['license', 'registration', 'insurance', 'medical'] as const)
+      .filter(k => docs[k] && !compliance[k])
+    if (added.length > 0) {
+      void logTimelineEvent('document_uploaded', 'compliance_scanner', { docTypes: added })
+    }
     setCompliance(docs)
     try { localStorage.setItem('3b-compliance-docs', JSON.stringify(docs)) } catch { /* storage full */ }
     // Supabase async — non-blocking, silently absorbed

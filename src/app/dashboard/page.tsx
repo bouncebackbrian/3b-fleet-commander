@@ -10,6 +10,7 @@ import type { EldMode, VehicleSetup, HOSData, SamsaraData, ActiveTrip, MissionSt
 import { opLog } from '@/lib/logger'
 import { validateHOS } from '@/lib/guards'
 import { toast } from '@/hooks/useToast'
+import { logTimelineEvent } from '@/lib/timeline'
 import { computeRouteRisk } from '@/lib/dashboard/routePreference'
 import type { RoutePreference } from '@/lib/dashboard/types'
 
@@ -144,6 +145,11 @@ export default function Dashboard() {
       setHos(data)
       opLog.hos('HOS scan complete', { driveRem: data.driveRemainingHrs, shiftRem: data.shiftRemainingHrs })
       toast.success('HOS data updated')
+      void logTimelineEvent('hos_scanned', 'hos_scanner', {
+        driveRem:  data.driveRemainingHrs,
+        shiftRem:  data.shiftRemainingHrs,
+        source:    eldMode,
+      })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Scan failed'
       setHosError(msg)
@@ -444,7 +450,12 @@ export default function Dashboard() {
           onSpotifyPrev={spotify.previous}
           onSpotifyLike={spotify.toggleLike}
           onEmergency={() => setShowEmergency(true)}
-          onExit={() => setDrivingMode(false)}
+          onExit={() => {
+            setDrivingMode(false)
+            void logTimelineEvent('driving_mode_ended', 'dashboard', {
+              loadNumber: mission?.loadNumber,
+            }, mission?.id ?? mission?.loadNumber)
+          }}
           onStartBreak={handleStartBreak}
           onShowFuel={() => setShowFuelSheet(true)}
         />
@@ -749,7 +760,12 @@ export default function Dashboard() {
             <span style={{ fontSize: '1.35rem' }}>🎙</span>
             <span style={{ fontSize: '1rem', fontWeight: 900 }}>Voice</span>
           </button>
-          <button className="cc-bottom-btn cc-bottom-btn-primary" onClick={() => setDrivingMode(true)}>
+          <button className="cc-bottom-btn cc-bottom-btn-primary" onClick={() => {
+            setDrivingMode(true)
+            void logTimelineEvent('driving_mode_started', 'dashboard', {
+              loadNumber: mission?.loadNumber,
+            }, mission?.id ?? mission?.loadNumber)
+          }}>
             <span style={{ fontSize: '1.5rem' }}>🚛</span>
             <span style={{ fontSize: '1.15rem', fontWeight: 900, letterSpacing: '.03em' }}>I&apos;M DRIVING</span>
             <span style={{ fontSize: '.78rem', color: 'rgba(6,18,16,.65)', fontWeight: 700 }}>Hands-free mode</span>
