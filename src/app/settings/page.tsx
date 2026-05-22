@@ -1482,28 +1482,25 @@ export default function Settings() {
 }
 
 // ── Spotify Settings Section ──────────────────────────────────────────────────
-// Isolated component so it can use its own state without touching the main page.
-function SpotifySettingsSection() {
-  const [clientId,     setClientId]     = useState('')
-  const [inputId,      setInputId]      = useState('')
-  const [isConnected,  setIsConnected]  = useState(false)
-  const [trackName,    setTrackName]    = useState('')
-  const [disconnecting, setDisconnecting] = useState(false)
+const CLIENT_ID = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID ?? ''
+const SPOTIFY_LS = {
+  accessToken:  'spotify_access_token',
+  refreshToken: 'spotify_refresh_token',
+  expiresAt:    'spotify_expires_at',
+  clientId:     'spotify_client_id',
+}
 
-  const K = {
-    clientId:    'spotify_client_id',
-    accessToken: 'spotify_access_token',
-    refreshToken:'spotify_refresh_token',
-    expiresAt:   'spotify_expires_at',
-  }
+function SpotifySettingsSection() {
+  const [isConnected,   setIsConnected]   = useState(false)
+  const [trackName,     setTrackName]     = useState('')
 
   useEffect(() => {
-    const id  = localStorage.getItem(K.clientId)    ?? ''
-    const tok = localStorage.getItem(K.accessToken) ?? ''
-    setClientId(id)
-    setInputId(id)
+    // Seed client ID from env var
+    if (CLIENT_ID && !localStorage.getItem(SPOTIFY_LS.clientId)) {
+      localStorage.setItem(SPOTIFY_LS.clientId, CLIENT_ID)
+    }
+    const tok = localStorage.getItem(SPOTIFY_LS.accessToken) ?? ''
     setIsConnected(!!tok)
-    // Quick check current track if connected
     if (tok) {
       fetch('https://api.spotify.com/v1/me/player/currently-playing', {
         headers: { Authorization: `Bearer ${tok}` },
@@ -1512,50 +1509,34 @@ function SpotifySettingsSection() {
         .then(data => { if (data?.item?.name) setTrackName(data.item.name) })
         .catch(() => {})
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
-  async function handleConnect() {
-    if (!inputId.trim()) return
-    const id = inputId.trim()
-    localStorage.setItem(K.clientId, id)
-    setClientId(id)
-
-    // PKCE verifier
-    const arr      = new Uint8Array(32)
-    crypto.getRandomValues(arr)
-    const verifier = btoa(String.fromCharCode(...arr)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
-    const data     = new TextEncoder().encode(verifier)
-    const digest   = await crypto.subtle.digest('SHA-256', data)
-    const challenge = btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
-    localStorage.setItem('spotify_code_verifier', verifier)
-
+  function handleConnect() {
+    const cid = CLIENT_ID || localStorage.getItem(SPOTIFY_LS.clientId) || ''
+    if (!cid) return
     const params = new URLSearchParams({
-      client_id:             id,
-      response_type:         'code',
-      redirect_uri:          `${window.location.origin}/spotify-callback`,
-      code_challenge_method: 'S256',
-      code_challenge:        challenge,
-      scope:                 'user-read-playback-state user-modify-playback-state user-read-currently-playing',
+      client_id:     cid,
+      response_type: 'code',
+      redirect_uri:  `${window.location.origin}/api/spotify/callback`,
+      scope:         'user-read-playback-state user-modify-playback-state user-read-currently-playing',
     })
     window.location.href = `https://accounts.spotify.com/authorize?${params}`
   }
 
   function handleDisconnect() {
-    setDisconnecting(true)
-    ;[K.accessToken, K.refreshToken, K.expiresAt].forEach(k => localStorage.removeItem(k))
+    Object.values(SPOTIFY_LS).forEach(k => localStorage.removeItem(k))
     setIsConnected(false)
     setTrackName('')
-    setDisconnecting(false)
   }
 
   const cardStyle: React.CSSProperties = {
-    background: 'var(--surface)', border: '1px solid var(--border)',
+    background: 'var(--surface)', border: `1px solid ${isConnected ? 'rgba(30,215,96,.3)' : 'var(--border)'}`,
     borderRadius: 16, padding: '1.1rem 1.1rem .9rem',
     display: 'flex', flexDirection: 'column', gap: '.8rem',
   }
 
   return (
-    <div id="spotify" style={{ ...cardStyle, borderColor: isConnected ? 'rgba(30,215,96,.3)' : 'var(--border)' }}>
+    <div id="spotify" style={cardStyle}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
@@ -1563,7 +1544,7 @@ function SpotifySettingsSection() {
             <span style={{ fontSize: '1.3rem' }}>🎵</span> Spotify
           </div>
           <div style={{ fontSize: '.7rem', color: 'var(--muted)', marginTop: 2 }}>
-            Play/pause, skip, and see what&apos;s playing on the driving dashboard
+            Play/pause, skip &amp; see what&apos;s playing on the driving dashboard
           </div>
         </div>
         {isConnected && (
@@ -1573,48 +1554,28 @@ function SpotifySettingsSection() {
         )}
       </div>
 
-      {/* Now playing (if connected + track available) */}
+      {/* Now playing */}
       {isConnected && trackName && (
         <div style={{ padding: '.5rem .75rem', borderRadius: 10, background: 'rgba(30,215,96,.06)', border: '1px solid rgba(30,215,96,.2)', fontSize: '.78rem', color: '#1ed760', fontWeight: 700 }}>
           🎵 Now playing: {trackName}
         </div>
       )}
 
-      {/* Connect / disconnect UI */}
+      {/* Connect / disconnect */}
       {!isConnected ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
-          <div style={{ fontSize: '.65rem', color: 'var(--muted)', lineHeight: 1.6 }}>
-            <strong style={{ color: 'var(--text)' }}>Setup (one-time):</strong><br />
-            1. Go to{' '}
-            <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener noreferrer" style={{ color: '#1ed760' }}>developer.spotify.com/dashboard</a>
-            <br />
-            2. Create a free app → copy the <strong>Client ID</strong><br />
-            3. Add <code style={{ background: 'var(--surface-2)', padding: '.05rem .3rem', borderRadius: 4 }}>{typeof window !== 'undefined' ? window.location.origin : 'https://fleet.bouncebackbrian.com'}/spotify-callback</code> as a Redirect URI
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <input
-              value={inputId}
-              onChange={e => setInputId(e.target.value)}
-              placeholder="Paste your Spotify Client ID"
-              style={{ flex: 1, padding: '.55rem .8rem', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: '.82rem' }}
-            />
-            <button
-              onClick={handleConnect}
-              disabled={!inputId.trim()}
-              style={{ padding: '.55rem 1rem', borderRadius: 9, border: 'none', background: inputId.trim() ? '#1ed760' : 'var(--surface-2)', color: inputId.trim() ? '#000' : 'var(--muted)', fontWeight: 800, fontSize: '.82rem', cursor: inputId.trim() ? 'pointer' : 'not-allowed', whiteSpace: 'nowrap' }}
-            >
-              Connect →
-            </button>
-          </div>
-        </div>
+        <button
+          onClick={handleConnect}
+          style={{ padding: '.7rem 1.2rem', borderRadius: 10, border: 'none', background: '#1ed760', color: '#000', fontWeight: 800, fontSize: '.88rem', cursor: 'pointer' }}
+        >
+          Connect Spotify →
+        </button>
       ) : (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, fontSize: '.72rem', color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: '.6rem', color: 'var(--faint)' }}>Client ID: {clientId.slice(0, 8)}…</span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ flex: 1, fontSize: '.65rem', color: 'var(--faint)' }}>
+            Tokens stored · auto-refreshes
           </div>
           <button
             onClick={handleDisconnect}
-            disabled={disconnecting}
             style={{ padding: '.45rem .9rem', borderRadius: 8, border: '1px solid rgba(232,64,0,.3)', background: 'rgba(232,64,0,.06)', color: 'var(--error)', fontWeight: 700, fontSize: '.72rem', cursor: 'pointer' }}
           >
             Disconnect
@@ -1622,7 +1583,6 @@ function SpotifySettingsSection() {
         </div>
       )}
 
-      {/* Premium note */}
       <div style={{ fontSize: '.62rem', color: 'var(--faint)', lineHeight: 1.5 }}>
         ℹ️ Reading current track works on free Spotify. Play/pause and skip require <strong>Spotify Premium</strong>.
       </div>
