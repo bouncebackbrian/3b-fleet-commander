@@ -102,7 +102,7 @@ pre code{background:none;padding:0}
 .cc-quick-nav-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:.5rem; }
 
 /* Driving overlay */
-.cc-driving-overlay { position:fixed; inset:0; z-index:200; background:#030d0b; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2rem; padding:2rem; text-align:center; }
+.cc-driving-overlay { position:fixed; inset:0; z-index:200; background:#030d0b; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1.5rem; padding:2rem; padding-top:5.5rem; text-align:center; }
 
 /* ── iPad landscape (≥900px) — command center ────────────────────────────── */
 @media (min-width:900px) {

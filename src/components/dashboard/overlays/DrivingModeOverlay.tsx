@@ -118,14 +118,10 @@ export default function DrivingModeOverlay({
 
   return (
     <div className="cc-driving-overlay">
-      {/* ── Clock ── */}
-      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 900, fontSize: 'clamp(3rem,10vw,5rem)', color: 'var(--text)', letterSpacing: '-.02em', lineHeight: 1 }}>
-        {liveClock}
-      </div>
 
-      {/* ── Spotify player — visible above everything else ── */}
+      {/* ── Spotify strip — pinned to top, out of flex flow ── */}
       {showSpotify && (
-        <div style={{ width: '100%', maxWidth: 420 }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, padding: '.6rem .75rem' }}>
           <SpotifyWidget
             track={spotifyTrack ?? null}
             status={spotifyStatus!}
@@ -137,6 +133,11 @@ export default function DrivingModeOverlay({
           />
         </div>
       )}
+
+      {/* ── Clock ── */}
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 900, fontSize: 'clamp(3rem,10vw,5rem)', color: 'var(--text)', letterSpacing: '-.02em', lineHeight: 1 }}>
+        {liveClock}
+      </div>
 
       {/* ── Active load route ── */}
       {mission && (
