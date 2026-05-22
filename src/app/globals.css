@@ -101,8 +101,23 @@ pre code{background:none;padding:0}
 /* Quick nav grid inside QuickNavCard */
 .cc-quick-nav-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:.5rem; }
 
-/* Driving overlay */
-.cc-driving-overlay { position:fixed; inset:0; z-index:200; background:#030d0b; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1.5rem; padding:2rem; padding-top:5.5rem; text-align:center; }
+/* Driving overlay — 3-zone flex column: Spotify strip → scrollable content → action buttons
+   Works at any width including iOS Split View (~512px). No absolute positioning. */
+.cc-driving-overlay {
+  position:fixed; inset:0; z-index:200; background:#030d0b;
+  display:flex; flex-direction:column; align-items:stretch;
+  overflow:hidden;
+}
+/* Zone 1 (Spotify) and Zone 3 (buttons) are flex-shrink:0 via inline style.
+   Zone 2 (scrollable content) fills remaining height. */
+.cc-driving-content {
+  flex:1; overflow-y:auto; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  gap:1.5rem; padding:1.5rem 1.25rem;
+  text-align:center; min-height:0;
+}
+.cc-driving-spotify { flex-shrink:0; padding:.6rem .75rem; }
+.cc-driving-actions { flex-shrink:0; padding:.75rem 1.25rem 1.5rem; display:flex; gap:12px; flex-wrap:wrap; justify-content:center; }
 
 /* ── iPad landscape (≥900px) — command center ────────────────────────────── */
 @media (min-width:900px) {

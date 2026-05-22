@@ -22,7 +22,6 @@ function buildNavLink(app: NavApp, destination: string): { url: string; fallback
   const d = encodeURIComponent(destination)
   switch (app.label) {
     case 'Truckers Path Route':
-      // Shared route link — open directly in new tab, no deep-link needed
       return {
         url:        'https://tpurl.link/rVella',
         fallback:   'https://tpurl.link/rVella',
@@ -48,6 +47,16 @@ function buildNavLink(app: NavApp, destination: string): { url: string; fallback
   }
 }
 
+/** Live countdown from now to an ETA string. Re-evaluates on every render (driven by liveClock). */
+function fmtEta(etaStr: string): string {
+  const diffMs = new Date(etaStr).getTime() - Date.now()
+  if (diffMs <= 0) return 'Arrived'
+  const totalMin = Math.round(diffMs / 60_000)
+  if (totalMin < 60) return `${totalMin} min`
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  return m > 0 ? `${h}h ${m}m` : `${h}h`
+}
 
 interface Props {
   liveClock:   string
@@ -79,18 +88,15 @@ export default function DrivingModeOverlay({
   const [mapOpen,    setMapOpen]    = useState(false)
   const [returnApp,  setReturnApp]  = useState<string | null>(null)
 
-  // Best destination string: use active mission dropoff, or empty
   const navDest = mission?.destination ?? ''
 
   function openNavApp(app: NavApp) {
     const { url, fallback, openDirect } = buildNavLink(app, navDest)
 
-    // Determine the correct timeline event type
     const eventType = app.label === 'Truckers Path Route'
       ? 'nav_opened_truckers_path_share_link' as const
       : 'nav_opened' as const
 
-    // Log to unified timeline (localStorage-first → Supabase async)
     logTimelineEvent(
       eventType,
       'driving_overlay',
@@ -101,17 +107,13 @@ export default function DrivingModeOverlay({
     setMapOpen(false)
 
     if (openDirect) {
-      // Web URL — open directly in new tab; no deep-link timeout needed
       window.open(url, '_blank', 'noopener')
       return
     }
 
-    // Try native deep link; if the app isn't installed the browser won't navigate,
-    // so after 700 ms open the web fallback instead.
     const start = Date.now()
     window.location.href = url
     setTimeout(() => {
-      // If less than 1.5 s have passed the page is still in foreground → app not installed
       if (Date.now() - start < 1500) window.open(fallback, '_blank', 'noopener')
     }, 700)
   }
@@ -119,9 +121,9 @@ export default function DrivingModeOverlay({
   return (
     <div className="cc-driving-overlay">
 
-      {/* ── Spotify strip — pinned to top, out of flex flow ── */}
+      {/* ── ZONE 1: Spotify strip — pinned above content, no overlap ── */}
       {showSpotify && (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, padding: '.6rem .75rem' }}>
+        <div className="cc-driving-spotify">
           <SpotifyWidget
             track={spotifyTrack ?? null}
             status={spotifyStatus!}
@@ -134,180 +136,192 @@ export default function DrivingModeOverlay({
         </div>
       )}
 
-      {/* ── Clock ── */}
-      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 900, fontSize: 'clamp(3rem,10vw,5rem)', color: 'var(--text)', letterSpacing: '-.02em', lineHeight: 1 }}>
-        {liveClock}
-      </div>
+      {/* ── ZONE 2: Scrollable center content ── */}
+      <div className="cc-driving-content">
 
-      {/* ── Active load route ── */}
-      {mission && (
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '.8rem', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 6 }}>
-            Active Load{mission.loadNumber ? ` — ${mission.loadNumber}` : ''}
-          </div>
-          <div style={{ fontSize: 'clamp(1.3rem,4vw,2.2rem)', fontWeight: 900, color: 'var(--text)', lineHeight: 1.2 }}>
-            {mission.origin.split(',')[0]} <span style={{ color: 'var(--primary)' }}>→</span> {mission.destination.split(',')[0]}
-          </div>
+        {/* Clock */}
+        <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 900, fontSize: 'clamp(2.6rem,9vw,5rem)', color: 'var(--text)', letterSpacing: '-.02em', lineHeight: 1 }}>
+          {liveClock}
         </div>
-      )}
 
-      {/* ── Next stop ── */}
-      {nextStop && (
-        <div style={{ textAlign: 'center', padding: '.85rem 2rem', borderRadius: 16, background: 'rgba(0,232,176,.07)', border: '1px solid rgba(0,232,176,.2)' }}>
-          <div style={{ fontSize: '.7rem', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 4 }}>Next Stop</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--primary)' }}>{nextStop.name}</div>
-          <div style={{ fontSize: '.85rem', color: 'var(--muted)', marginTop: 2 }}>{nextStop.city} · {fmtTime(nextStop.eta)} · {nextStop.miFromOrigin} mi</div>
-        </div>
-      )}
-
-      {/* ── HOS drive time ── */}
-      {hosDisplay && (
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '.8rem', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 8 }}>Drive Time Remaining</div>
-          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 900, fontSize: 'clamp(3rem,8vw,5rem)', color: driveColor, lineHeight: 1, textShadow: `0 0 32px ${driveColor}50` }}>
-            {hosDisplay.driveRem.toFixed(1)}<span style={{ fontSize: '1.5rem', fontWeight: 700, marginLeft: 4 }}>h</span>
-          </div>
-          {hosDisplay.driveRem <= 2 && (
-            <div style={{ marginTop: 10, fontSize: '1rem', color: 'var(--error)', fontWeight: 800 }}>⚠️ MANDATORY STOP APPROACHING</div>
-          )}
-        </div>
-      )}
-
-      {/* ── Fuel + Weather ── */}
-      {missionFuel && missionFuel.totalMiles > 0 && (
-        <div style={{ fontSize: '1rem', color: 'var(--warn)', fontWeight: 700 }}>
-          ⛽ ~{missionFuel.gallonsNeeded} gal · ${Math.round(missionFuel.fuelCostTotal)} est. fuel
-        </div>
-      )}
-      {weather && wx && (
-        <div style={{ fontSize: '1.2rem', fontWeight: 800, color: wx.color }}>
-          {wx.emoji} {weather.temp}°F · {wx.label}
-          {wx.severe && <span style={{ color: 'var(--error)' }}> — ⚠️ HAZARDOUS</span>}
-        </div>
-      )}
-
-      {/* ── Return-to-app banner (shown after nav app is launched) ── */}
-      {returnApp && (
-        <div style={{
-          width: '100%', maxWidth: 420,
-          padding: '.85rem 1rem', borderRadius: 16,
-          background: 'rgba(74,196,255,.08)', border: '1px solid rgba(74,196,255,.3)',
-          display: 'flex', alignItems: 'flex-start', gap: 12,
-        }}>
-          <span style={{ fontSize: '1.4rem', flexShrink: 0, lineHeight: 1.1 }}>🗺</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 800, fontSize: '.88rem', color: 'var(--blue)' }}>
-              {returnApp} opened
+        {/* Active load route */}
+        {mission && (
+          <div>
+            <div style={{ fontSize: '.8rem', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 6 }}>
+              Active Load{mission.loadNumber ? ` — ${mission.loadNumber}` : ''}
             </div>
-            <div style={{ fontSize: '.7rem', color: 'var(--muted)', marginTop: 3, lineHeight: 1.5 }}>
-              Return here to update miles, rest time, fuel, or scan documents.
-              {navDest ? <><br /><span style={{ color: 'var(--text)', fontWeight: 700 }}>Destination: {navDest.split(',').slice(0,2).join(',')}</span></> : null}
-            </div>
-          </div>
-          <button
-            onClick={() => setReturnApp(null)}
-            style={{ flexShrink: 0, padding: '.2rem .45rem', borderRadius: 6, border: '1px solid rgba(74,196,255,.2)', background: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '.72rem', lineHeight: 1 }}>
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* ── Map / Navigation PiP ── */}
-      <div style={{ width: '100%', maxWidth: 420 }}>
-        {!mapOpen ? (
-          /* Collapsed chip — shows destination when a load is active */
-          <button
-            onClick={() => setMapOpen(true)}
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-              padding: '.85rem 1.1rem', borderRadius: 16,
-              background: 'rgba(74,196,255,.07)', border: '1px solid rgba(74,196,255,.25)',
-              color: 'var(--blue)', fontWeight: 800, fontSize: '.95rem', cursor: 'pointer',
-            }}
-          >
-            <span style={{ fontSize: '1.3rem' }}>🗺</span>
-            <div style={{ flex: 1, textAlign: 'left' }}>
-              <div>Open Navigation App</div>
-              {navDest && (
-                <div style={{ fontSize: '.65rem', color: 'var(--muted)', fontWeight: 600, marginTop: 1 }}>
-                  → {navDest.split(',').slice(0,2).join(',')}
-                </div>
-              )}
-            </div>
-            <span style={{ fontSize: '.75rem', opacity: .65 }}>▾</span>
-          </button>
-        ) : (
-          /* Expanded nav picker */
-          <div style={{
-            borderRadius: 18, background: 'rgba(10,24,22,.92)', border: '1px solid rgba(74,196,255,.3)',
-            backdropFilter: 'blur(12px)', overflow: 'hidden',
-          }}>
-            {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '.8rem 1.1rem .5rem' }}>
-              <div>
-                <div style={{ fontSize: '.65rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em' }}>
-                  📍 Navigate To
-                </div>
-                {navDest ? (
-                  <div style={{ fontSize: '.9rem', fontWeight: 900, color: 'var(--text)', marginTop: 2 }}>
-                    {navDest.split(',').slice(0,2).join(',')}
-                  </div>
-                ) : (
-                  <div style={{ fontSize: '.75rem', color: 'var(--muted)', marginTop: 2 }}>No active load — searching manually</div>
-                )}
-              </div>
-              <button onClick={() => setMapOpen(false)} style={{ padding: '.2rem .5rem', borderRadius: 6, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '.75rem' }}>✕</button>
-            </div>
-
-            {/* App buttons */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '.4rem .8rem .9rem' }}>
-              {NAV_APPS.map(app => {
-                const hasDeepDest = app.label !== 'Truckers Path Route' && app.label !== 'Truckers Path App' && !!navDest
-                return (
-                  <button
-                    key={app.label}
-                    onClick={() => openNavApp(app)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 14, padding: '.9rem 1.2rem',
-                      borderRadius: 13, border: '1px solid rgba(74,196,255,.2)',
-                      background: 'rgba(74,196,255,.06)', cursor: 'pointer',
-                      color: 'var(--text)', fontWeight: 800, textAlign: 'left', minHeight: 64,
-                    }}
-                  >
-                    <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>{app.emoji}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 900, fontSize: '1rem' }}>{app.label}</div>
-                      <div style={{ fontSize: '.62rem', color: 'var(--muted)', marginTop: 1 }}>
-                        {hasDeepDest
-                          ? <span style={{ color: 'rgba(74,196,255,.7)' }}>→ {navDest.split(',').slice(0,2).join(',')}</span>
-                          : app.desc}
-                      </div>
-                    </div>
-                    <span style={{ fontSize: '.95rem', color: 'var(--muted)' }}>→</span>
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Footer hint */}
-            <div style={{ padding: '.3rem .9rem .7rem', fontSize: '.6rem', color: 'var(--faint)', textAlign: 'center', lineHeight: 1.5 }}>
-              App opens full-screen · Double-press Home to return to Fleet Commander
+            <div style={{ fontSize: 'clamp(1.1rem,4vw,2.2rem)', fontWeight: 900, color: 'var(--text)', lineHeight: 1.2 }}>
+              {mission.origin.split(',')[0]} <span style={{ color: 'var(--primary)' }}>→</span> {mission.destination.split(',')[0]}
             </div>
           </div>
         )}
-      </div>
 
-      {/* ── Action row ── */}
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'center', marginTop: '1rem' }}>
+        {/* Next stop — live countdown, re-evaluates every second via liveClock re-render */}
+        {nextStop && (
+          <div style={{ padding: '.85rem 1.5rem', borderRadius: 16, background: 'rgba(0,232,176,.07)', border: '1px solid rgba(0,232,176,.2)', width: '100%' }}>
+            <div style={{ fontSize: '.7rem', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 4 }}>Next Stop</div>
+            <div style={{ fontSize: 'clamp(1.1rem,4vw,1.4rem)', fontWeight: 900, color: 'var(--primary)' }}>{nextStop.name}</div>
+            <div style={{ fontSize: '.85rem', color: 'var(--muted)', marginTop: 4 }}>
+              {nextStop.city}
+              {nextStop.eta && (
+                <>
+                  {' · '}
+                  <span style={{ color: 'var(--text)', fontWeight: 800 }}>{fmtEta(nextStop.eta)}</span>
+                  {' away · '}
+                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>ETA {fmtTime(nextStop.eta)}</span>
+                </>
+              )}
+              {nextStop.miFromOrigin != null && ` · ${nextStop.miFromOrigin} mi`}
+            </div>
+          </div>
+        )}
+
+        {/* HOS drive time */}
+        {hosDisplay && (
+          <div>
+            <div style={{ fontSize: '.8rem', color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 8 }}>Drive Time Remaining</div>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 900, fontSize: 'clamp(2.4rem,7vw,5rem)', color: driveColor, lineHeight: 1, textShadow: `0 0 32px ${driveColor}50` }}>
+              {hosDisplay.driveRem.toFixed(1)}<span style={{ fontSize: '1.5rem', fontWeight: 700, marginLeft: 4 }}>h</span>
+            </div>
+            {hosDisplay.driveRem <= 2 && (
+              <div style={{ marginTop: 10, fontSize: '1rem', color: 'var(--error)', fontWeight: 800 }}>⚠️ MANDATORY STOP APPROACHING</div>
+            )}
+          </div>
+        )}
+
+        {/* Fuel + Weather */}
+        {missionFuel && missionFuel.totalMiles > 0 && (
+          <div style={{ fontSize: '1rem', color: 'var(--warn)', fontWeight: 700 }}>
+            ⛽ ~{missionFuel.gallonsNeeded} gal · ${Math.round(missionFuel.fuelCostTotal)} est. fuel
+          </div>
+        )}
+        {weather && wx && (
+          <div style={{ fontSize: '1.1rem', fontWeight: 800, color: wx.color }}>
+            {wx.emoji} {weather.temp}°F · {wx.label}
+            {wx.severe && <span style={{ color: 'var(--error)' }}> — ⚠️ HAZARDOUS</span>}
+          </div>
+        )}
+
+        {/* Return-to-app banner */}
+        {returnApp && (
+          <div style={{
+            width: '100%',
+            padding: '.85rem 1rem', borderRadius: 16,
+            background: 'rgba(74,196,255,.08)', border: '1px solid rgba(74,196,255,.3)',
+            display: 'flex', alignItems: 'flex-start', gap: 12,
+          }}>
+            <span style={{ fontSize: '1.4rem', flexShrink: 0, lineHeight: 1.1 }}>🗺</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: '.88rem', color: 'var(--blue)' }}>
+                {returnApp} opened
+              </div>
+              <div style={{ fontSize: '.7rem', color: 'var(--muted)', marginTop: 3, lineHeight: 1.5 }}>
+                Return here to update miles, rest time, fuel, or scan documents.
+                {navDest ? <><br /><span style={{ color: 'var(--text)', fontWeight: 700 }}>Destination: {navDest.split(',').slice(0,2).join(',')}</span></> : null}
+              </div>
+            </div>
+            <button
+              onClick={() => setReturnApp(null)}
+              style={{ flexShrink: 0, padding: '.2rem .45rem', borderRadius: 6, border: '1px solid rgba(74,196,255,.2)', background: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '.72rem', lineHeight: 1 }}>
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Nav picker */}
+        <div style={{ width: '100%' }}>
+          {!mapOpen ? (
+            <button
+              onClick={() => setMapOpen(true)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                padding: '.85rem 1.1rem', borderRadius: 16,
+                background: 'rgba(74,196,255,.07)', border: '1px solid rgba(74,196,255,.25)',
+                color: 'var(--blue)', fontWeight: 800, fontSize: '.95rem', cursor: 'pointer',
+              }}
+            >
+              <span style={{ fontSize: '1.3rem' }}>🗺</span>
+              <div style={{ flex: 1, textAlign: 'left' }}>
+                <div>Open Navigation App</div>
+                {navDest && (
+                  <div style={{ fontSize: '.65rem', color: 'var(--muted)', fontWeight: 600, marginTop: 1 }}>
+                    → {navDest.split(',').slice(0,2).join(',')}
+                  </div>
+                )}
+              </div>
+              <span style={{ fontSize: '.75rem', opacity: .65 }}>▾</span>
+            </button>
+          ) : (
+            <div style={{
+              borderRadius: 18, background: 'rgba(10,24,22,.92)', border: '1px solid rgba(74,196,255,.3)',
+              backdropFilter: 'blur(12px)', overflow: 'hidden',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '.8rem 1.1rem .5rem' }}>
+                <div>
+                  <div style={{ fontSize: '.65rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em' }}>
+                    📍 Navigate To
+                  </div>
+                  {navDest ? (
+                    <div style={{ fontSize: '.9rem', fontWeight: 900, color: 'var(--text)', marginTop: 2 }}>
+                      {navDest.split(',').slice(0,2).join(',')}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '.75rem', color: 'var(--muted)', marginTop: 2 }}>No active load — searching manually</div>
+                  )}
+                </div>
+                <button onClick={() => setMapOpen(false)} style={{ padding: '.2rem .5rem', borderRadius: 6, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '.75rem' }}>✕</button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '.4rem .8rem .9rem' }}>
+                {NAV_APPS.map(app => {
+                  const hasDeepDest = app.label !== 'Truckers Path Route' && app.label !== 'Truckers Path App' && !!navDest
+                  return (
+                    <button
+                      key={app.label}
+                      onClick={() => openNavApp(app)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 14, padding: '.9rem 1.2rem',
+                        borderRadius: 13, border: '1px solid rgba(74,196,255,.2)',
+                        background: 'rgba(74,196,255,.06)', cursor: 'pointer',
+                        color: 'var(--text)', fontWeight: 800, textAlign: 'left', minHeight: 64,
+                      }}
+                    >
+                      <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>{app.emoji}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 900, fontSize: '1rem' }}>{app.label}</div>
+                        <div style={{ fontSize: '.62rem', color: 'var(--muted)', marginTop: 1 }}>
+                          {hasDeepDest
+                            ? <span style={{ color: 'rgba(74,196,255,.7)' }}>→ {navDest.split(',').slice(0,2).join(',')}</span>
+                            : app.desc}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '.95rem', color: 'var(--muted)' }}>→</span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div style={{ padding: '.3rem .9rem .7rem', fontSize: '.6rem', color: 'var(--faint)', textAlign: 'center', lineHeight: 1.5 }}>
+                App opens full-screen · Double-press Home to return to Fleet Commander
+              </div>
+            </div>
+          )}
+        </div>
+
+      </div>{/* end cc-driving-content */}
+
+      {/* ── ZONE 3: Action buttons — pinned to bottom ── */}
+      <div className="cc-driving-actions">
         <button onClick={onEmergency}
-          style={{ padding: '1rem 2rem', borderRadius: 16, background: 'rgba(232,64,0,.12)', border: '1px solid var(--error)', color: 'var(--error)', fontWeight: 800, fontSize: '.95rem', cursor: 'pointer', minHeight: 60, minWidth: 160 }}>
+          style={{ flex: '1 1 140px', padding: '1rem 1.5rem', borderRadius: 16, background: 'rgba(232,64,0,.12)', border: '1px solid var(--error)', color: 'var(--error)', fontWeight: 800, fontSize: '.95rem', cursor: 'pointer', minHeight: 60 }}>
           🚨 Emergency
         </button>
         <button onClick={onExit}
-          style={{ padding: '1.2rem 3rem', borderRadius: 18, background: 'rgba(232,64,0,.15)', border: '2px solid var(--error)', color: 'var(--error)', fontWeight: 900, fontSize: '1.1rem', cursor: 'pointer', letterSpacing: '.04em', minWidth: 260, minHeight: 72 }}>
+          style={{ flex: '2 1 200px', padding: '1.2rem 2rem', borderRadius: 18, background: 'rgba(232,64,0,.15)', border: '2px solid var(--error)', color: 'var(--error)', fontWeight: 900, fontSize: '1.1rem', cursor: 'pointer', letterSpacing: '.04em', minHeight: 72 }}>
           🛑 END DRIVING MODE
         </button>
       </div>
+
     </div>
   )
 }
