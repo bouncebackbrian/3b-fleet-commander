@@ -418,3 +418,30 @@ export type OperationalEvent = {
   loggedAt?:    string          // ISO — when entered in app
   timezone?:    string
 }
+
+// ── Navigation Snapshot ───────────────────────────────────────────────────────
+// Lightweight nav-progress layer. No live routing yet — manual / paste mode.
+// Future fields (next_turn, current_road, etc.) are stored but not yet shown.
+export type RouteSourceType = 'manual' | 'truckers_path' | 'google_maps' | 'api'
+
+export type NavSnapshot = {
+  id:                  string
+  missionId?:          string | null
+  loadNumber?:         string | null
+  // Core display fields
+  currentDestination:  string
+  destinationAddress:  string
+  remainingMiles:      number | null
+  estimatedDriveTime:  string            // human string e.g. "6h 48m"
+  eta:                 string | null     // ISO for storage, formatted for display
+  nextPlannedStop:     string
+  routeSource:         RouteSourceType
+  manualRouteNotes:    string
+  lastUpdated:         string            // ISO
+  // Future-ready (not displayed until routing API connected)
+  nextTurnInstruction?: string
+  distanceToNextTurn?:  number | null
+  currentRoad?:         string
+  offRouteStatus?:      string
+  routingProvider?:     string
+}

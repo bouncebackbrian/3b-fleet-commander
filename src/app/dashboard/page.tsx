@@ -60,7 +60,8 @@ import AlertsCard        from '@/components/dashboard/cards/AlertsCard'
 import HosCard           from '@/components/dashboard/cards/HosCard'
 import FuelWeatherRow    from '@/components/dashboard/cards/FuelWeatherRow'
 import ExpensesCard      from '@/components/dashboard/cards/ExpensesCard'
-import QuickNavCard      from '@/components/dashboard/cards/QuickNavCard'
+import QuickNavCard            from '@/components/dashboard/cards/QuickNavCard'
+import NavigationSnapshotCard from '@/components/dashboard/cards/NavigationSnapshotCard'
 import MovementAlert     from '@/components/dashboard/cards/MovementAlert'
 import LocationBar       from '@/components/dashboard/cards/LocationBar'
 
@@ -670,6 +671,8 @@ export default function Dashboard() {
                 />
               )}
               <AlertsCard operationalAlerts={operationalAlerts} onOpenHos={() => setShowHosDetail(true)} />
+
+              <NavigationSnapshotCard mission={mission} />
 
               {/* QuickNavCard — phone only (sidebar replaces on iPad) */}
               <div className="cc-phone-only">
