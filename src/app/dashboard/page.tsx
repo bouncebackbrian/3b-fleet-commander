@@ -445,6 +445,8 @@ export default function Dashboard() {
           onSpotifyLike={spotify.toggleLike}
           onEmergency={() => setShowEmergency(true)}
           onExit={() => setDrivingMode(false)}
+          onStartBreak={handleStartBreak}
+          onShowFuel={() => setShowFuelSheet(true)}
         />
       )}
 

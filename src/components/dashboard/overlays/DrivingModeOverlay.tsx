@@ -47,6 +47,116 @@ function buildNavLink(app: NavApp, destination: string): { url: string; fallback
   }
 }
 
+// ── Critical alert layer ──────────────────────────────────────────────────────
+
+type AlertSeverity = 'critical' | 'warn'
+type AlertId =
+  | 'hos_stop_now'
+  | 'hos_break_soon'
+  | 'hos_shift_ending'
+  | 'weather_severe'
+  | 'weather_wind'
+  | 'fuel_needed'
+
+export interface DrivingAlert {
+  id:          AlertId
+  emoji:       string
+  text:        string
+  severity:    AlertSeverity
+  actionLabel: string       // visible label after the text
+  actionKey:   'break' | 'fuel' | 'dismiss'
+}
+
+/** Format fractional hours → "22m" / "1h 8m" */
+function fmtHrs(h: number): string {
+  const m = Math.round(h * 60)
+  if (m < 60) return `${m}m`
+  const hh = Math.floor(m / 60)
+  const mm = m % 60
+  return mm > 0 ? `${hh}h ${mm}m` : `${hh}h`
+}
+
+/**
+ * Pure derivation — takes current overlay props, returns ≤3 ordered alerts.
+ * Priority: HOS violation risk → severe weather → high wind → fuel.
+ */
+function deriveDrivingAlerts(
+  hosDisplay:  HOSDisplay | null,
+  weather:     { temp: number; windSpeed: number } | null,
+  wx:          WeatherInfo | null,
+  missionFuel: FuelIntelResult | null,
+  mission:     LoadMission | null,
+): DrivingAlert[] {
+  const alerts: DrivingAlert[] = []
+
+  if (hosDisplay) {
+    // 1a. Drive limit critical (≤1 h remaining)
+    if (hosDisplay.driveRem <= 1) {
+      alerts.push({
+        id: 'hos_stop_now', emoji: '🛑', severity: 'critical',
+        text: `Stop required in ${fmtHrs(hosDisplay.driveRem)}`,
+        actionLabel: 'Start break →', actionKey: 'break',
+      })
+    }
+    // 1b. Break due soon (>1 h but ≤2 h)
+    else if (hosDisplay.driveRem <= 2) {
+      alerts.push({
+        id: 'hos_break_soon', emoji: '⚠', severity: 'warn',
+        text: `Break due in ${fmtHrs(hosDisplay.driveRem)}`,
+        actionLabel: 'Start break →', actionKey: 'break',
+      })
+    }
+    // 1c. Shift ending (≤2 h remaining shift, separate from drive limit)
+    if (hosDisplay.shiftRem <= 2 && hosDisplay.driveRem > 2) {
+      alerts.push({
+        id: 'hos_shift_ending', emoji: '🕐', severity: 'warn',
+        text: `Shift ends in ${fmtHrs(hosDisplay.shiftRem)}`,
+        actionLabel: 'Start break →', actionKey: 'break',
+      })
+    }
+    // 1d. 30-min break countdown (breakIn field)
+    if (hosDisplay.breakIn !== null && hosDisplay.breakIn <= 0.5 && hosDisplay.breakIn > 0) {
+      // Only add if no stop/break alert already queued to avoid duplication
+      if (!alerts.some(a => a.id === 'hos_stop_now' || a.id === 'hos_break_soon')) {
+        alerts.push({
+          id: 'hos_break_soon', emoji: '⚠', severity: 'critical',
+          text: `Mandatory break in ${fmtHrs(hosDisplay.breakIn)}`,
+          actionLabel: 'Start break →', actionKey: 'break',
+        })
+      }
+    }
+  }
+
+  // 2. Severe weather
+  if (wx?.severe) {
+    alerts.push({
+      id: 'weather_severe', emoji: '🌩', severity: 'critical',
+      text: `Hazardous: ${wx.label}`,
+      actionLabel: 'OK', actionKey: 'dismiss',
+    })
+  } else if (weather && weather.windSpeed >= 40) {
+    alerts.push({
+      id: 'weather_wind', emoji: '🌬', severity: 'warn',
+      text: `High winds ${Math.round(weather.windSpeed)} mph`,
+      actionLabel: 'OK', actionKey: 'dismiss',
+    })
+  }
+
+  // 3. No fuel plan when mission is active
+  if (mission && !missionFuel) {
+    alerts.push({
+      id: 'fuel_needed', emoji: '⛽', severity: 'warn',
+      text: 'Fuel plan needed',
+      actionLabel: 'Add plan →', actionKey: 'fuel',
+    })
+  }
+
+  // Critical-first, then warn. Cap at 3 so the strip stays compact.
+  return alerts
+    .sort((a, b) => (a.severity === 'critical' ? -1 : 1) - (b.severity === 'critical' ? -1 : 1))
+    .slice(0, 3)
+}
+
 /** Live countdown from now to an ETA string. Re-evaluates on every render (driven by liveClock). */
 function fmtEta(etaStr: string): string {
   const diffMs = new Date(etaStr).getTime() - Date.now()
@@ -76,8 +186,10 @@ interface Props {
   onSpotifyPrev?:     () => void
   onSpotifyLike?:     () => void
   // Actions
-  onEmergency: () => void
-  onExit:      () => void
+  onEmergency:  () => void
+  onExit:       () => void
+  onStartBreak?: () => void
+  onShowFuel?:   () => void
 }
 
 export default function DrivingModeOverlay({
@@ -85,11 +197,26 @@ export default function DrivingModeOverlay({
   missionFuel, weather, wx,
   spotifyTrack, spotifyStatus, spotifyTrackSaved,
   onSpotifyToggle, onSpotifyNext, onSpotifyPrev, onSpotifyLike,
-  onEmergency, onExit,
+  onEmergency, onExit, onStartBreak, onShowFuel,
 }: Props) {
   const showSpotify  = spotifyStatus && spotifyStatus !== 'disconnected'
   const [mapOpen,    setMapOpen]    = useState(false)
   const [returnApp,  setReturnApp]  = useState<string | null>(null)
+  const [dismissed,  setDismissed]  = useState<Set<AlertId>>(new Set())
+
+  // Derive alerts — re-runs every second via liveClock re-render
+  const allAlerts = deriveDrivingAlerts(hosDisplay, weather, wx, missionFuel, mission)
+  const alerts    = allAlerts.filter(a => !dismissed.has(a.id))
+
+  function handleAlertAction(alert: DrivingAlert) {
+    if (alert.actionKey === 'dismiss') {
+      setDismissed(prev => new Set([...prev, alert.id]))
+    } else if (alert.actionKey === 'break') {
+      onStartBreak ? onStartBreak() : onEmergency()
+    } else if (alert.actionKey === 'fuel') {
+      onShowFuel?.()
+    }
+  }
 
   const navDest = mission?.destination ?? ''
 
@@ -141,7 +268,45 @@ export default function DrivingModeOverlay({
         </div>
       )}
 
-      {/* ── ZONE 2: Scrollable center content ── */}
+      {/* ── ZONE 2: Critical alert strip — only renders when alerts exist ── */}
+      {alerts.length > 0 && (
+        <div className="cc-driving-alerts">
+          {alerts.map(alert => {
+            const isCritical = alert.severity === 'critical'
+            return (
+              <button
+                key={alert.id}
+                onClick={() => handleAlertAction(alert)}
+                aria-label={`${alert.text} — ${alert.actionLabel}`}
+                style={{
+                  display:        'flex',
+                  alignItems:     'center',
+                  gap:            7,
+                  padding:        '.38rem .75rem',
+                  borderRadius:   10,
+                  flexShrink:     0,
+                  cursor:         'pointer',
+                  border:         `1px solid ${isCritical ? 'var(--error)' : 'rgba(245,194,0,.5)'}`,
+                  background:     isCritical ? 'rgba(232,64,0,.14)' : 'rgba(245,194,0,.09)',
+                  color:          isCritical ? 'var(--error)' : 'var(--warn)',
+                  fontWeight:     800,
+                  fontSize:       '.78rem',
+                  whiteSpace:     'nowrap',
+                  lineHeight:     1.2,
+                }}
+              >
+                <span style={{ fontSize: '1rem', lineHeight: 1 }}>{alert.emoji}</span>
+                <span>{alert.text}</span>
+                <span style={{ opacity: .65, fontSize: '.68rem', fontWeight: 700 }}>
+                  {alert.actionLabel}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── ZONE 3: Scrollable center content ── */}
       <div className="cc-driving-content">
 
         {/* Clock */}
@@ -188,9 +353,7 @@ export default function DrivingModeOverlay({
             <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 900, fontSize: 'clamp(2.4rem,7vw,5rem)', color: driveColor, lineHeight: 1, textShadow: `0 0 32px ${driveColor}50` }}>
               {hosDisplay.driveRem.toFixed(1)}<span style={{ fontSize: '1.5rem', fontWeight: 700, marginLeft: 4 }}>h</span>
             </div>
-            {hosDisplay.driveRem <= 2 && (
-              <div style={{ marginTop: 10, fontSize: '1rem', color: 'var(--error)', fontWeight: 800 }}>⚠️ MANDATORY STOP APPROACHING</div>
-            )}
+            {/* HOS warnings surfaced in alert strip — no duplicate inline text needed */}
           </div>
         )}
 
@@ -315,7 +478,7 @@ export default function DrivingModeOverlay({
 
       </div>{/* end cc-driving-content */}
 
-      {/* ── ZONE 3: Action buttons — pinned to bottom ── */}
+      {/* ── ZONE 4: Action buttons — pinned to bottom, never covered ── */}
       <div className="cc-driving-actions">
         <button onClick={onEmergency}
           style={{ flex: '1 1 140px', padding: '1rem 1.5rem', borderRadius: 16, background: 'rgba(232,64,0,.12)', border: '1px solid var(--error)', color: 'var(--error)', fontWeight: 800, fontSize: '.95rem', cursor: 'pointer', minHeight: 60 }}>
