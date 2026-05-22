@@ -18,10 +18,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { LoadMission, NavSnapshot, RouteSourceType } from '@/lib/dashboard/types'
 import { createClient } from '@/lib/supabase-browser'
+import { logTimelineEvent } from '@/lib/timeline'
 
-const LS_KEY        = '3b-nav-snapshot'
-const LS_EVENTS_KEY = '3b-nav-events'
-const LS_SETTINGS   = '3b-fleet-settings'
+const LS_KEY      = '3b-nav-snapshot'
+const LS_SETTINGS = '3b-fleet-settings'
 const DEFAULT_SPEED = 55
 const MIN_SPEED     = 25
 const MAX_SPEED     = 80
@@ -67,21 +67,6 @@ function getDriverName(): string {
   } catch { return '' }
 }
 
-function logNavEvent(miles: number, driverName: string) {
-  try {
-    const event = {
-      id:        crypto.randomUUID(),
-      message:   `Navigation snapshot updated — ${miles.toLocaleString()} mi remaining`,
-      miles,
-      updatedBy: driverName || 'Driver',
-      timestamp: new Date().toISOString(),
-    }
-    const raw    = localStorage.getItem(LS_EVENTS_KEY) ?? '[]'
-    const events = JSON.parse(raw) as typeof event[]
-    events.unshift(event)
-    localStorage.setItem(LS_EVENTS_KEY, JSON.stringify(events.slice(0, 50)))
-  } catch { /* ignore */ }
-}
 
 function blankSnapshot(mission?: LoadMission | null, driverName = ''): NavSnapshot {
   const nextStop = (() => {
@@ -264,7 +249,18 @@ export default function NavigationSnapshotCard({ mission }: Props) {
   function handleMilesBlur() {
     const miles = parseFloat(milesInput)
     if (!isNaN(miles) && miles > 0 && miles !== lastLoggedMiles.current) {
-      logNavEvent(miles, driverName)
+      // Log to unified timeline (localStorage-first → Supabase async)
+      logTimelineEvent(
+        'nav_snapshot_updated',
+        'nav_snapshot',
+        {
+          miles,
+          updated_by: driverName || 'Driver',
+          destination: snap?.currentDestination || '',
+          message: `${miles.toLocaleString()} mi remaining`,
+        },
+        mission?.loadNumber || undefined,
+      )
       lastLoggedMiles.current = miles
     }
   }

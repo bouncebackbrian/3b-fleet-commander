@@ -5,6 +5,7 @@ import type { HOSDisplay, WeatherInfo, LoadMission, ActiveTrip } from '@/lib/das
 import type { FuelIntelResult } from '@/lib/scoreLoad'
 import SpotifyWidget from '@/components/spotify/SpotifyWidget'
 import type { SpotifyTrack, SpotifyStatus } from '@/hooks/useSpotify'
+import { logTimelineEvent } from '@/lib/timeline'
 
 // ── Nav app descriptors ───────────────────────────────────────────────────────
 const NAV_APPS = [
@@ -39,16 +40,6 @@ function buildNavLink(app: NavApp, destination: string): { url: string; fallback
   }
 }
 
-/** Append one event to the 3b-nav-events timeline (max 50 entries). */
-function logNavTimeline(appLabel: string, destination: string) {
-  try {
-    const raw    = localStorage.getItem('3b-nav-events') ?? '[]'
-    const events = JSON.parse(raw) as object[]
-    events.push({ type: 'nav_opened', app: appLabel, destination, ts: new Date().toISOString() })
-    if (events.length > 50) events.splice(0, events.length - 50)
-    localStorage.setItem('3b-nav-events', JSON.stringify(events))
-  } catch { /* ignore */ }
-}
 
 interface Props {
   liveClock:   string
@@ -85,7 +76,13 @@ export default function DrivingModeOverlay({
 
   function openNavApp(app: NavApp) {
     const { url, fallback } = buildNavLink(app, navDest)
-    logNavTimeline(app.label, navDest)
+    // Log to unified timeline (localStorage-first → Supabase async)
+    logTimelineEvent(
+      'nav_opened',
+      'driving_overlay',
+      { app: app.label, destination: navDest, deep_link: url },
+      mission?.loadNumber || undefined,
+    )
     setReturnApp(app.label)
     setMapOpen(false)
 
