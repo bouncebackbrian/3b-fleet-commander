@@ -9,17 +9,30 @@ import { logTimelineEvent } from '@/lib/timeline'
 
 // ── Nav app descriptors ───────────────────────────────────────────────────────
 const NAV_APPS = [
-  { label: "Truckers Path", emoji: "🛣", desc: "Weigh stations · truck routes · fuel" },
-  { label: "Google Maps",   emoji: "🗺", desc: "Turn-by-turn navigation"              },
-  { label: "Waze",          emoji: "🔵", desc: "Live traffic & hazards"               },
+  { label: "Truckers Path Route", emoji: "🛣", desc: "Shared route · weigh stations · truck stops" },
+  { label: "Truckers Path App",   emoji: "🚛", desc: "Open Truckers Path app directly"             },
+  { label: "Google Maps",         emoji: "🗺", desc: "Turn-by-turn navigation"                     },
+  { label: "Waze",                emoji: "🔵", desc: "Live traffic & hazards"                      },
 ] as const
 
 type NavApp = typeof NAV_APPS[number]
 
 /** Build the best deep-link URL for each app, pre-filled with destination. */
-function buildNavLink(app: NavApp, destination: string): { url: string; fallback: string } {
+function buildNavLink(app: NavApp, destination: string): { url: string; fallback: string; openDirect?: boolean } {
   const d = encodeURIComponent(destination)
   switch (app.label) {
+    case 'Truckers Path Route':
+      // Shared route link — open directly in new tab, no deep-link needed
+      return {
+        url:        'https://tpurl.link/rVella',
+        fallback:   'https://tpurl.link/rVella',
+        openDirect: true,
+      }
+    case 'Truckers Path App':
+      return {
+        url:      'truckerspath://',
+        fallback: 'https://truckerspath.com',
+      }
     case 'Google Maps':
       return {
         url:      `comgooglemaps://?daddr=${d}&directionsmode=driving`,
@@ -30,13 +43,8 @@ function buildNavLink(app: NavApp, destination: string): { url: string; fallback
         url:      `waze://?q=${d}&navigate=yes`,
         fallback: `https://waze.com/ul?q=${d}&navigate=yes`,
       }
-    case 'Truckers Path':
     default:
-      // Truckers Path has no public destination deep-link spec; open app root
-      return {
-        url:      'truckerspath://',
-        fallback: 'https://truckerspath.com',
-      }
+      return { url: 'https://truckerspath.com', fallback: 'https://truckerspath.com', openDirect: true }
   }
 }
 
@@ -75,16 +83,28 @@ export default function DrivingModeOverlay({
   const navDest = mission?.destination ?? ''
 
   function openNavApp(app: NavApp) {
-    const { url, fallback } = buildNavLink(app, navDest)
+    const { url, fallback, openDirect } = buildNavLink(app, navDest)
+
+    // Determine the correct timeline event type
+    const eventType = app.label === 'Truckers Path Route'
+      ? 'nav_opened_truckers_path_share_link' as const
+      : 'nav_opened' as const
+
     // Log to unified timeline (localStorage-first → Supabase async)
     logTimelineEvent(
-      'nav_opened',
+      eventType,
       'driving_overlay',
       { app: app.label, destination: navDest, deep_link: url },
       mission?.loadNumber || undefined,
     )
     setReturnApp(app.label)
     setMapOpen(false)
+
+    if (openDirect) {
+      // Web URL — open directly in new tab; no deep-link timeout needed
+      window.open(url, '_blank', 'noopener')
+      return
+    }
 
     // Try native deep link; if the app isn't installed the browser won't navigate,
     // so after 700 ms open the web fallback instead.
@@ -241,7 +261,7 @@ export default function DrivingModeOverlay({
             {/* App buttons */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '.4rem .8rem .9rem' }}>
               {NAV_APPS.map(app => {
-                const hasDeepDest = app.label !== 'Truckers Path' && !!navDest
+                const hasDeepDest = app.label !== 'Truckers Path Route' && app.label !== 'Truckers Path App' && !!navDest
                 return (
                   <button
                     key={app.label}

@@ -14,8 +14,9 @@ import { createClient } from '@/lib/supabase-browser'
 // ── Event catalogue ───────────────────────────────────────────────────────────
 export type TimelineEventType =
   // Navigation
-  | 'nav_opened'               // driver launched Truckers Path / Google Maps / Waze
-  | 'nav_snapshot_updated'     // remaining miles updated in NavigationSnapshotCard
+  | 'nav_opened'                            // driver launched Google Maps / Waze / app
+  | 'nav_opened_truckers_path_share_link'   // driver opened the Truckers Path shared route link
+  | 'nav_snapshot_updated'                  // remaining miles updated in NavigationSnapshotCard
   // Driving mode
   | 'driving_mode_started'
   | 'driving_mode_ended'
