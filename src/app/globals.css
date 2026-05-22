@@ -29,6 +29,10 @@
 html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;scroll-behavior:smooth}
 body{font-family:'Satoshi',system-ui,sans-serif;font-size:var(--text-base);color:var(--text);background:var(--bg);min-height:100dvh}
 button,input,select,textarea{font:inherit;color:inherit}
+/* iOS Safari: inputs < 16px trigger auto-zoom; when maximum-scale=1 blocks the zoom,
+   Safari can silently swallow the tap and never open the keyboard.
+   min 16px = no zoom = keyboard always opens. */
+input,select,textarea{font-size:max(1rem,16px)}
 button{cursor:pointer;border:none;background:none}
 img,svg{display:block;max-width:100%}
 h1,h2,h3{text-wrap:balance;line-height:1.15}

@@ -65,18 +65,36 @@ function expiryLabel(days: number | null, iso: string | null | undefined): strin
 const inp: React.CSSProperties = {
   width: '100%', padding: '.75rem 1rem', borderRadius: 10,
   border: '1px solid var(--border)', background: 'var(--surface-2)',
-  color: 'var(--text)', fontSize: 'var(--text-sm)', outline: 'none', boxSizing: 'border-box',
+  // iOS Safari: must be ≥16px or the browser auto-zooms → maximum-scale=1 blocks
+  // the zoom → keyboard never opens. 'max(1rem,16px)' is the safe floor.
+  color: 'var(--text)', fontSize: 'max(1rem,16px)', outline: 'none', boxSizing: 'border-box',
 }
 
 // ── Module-scope input — prevents focus-loss from inline component re-creation.
-// Always type="text" + inputMode to avoid browser "invalid" validation popups.
+// Uses local rawNum state for number fields so "0." doesn't collapse to "0" mid-typing.
 function SettingsInp({ k, type = 'text', ph, s, set }: {
   k: keyof AppSettings; type?: string; ph?: string
   s: AppSettings; set: (k: keyof AppSettings, v: string) => void
 }) {
+  // Keep a raw string during number-field editing so the decimal point isn't eaten
+  const [rawNum, setRawNum] = useState<string | null>(null)
+  const isNum = type === 'number'
+  const display = isNum && rawNum !== null ? rawNum : String(s[k])
+
   return (
-    <input style={inp} type="text" inputMode={type === 'number' ? 'decimal' : 'text'}
-      placeholder={ph} value={String(s[k])} onChange={e => set(k, e.target.value)} />
+    <input
+      style={inp}
+      type="text"
+      inputMode={isNum ? 'decimal' : 'text'}
+      placeholder={ph}
+      value={display}
+      onChange={e => {
+        const v = e.target.value
+        if (isNum) setRawNum(v)
+        set(k, v)
+      }}
+      onBlur={() => { if (isNum) setRawNum(null) }}
+    />
   )
 }
 const lbl: React.CSSProperties = {
@@ -180,7 +198,13 @@ export default function Settings() {
 
   // ── field helpers ───────────────────────────────────────────────────────────
   function set(k: keyof AppSettings, v: string) {
-    setS(prev => ({ ...prev, [k]: typeof prev[k] === 'number' ? (parseFloat(v) || 0) : v }))
+    setS(prev => {
+      if (typeof prev[k] !== 'number') return { ...prev, [k]: v }
+      // Don't snap to 0 while the user is mid-typing a decimal ("0.", "", "-")
+      if (v === '' || v === '-' || v.endsWith('.')) return prev
+      const n = parseFloat(v)
+      return { ...prev, [k]: isNaN(n) ? prev[k] : n }
+    })
     setSaved(false)
   }
   function setP(k: keyof Profile, v: string) {
