@@ -1,9 +1,11 @@
 'use client'
 /**
- * useSpotify — Spotify Web API hook with PKCE OAuth
+ * useSpotify — Spotify Web API hook
  *
  * What it does:
- *   - PKCE OAuth flow (no client secret needed — public app)
+ *   - Authorization Code flow — token exchange happens server-side
+ *     via /api/spotify/callback (SPOTIFY_CLIENT_SECRET never reaches browser)
+ *   - Client ID pre-populated from NEXT_PUBLIC_SPOTIFY_CLIENT_ID env var
  *   - Polls /v1/me/player for current track
  *   - Exposes play / pause / next / previous controls
  *   - Auto-refreshes access token before expiry
@@ -39,32 +41,19 @@ export type SpotifyStatus =
   | 'premium_only'  // tried to control but got 403
   | 'error'
 
+// ── Client ID — from env var (baked at build time) ────────────────────────────
+const ENV_CLIENT_ID = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID ?? ''
+
 // ── Storage keys ──────────────────────────────────────────────────────────────
 const K = {
   clientId:     'spotify_client_id',
   accessToken:  'spotify_access_token',
   refreshToken: 'spotify_refresh_token',
   expiresAt:    'spotify_expires_at',
-  codeVerifier: 'spotify_code_verifier',
 } as const
 
 const SCOPES =
   'user-read-playback-state user-modify-playback-state user-read-currently-playing'
-
-// ── PKCE helpers ──────────────────────────────────────────────────────────────
-function randomBase64url(byteLength: number): string {
-  const arr = new Uint8Array(byteLength)
-  crypto.getRandomValues(arr)
-  return btoa(String.fromCharCode(...arr))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
-}
-
-async function sha256Base64url(plain: string): Promise<string> {
-  const data   = new TextEncoder().encode(plain)
-  const digest = await crypto.subtle.digest('SHA-256', data)
-  return btoa(String.fromCharCode(...new Uint8Array(digest)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
-}
 
 // ── Spotify fetch wrapper ─────────────────────────────────────────────────────
 async function spotifyFetch(
@@ -93,38 +82,37 @@ export function useSpotify(activePolling = false) {
 
   // ── Mount: restore persisted state ────────────────────────────────────────
   useEffect(() => {
-    const id  = localStorage.getItem(K.clientId)    ?? ''
-    const tok = localStorage.getItem(K.accessToken) ?? ''
+    // Seed client ID from env var if not already stored
+    const storedId = localStorage.getItem(K.clientId) ?? ''
+    const id = storedId || ENV_CLIENT_ID
+    if (id && !storedId) localStorage.setItem(K.clientId, id)
     setClientIdState(id)
+
+    const tok = localStorage.getItem(K.accessToken) ?? ''
     if (tok) {
       setAccessToken(tok)
       setStatus('connected')
     }
   }, [])
 
-  // ── Token refresh ─────────────────────────────────────────────────────────
+  // ── Token refresh — hits our server route so secret stays server-side ──────
   const refreshToken = useCallback(async (): Promise<string | null> => {
-    const rt  = localStorage.getItem(K.refreshToken) ?? ''
-    const cid = localStorage.getItem(K.clientId)     ?? ''
-    if (!rt || !cid) return null
+    const rt = localStorage.getItem(K.refreshToken) ?? ''
+    if (!rt) return null
     try {
-      const res = await fetch('https://accounts.spotify.com/api/token', {
+      const res = await fetch('/api/spotify/refresh', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body:    new URLSearchParams({
-          grant_type:    'refresh_token',
-          refresh_token: rt,
-          client_id:     cid,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ refresh_token: rt }),
       })
       if (!res.ok) return null
-      const data  = await res.json()
-      const token = data.access_token as string
-      localStorage.setItem(K.accessToken, token)
-      localStorage.setItem(K.expiresAt,   String(Date.now() + data.expires_in * 1000))
+      const data  = await res.json() as { access_token?: string; refresh_token?: string; expires_in?: number; error?: string }
+      if (data.error || !data.access_token) return null
+      localStorage.setItem(K.accessToken, data.access_token)
+      localStorage.setItem(K.expiresAt,   String(Date.now() + (data.expires_in ?? 3600) * 1000))
       if (data.refresh_token) localStorage.setItem(K.refreshToken, data.refresh_token)
-      setAccessToken(token)
-      return token
+      setAccessToken(data.access_token)
+      return data.access_token
     } catch { return null }
   }, [])
 
@@ -189,25 +177,20 @@ export function useSpotify(activePolling = false) {
     return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
   }, [accessToken, activePolling, fetchPlayback, getToken])
 
-  // ── PKCE OAuth — initiates redirect ──────────────────────────────────────
-  const connect = useCallback(async (id: string) => {
-    if (!id.trim()) return
-    const trimmed = id.trim()
-    localStorage.setItem(K.clientId, trimmed)
-    setClientIdState(trimmed)
+  // ── OAuth connect — Authorization Code flow, server handles token exchange ──
+  const connect = useCallback((id?: string) => {
+    // Use provided id, stored id, or env var (in that order)
+    const cid = (id ?? localStorage.getItem(K.clientId) ?? ENV_CLIENT_ID).trim()
+    if (!cid) return
+    localStorage.setItem(K.clientId, cid)
+    setClientIdState(cid)
 
-    const verifier  = randomBase64url(32)
-    const challenge = await sha256Base64url(verifier)
-    localStorage.setItem(K.codeVerifier, verifier)
-
-    const redirectUri = `${window.location.origin}/spotify-callback`
+    const redirectUri = `${window.location.origin}/api/spotify/callback`
     const params = new URLSearchParams({
-      client_id:             trimmed,
-      response_type:         'code',
-      redirect_uri:          redirectUri,
-      code_challenge_method: 'S256',
-      code_challenge:        challenge,
-      scope:                 SCOPES,
+      client_id:     cid,
+      response_type: 'code',
+      redirect_uri:  redirectUri,
+      scope:         SCOPES,
     })
     window.location.href = `https://accounts.spotify.com/authorize?${params}`
   }, [])
