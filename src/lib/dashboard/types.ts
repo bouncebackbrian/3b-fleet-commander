@@ -438,6 +438,11 @@ export type NavSnapshot = {
   routeSource:         RouteSourceType
   manualRouteNotes:    string
   lastUpdated:         string            // ISO
+  // Driver-adjustable speed (default 55 mph)
+  avgSpeedMph:         number
+  // Attribution
+  updatedBy:           string            // driver name
+  updatedSource:       string            // 'manual' | 'truckers_path' | 'google_maps'
   // Future-ready (not displayed until routing API connected)
   nextTurnInstruction?: string
   distanceToNextTurn?:  number | null
