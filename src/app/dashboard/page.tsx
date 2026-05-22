@@ -22,6 +22,8 @@ import { useLaneIntelligence }   from '@/hooks/useLaneIntelligence'
 import { useOperationalMemory }  from '@/hooks/useOperationalMemory'
 import { useOnlineStatus }       from '@/hooks/useOnlineStatus'
 import { useMovementDetector }   from '@/hooks/useMovementDetector'
+import { useAutosave }           from '@/hooks/useAutosave'
+import { useResetEngine }        from '@/hooks/useResetEngine'
 
 // ── Overlays
 import EmergencySheet    from '@/components/dashboard/overlays/EmergencySheet'
@@ -45,6 +47,8 @@ import GymFinderPanel          from '@/components/dashboard/panels/GymFinderPane
 import LaneIntelligencePanel   from '@/components/dashboard/panels/LaneIntelligencePanel'
 import SettlementPanel         from '@/components/dashboard/panels/SettlementPanel'
 import OrderTimelinePanel      from '@/components/dashboard/panels/OrderTimelinePanel'
+import ResetPanel              from '@/components/dashboard/panels/ResetPanel'
+import ReceiverIntelPanel      from '@/components/dashboard/panels/ReceiverIntelPanel'
 import ToastContainer      from '@/components/shared/ToastContainer'
 import OfflineBanner       from '@/components/shared/OfflineBanner'
 import DebugPanel          from '@/components/debug/DebugPanel'
@@ -176,6 +180,12 @@ export default function Dashboard() {
     aiInsight, insightLoading, logEvent, generateInsight,
   } = useOperationalMemory(mission)
   const isOnline = useOnlineStatus()
+
+  // ── Autosave mission versions ────────────────────────────────────────────────
+  const { saveVersion } = useAutosave('3b-latest-load', mission)
+
+  // ── Reset engine (10h / 34h / 30-min) ───────────────────────────────────────
+  const resetEngine = useResetEngine({ mission })
 
   // ── Route risk (deterministic, zero cost) ───────────────────────────────────
   const routeRisk = mission
@@ -309,6 +319,7 @@ export default function Dashboard() {
   const [showLanePanel,       setShowLanePanel]       = useState(false)
   const [showSettlementPanel, setShowSettlementPanel] = useState(false)
   const [showTimeline,        setShowTimeline]        = useState(false)
+  const [showReceiverIntel,   setShowReceiverIntel]   = useState(false)
 
   // ── Movement detector — only active when driving mode is on
   const movement = useMovementDetector(drivingMode)
@@ -436,7 +447,11 @@ export default function Dashboard() {
       <NewLoadSheet
         open={showNewLoadSheet}
         onClose={() => setShowNewLoadSheet(false)}
-        onSave={saveMission}
+        onSave={(m) => {
+          // Snapshot current mission before overwriting
+          if (mission) saveVersion('before_overwrite')
+          return saveMission(m)
+        }}
       />
       <FuelPlanSheet
         open={showFuelSheet}
@@ -546,6 +561,31 @@ export default function Dashboard() {
         events={opEvents}
         driverMode={driverMode}
       />
+      <ResetPanel
+        open={resetEngine.showResetPanel}
+        onClose={() => resetEngine.setShowResetPanel(false)}
+        resetActive={resetEngine.resetActive}
+        activeReset={resetEngine.activeReset}
+        resetType={resetEngine.resetType}
+        elapsedSecs={resetEngine.elapsedSecs}
+        remainingSecs={resetEngine.remainingSecs}
+        targetSecs={resetEngine.targetSecs}
+        progress={resetEngine.progress}
+        isComplete={resetEngine.isComplete}
+        startReset={resetEngine.startReset}
+        endReset={resetEngine.endReset}
+        fmt={resetEngine.fmt}
+        RESET_LABELS={resetEngine.RESET_LABELS}
+        RESET_EMOJIS={resetEngine.RESET_EMOJIS}
+        RESET_TARGETS={resetEngine.RESET_TARGETS}
+      />
+      <ReceiverIntelPanel
+        open={showReceiverIntel}
+        onClose={() => setShowReceiverIntel(false)}
+        placeName={mission?.destination}
+        city={mission?.stops?.find(s => !s.completed)?.city}
+        state={mission?.stops?.find(s => !s.completed)?.state}
+      />
 
       {/* ═══ COMMAND CENTER SHELL ════════════════════════════════════════════ */}
       <div className="cc-main" style={{ display: drivingMode ? 'none' : undefined }}>
@@ -566,11 +606,13 @@ export default function Dashboard() {
           breakActive={breakActive}
           breakSecs={breakSecs}
           fmtBreak={fmtBreak}
+          resetActive={resetEngine.resetActive}
           onNewLoad={() => setShowNewLoadSheet(true)}
           onStartBreak={handleStartBreak}
           onShowHos={() => setShowHosDetail(true)}
           onShowFuel={() => setShowFuelSheet(true)}
           onShowDocs={() => setShowDocsSheet(true)}
+          onShowReset={() => resetEngine.setShowResetPanel(true)}
           onEmergency={() => setShowEmergency(true)}
         />
 
@@ -580,11 +622,14 @@ export default function Dashboard() {
           {/* Left navigation sidebar — iPad landscape only */}
           <CcSidebar
             hasMission={!!mission}
+            resetActive={resetEngine.resetActive}
             onNewLoad={() => setShowNewLoadSheet(true)}
+            onReset={() => resetEngine.setShowResetPanel(true)}
             onMusic={() => setShowMusicPanel(true)}
             onGym={() => setShowGymFinder(true)}
             onSettlement={() => setShowSettlementPanel(true)}
             onTimeline={mission ? () => setShowTimeline(true) : undefined}
+            onReceiverIntel={mission ? () => setShowReceiverIntel(true) : undefined}
             onEmergency={() => setShowEmergency(true)}
           />
 

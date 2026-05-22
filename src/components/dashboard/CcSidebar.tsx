@@ -3,13 +3,16 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 interface Props {
-  hasMission?:    boolean
-  onNewLoad?:     () => void
-  onMusic?:       () => void
-  onGym?:         () => void
-  onSettlement?:  () => void
-  onTimeline?:    () => void
-  onEmergency?:   () => void
+  hasMission?:      boolean
+  resetActive?:     boolean
+  onNewLoad?:       () => void
+  onReset?:         () => void
+  onMusic?:         () => void
+  onGym?:           () => void
+  onSettlement?:    () => void
+  onTimeline?:      () => void
+  onReceiverIntel?: () => void
+  onEmergency?:     () => void
 }
 
 const NAV_LINKS = [
@@ -24,7 +27,8 @@ const NAV_LINKS = [
 
 export default function CcSidebar({
   hasMission = false,
-  onNewLoad, onMusic, onGym, onSettlement, onTimeline, onEmergency,
+  resetActive = false,
+  onNewLoad, onReset, onMusic, onGym, onSettlement, onTimeline, onReceiverIntel, onEmergency,
 }: Props) {
   const pathname = usePathname()
 
@@ -72,6 +76,21 @@ export default function CcSidebar({
         borderTop: '1px solid var(--border)', paddingTop: '.4rem',
         marginTop: '.2rem', display: 'flex', flexDirection: 'column', gap: '.3rem',
       }}>
+        {/* Reset / Rest — with active indicator */}
+        <button
+          className={`cc-nav-btn${resetActive ? ' active' : ''}`}
+          onClick={onReset}
+          style={resetActive ? { background: 'rgba(245,194,0,.1)', borderColor: 'rgba(245,194,0,.3)', color: 'var(--warn)' } : undefined}
+        >
+          <span className="cc-nav-btn-icon">{resetActive ? '⏸' : '🛌'}</span>
+          <span className="cc-nav-btn-label">{resetActive ? 'Resting' : 'Rest'}</span>
+        </button>
+        {onReceiverIntel && (
+          <button className="cc-nav-btn" onClick={onReceiverIntel}>
+            <span className="cc-nav-btn-icon">📍</span>
+            <span className="cc-nav-btn-label">Location</span>
+          </button>
+        )}
         <button className="cc-nav-btn" onClick={onMusic}>
           <span className="cc-nav-btn-icon">🎵</span>
           <span className="cc-nav-btn-label">Music</span>

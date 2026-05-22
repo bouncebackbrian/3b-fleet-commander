@@ -43,7 +43,123 @@ export type ActiveTrip = {
 
 // ── Movement mode for expenses / fuel ────────────────────────────────────────
 // Describes the truck's operational state when the cost was incurred.
-export type MovementMode = 'loaded' | 'empty' | 'bobtail' | 'personal' | 'yard'
+// Legacy aliases kept for backward compatibility.
+export type MovementMode =
+  | 'loaded'
+  | 'empty' | 'empty_trailer'        // aliases
+  | 'bobtail'
+  | 'personal' | 'personal_conveyance' // aliases
+  | 'yard' | 'yard_move'              // aliases
+  | 'maintenance'
+  | 'unassigned'
+
+// ── Version snapshot for autosave / restore ───────────────────────────────────
+export type VersionLabel = 'autosave' | 'before_import' | 'before_overwrite' | 'before_ocr' | 'manual'
+
+export interface VersionSnapshot {
+  id:        string
+  label:     VersionLabel
+  timestamp: string
+  data:      unknown
+}
+
+// ── Rest / Reset event ────────────────────────────────────────────────────────
+export type ResetType = '30_min_break' | '10_hour_reset' | '34_hour_restart' | 'custom'
+
+export interface RestEvent {
+  id:                     string
+  userId?:                string
+  missionId?:             string | null
+  orderNumber?:           string
+  restType:               ResetType
+  startedAt:              string        // ISO
+  endedAt?:               string        // ISO
+  targetDurationMinutes:  number
+  actualDurationMinutes?: number
+  locationName?:          string
+  city?:                  string
+  state?:                 string
+  lat?:                   number
+  lng?:                   number
+  status:                 'active' | 'completed' | 'interrupted'
+  movementMode?:          MovementMode
+  notes?:                 string
+  loggedAt:               string        // ISO
+  timezone?:              string
+}
+
+// ── Fuel receipt (OCR-extracted, structured) ──────────────────────────────────
+export interface FuelReceipt {
+  id:             string
+  userId?:        string
+  missionId?:     string | null
+  orderNumber?:   string
+  loadNumber?:    string
+  movementMode:   MovementMode
+  fuelStopName:   string
+  fuelStopChain?: string    // TA, Pilot, Love's, Flying J …
+  address?:       string
+  city?:          string
+  state?:         string
+  gallons:        number
+  pricePerGallon: number
+  totalCost:      number
+  fuelType:       'diesel' | 'def' | 'reefer' | 'other'
+  truckNumber?:   string
+  odometer?:      number
+  occurredAt:     string    // ISO
+  loggedAt:       string    // ISO
+  timezone?:      string
+  receiptUrl?:    string
+  ocrRaw?:        Record<string, unknown>
+  notes?:         string
+}
+
+// ── Receiver / location intelligence ─────────────────────────────────────────
+export const RECEIVER_TAGS = [
+  'easy_backing', 'tight_backing', 'blindside', 'drop_and_hook',
+  'live_unload', 'lumper_required', 'pallet_jack_needed',
+  'long_wait', 'fast_unload', 'after_hours_ok',
+  'overnight_parking', 'no_overnight', 'trailer_staging',
+  'gym_nearby', 'shower_nearby', 'planet_fitness',
+  'fuel_nearby', 'scale_nearby', 'repair_nearby',
+  'uneven_pavement', 'low_clearance', 'narrow_entrance',
+  'aggressive_security', 'easy_security', 'appointment_required',
+  'pet_friendly', 'good_wifi', 'quiet_overnight',
+] as const
+
+export type ReceiverTag = typeof RECEIVER_TAGS[number]
+
+export interface ReceiverIntel {
+  id:                    string
+  userId?:               string
+  businessId?:           string
+  placeName:             string
+  address?:              string
+  city?:                 string
+  state?:                string
+  zip?:                  string
+  tags:                  string[]
+  difficultyRating?:     number    // 1–5
+  overallRating?:        number    // 1–5
+  approachNotes?:        string
+  backingNotes?:         string
+  parkingNotes?:         string
+  overnightNotes?:       string
+  securityNotes?:        string
+  unloadNotes?:          string
+  nearbyGym?:            string
+  nearbyShower?:         string
+  nearbyParking?:        string
+  nearbyFood?:           string
+  trailerParkingPossible?: boolean
+  bobtailRecommended?:   boolean
+  resetFriendly?:        boolean
+  visitCount:            number
+  lastVisitedAt?:        string
+  createdAt:             string
+  updatedAt?:            string
+}
 
 export type Expense = {
   id: string; date: string; category: string; amount: number

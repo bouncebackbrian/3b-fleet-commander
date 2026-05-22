@@ -12,18 +12,21 @@ interface Props {
   breakActive:  boolean
   breakSecs:    number
   fmtBreak:     (s: number) => string
+  resetActive?: boolean
   onNewLoad:    () => void
   onStartBreak: () => void
   onShowHos:    () => void
   onShowFuel:   () => void
   onShowDocs:   () => void
+  onShowReset?: () => void
   onEmergency:  () => void
 }
 
 export default function StatusBar({
   liveClock, liveDate, vehicle, hosDisplay, driveColor, shiftColor,
   breakActive, breakSecs, fmtBreak,
-  onNewLoad, onStartBreak, onShowHos, onShowFuel, onShowDocs, onEmergency,
+  resetActive = false,
+  onNewLoad, onStartBreak, onShowHos, onShowFuel, onShowDocs, onShowReset, onEmergency,
 }: Props) {
   return (
     <div className="cc-status-bar">
@@ -76,6 +79,11 @@ export default function StatusBar({
         <button className="cc-qab" onClick={onShowDocs}>
           <span className="cc-qab-icon">📄</span>
           <span className="cc-qab-label">Scan Doc</span>
+        </button>
+        <button className="cc-qab" onClick={onShowReset}
+          style={resetActive ? { background: 'rgba(245,194,0,.12)', borderColor: 'rgba(245,194,0,.3)', color: 'var(--warn)' } : undefined}>
+          <span className="cc-qab-icon">{resetActive ? '⏸' : '🛌'}</span>
+          <span className="cc-qab-label">{resetActive ? 'Resting' : 'Reset'}</span>
         </button>
         <button className="cc-qab cc-qab-emergency" onClick={onEmergency}>
           <span className="cc-qab-icon">🚨</span>
