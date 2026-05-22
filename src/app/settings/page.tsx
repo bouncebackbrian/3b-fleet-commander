@@ -182,16 +182,16 @@ export default function Settings() {
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) return
       const { data: prof } = await supabase
-        .from('profiles').select('full_name,role,three_b_id,three_b_biz_id')
+        .from('profiles').select('full_name,role,three_b_id,business_id,cdl_number,cdl_state,phone')
         .eq('id', data.user.id).single()
       if (prof) setProfile({
-        full_name:      prof.full_name      ?? '',
-        role:           prof.role           ?? '',
-        three_b_id:     prof.three_b_id     ?? '',
-        three_b_biz_id: prof.three_b_biz_id ?? '',
-        cdl_number:     (prof as Record<string, string>).cdl_number ?? '',
-        cdl_state:      (prof as Record<string, string>).cdl_state  ?? '',
-        phone:          (prof as Record<string, string>).phone       ?? '',
+        full_name:      (prof as Record<string, string>).full_name    ?? '',
+        role:           (prof as Record<string, string>).role         ?? '',
+        three_b_id:     (prof as Record<string, string>).three_b_id  ?? '',
+        three_b_biz_id: (prof as Record<string, string>).business_id ?? '',
+        cdl_number:     (prof as Record<string, string>).cdl_number  ?? '',
+        cdl_state:      (prof as Record<string, string>).cdl_state   ?? '',
+        phone:          (prof as Record<string, string>).phone        ?? '',
       })
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -348,15 +348,15 @@ export default function Settings() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setProfErr('Not signed in.'); setProfLoading(false); return }
     const { error } = await supabase.from('profiles').upsert({
-      id: user.id, email: user.email,
-      full_name:      profile.full_name      || null,
-      role:           profile.role           || null,
-      three_b_id:     profile.three_b_id     || null,
-      three_b_biz_id: profile.three_b_biz_id || null,
-      cdl_number:     profile.cdl_number     || null,
-      cdl_state:      profile.cdl_state      || null,
-      phone:          profile.phone          || null,
-      updated_at:     new Date().toISOString(),
+      id:          user.id,
+      full_name:   profile.full_name      || null,
+      role:        profile.role           || null,
+      three_b_id:  profile.three_b_id     || null,
+      business_id: profile.three_b_biz_id || null,
+      cdl_number:  profile.cdl_number     || null,
+      cdl_state:   profile.cdl_state      || null,
+      phone:       profile.phone          || null,
+      updated_at:  new Date().toISOString(),
     })
     setProfLoading(false)
     if (error) { setProfErr(error.message) }
