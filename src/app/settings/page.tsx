@@ -165,18 +165,65 @@ export default function Settings() {
   const [dhAdding, setDhAdding] = useState(false)
   const supabase = createClient()
 
+  // ── persistCompliance: localStorage-first → Supabase async ──────────────
+  async function persistCompliance(docs: ComplianceDocs) {
+    setCompliance(docs)
+    try { localStorage.setItem('3b-compliance-docs', JSON.stringify(docs)) } catch { /* storage full */ }
+    // Supabase async — non-blocking, silently absorbed
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      let businessId: string | null = null
+      try {
+        const { data: prof } = await supabase.from('profiles').select('business_id').eq('id', user.id).single()
+        businessId = (prof as Record<string, string> | null)?.business_id ?? null
+      } catch { /* ignore */ }
+      await supabase.from('driver_compliance').upsert({
+        user_id:     user.id,
+        business_id: businessId,
+        license:     docs.license     ?? null,
+        registration: docs.registration ?? null,
+        insurance:   docs.insurance   ?? null,
+        medical:     docs.medical     ?? null,
+        updated_at:  new Date().toISOString(),
+      }, { onConflict: 'user_id' })
+    } catch { /* offline or unauthenticated — local record is sufficient */ }
+  }
+
   useEffect(() => {
     setS(loadSettings())
     setSamsaraToken(localStorage.getItem('samsara-api-token') ?? '')
+    // Load compliance: Supabase first (source of truth), localStorage as instant fallback
     try {
       const raw = localStorage.getItem('3b-compliance-docs')
       if (raw) setCompliance(JSON.parse(raw))
     } catch { /* ignore */ }
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return
+      try {
+        const { data: row } = await supabase
+          .from('driver_compliance')
+          .select('license,registration,insurance,medical')
+          .eq('user_id', data.user.id)
+          .single()
+        if (row) {
+          const docs: ComplianceDocs = {
+            ...(row.license      ? { license:      row.license      as LicenseScan      } : {}),
+            ...(row.registration ? { registration: row.registration as RegistrationScan } : {}),
+            ...(row.insurance    ? { insurance:    row.insurance    as InsuranceScan    } : {}),
+            ...(row.medical      ? { medical:      row.medical      as MedicalCardScan  } : {}),
+          }
+          setCompliance(docs)
+          // Sync latest DB state back to localStorage
+          try { localStorage.setItem('3b-compliance-docs', JSON.stringify(docs)) } catch { /* ignore */ }
+        }
+      } catch { /* table empty or network — localStorage value already shown */ }
+    })
     try {
       const raw = localStorage.getItem(DH_KEY)
       if (raw) setDhLog(JSON.parse(raw))
     } catch { /* ignore */ }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -230,10 +277,9 @@ export default function Settings() {
         cdl_number: data.cdl_number ?? prev.cdl_number,
         cdl_state:  data.issued_state ?? data.state ?? prev.cdl_state,
       }))
-      // Save to compliance store
+      // Save to compliance store (localStorage + Supabase)
       const next = { ...compliance, license: data }
-      setCompliance(next)
-      localStorage.setItem('3b-compliance-docs', JSON.stringify(next))
+      await persistCompliance(next)
       setScanMsg(p => ({ ...p, license: `✅ License scanned — ${data.full_name ?? 'name not read'}` }))
     } catch { setScanMsg(p => ({ ...p, license: '❌ Scan failed — check connection' })) }
     finally   { setScanning(p => ({ ...p, license: false })); if (licenseInputRef.current) licenseInputRef.current.value = '' }
@@ -261,8 +307,7 @@ export default function Settings() {
       }))
       setSaved(false)
       const next = { ...compliance, registration: data }
-      setCompliance(next)
-      localStorage.setItem('3b-compliance-docs', JSON.stringify(next))
+      await persistCompliance(next)
       setScanMsg(p => ({ ...p, registration: `✅ Registration scanned — ${data.year ?? ''} ${data.make ?? ''} ${data.model ?? ''}`.trim() }))
     } catch { setScanMsg(p => ({ ...p, registration: '❌ Scan failed — check connection' })) }
     finally   { setScanning(p => ({ ...p, registration: false })); if (registrationInputRef.current) registrationInputRef.current.value = '' }
@@ -279,8 +324,7 @@ export default function Settings() {
       const data = await res.json() as InsuranceScan & { error?: string }
       if (data.error) { setScanMsg(p => ({ ...p, insurance: `❌ ${data.error}` })); return }
       const next = { ...compliance, insurance: data }
-      setCompliance(next)
-      localStorage.setItem('3b-compliance-docs', JSON.stringify(next))
+      await persistCompliance(next)
       setScanMsg(p => ({ ...p, insurance: `✅ Insurance scanned — ${data.insurer ?? 'policy saved'}` }))
     } catch { setScanMsg(p => ({ ...p, insurance: '❌ Scan failed — check connection' })) }
     finally   { setScanning(p => ({ ...p, insurance: false })); if (insuranceInputRef.current) insuranceInputRef.current.value = '' }
@@ -297,8 +341,7 @@ export default function Settings() {
       const data = await res.json() as MedicalCardScan & { error?: string }
       if (data.error) { setScanMsg(p => ({ ...p, medical: `❌ ${data.error}` })); return }
       const next = { ...compliance, medical: data }
-      setCompliance(next)
-      localStorage.setItem('3b-compliance-docs', JSON.stringify(next))
+      await persistCompliance(next)
       const exp = data.expiry ? ` · Exp ${data.expiry}` : ''
       setScanMsg(p => ({ ...p, medical: `✅ Medical card scanned${exp}` }))
     } catch { setScanMsg(p => ({ ...p, medical: '❌ Scan failed — check connection' })) }
@@ -956,7 +999,7 @@ export default function Settings() {
                 </button>
                 {compliance.license && (
                   <button type="button"
-                    onClick={() => { const next = { ...compliance }; delete next.license; setCompliance(next); localStorage.setItem('3b-compliance-docs', JSON.stringify(next)) }}
+                    onClick={() => { const next = { ...compliance }; delete next.license; void persistCompliance(next) }}
                     style={{ padding: '.6rem .9rem', borderRadius: 9, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', fontWeight: 600, fontSize: '.75rem', cursor: 'pointer' }}>
                     Clear
                   </button>
@@ -1019,7 +1062,7 @@ export default function Settings() {
                 </button>
                 {compliance.registration && (
                   <button type="button"
-                    onClick={() => { const next = { ...compliance }; delete next.registration; setCompliance(next); localStorage.setItem('3b-compliance-docs', JSON.stringify(next)) }}
+                    onClick={() => { const next = { ...compliance }; delete next.registration; void persistCompliance(next) }}
                     style={{ padding: '.6rem .9rem', borderRadius: 9, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', fontWeight: 600, fontSize: '.75rem', cursor: 'pointer' }}>
                     Clear
                   </button>
@@ -1083,7 +1126,7 @@ export default function Settings() {
                 </button>
                 {compliance.insurance && (
                   <button type="button"
-                    onClick={() => { const next = { ...compliance }; delete next.insurance; setCompliance(next); localStorage.setItem('3b-compliance-docs', JSON.stringify(next)) }}
+                    onClick={() => { const next = { ...compliance }; delete next.insurance; void persistCompliance(next) }}
                     style={{ padding: '.6rem .9rem', borderRadius: 9, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', fontWeight: 600, fontSize: '.75rem', cursor: 'pointer' }}>
                     Clear
                   </button>
@@ -1146,7 +1189,7 @@ export default function Settings() {
                 </button>
                 {compliance.medical && (
                   <button type="button"
-                    onClick={() => { const next = { ...compliance }; delete next.medical; setCompliance(next); localStorage.setItem('3b-compliance-docs', JSON.stringify(next)) }}
+                    onClick={() => { const next = { ...compliance }; delete next.medical; void persistCompliance(next) }}
                     style={{ padding: '.6rem .9rem', borderRadius: 9, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', fontWeight: 600, fontSize: '.75rem', cursor: 'pointer' }}>
                     Clear
                   </button>
