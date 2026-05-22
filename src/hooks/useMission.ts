@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase as legacySupabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase-browser'
 import { scoreLoad, getMpgDefault, fuelIntel } from '@/lib/scoreLoad'
 import type { LoadMission, SyncState, MissionStop, TripReview } from '@/lib/dashboard/types'
 import { parseMission, parseFleetMission, missionToRow, insertStop } from '@/lib/dashboard/helpers'
@@ -8,12 +9,37 @@ import { getFleetIdentity } from '@/lib/identity'
 import { opLog } from '@/lib/logger'
 import { validateMission, isScoreResultSafe, isFuelResultSafe } from '@/lib/guards'
 
+// Auth-aware browser client for fleet_active_missions
+const db = createClient()
+
 // ── Tier-ordered fetch ────────────────────────────────────────────────────────
-// 1. fleet_missions (active/planned, proper columns)
-// 2. loads table (existing META-encoded records)
-// 3. localStorage '3b-latest-load'
+// 0. fleet_active_missions (single-row JSONB snapshot — source of truth)
+// 1. fleet_missions         (multi-column history table)
+// 2. loads table            (legacy META-encoded records)
+// 3. localStorage           '3b-latest-load'
 async function fetchActiveMission(): Promise<{ mission: LoadMission | null; tier: string }> {
-  if (!supabase) {
+  // Tier 0 — fleet_active_missions (auth-aware, one row per user)
+  try {
+    const { data: { user } } = await db.auth.getUser()
+    if (user) {
+      const { data: row, error } = await db
+        .from('fleet_active_missions')
+        .select('mission, status')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .single()
+
+      if (!error && row?.mission) {
+        const m = row.mission as LoadMission
+        opLog.mission('Loaded from fleet_active_missions (Tier 0)', { id: m.id, loadNumber: m.loadNumber })
+        // Sync to localStorage for offline fallback
+        try { localStorage.setItem('3b-latest-load', JSON.stringify(m)) } catch { /* ignore */ }
+        return { mission: m, tier: 'fleet_active_missions' }
+      }
+    }
+  } catch { /* not signed in or network — fall through */ }
+
+  if (!legacySupabase) {
     const m = readLocalMission()
     opLog.mission(m ? 'Loaded from localStorage (no Supabase)' : 'No mission found (localStorage)', { id: m?.id })
     return { mission: m, tier: 'localStorage' }
@@ -21,7 +47,7 @@ async function fetchActiveMission(): Promise<{ mission: LoadMission | null; tier
 
   // Tier 1 — fleet_missions
   try {
-    const { data: fm, error: fmErr } = await supabase
+    const { data: fm, error: fmErr } = await legacySupabase
       .from('fleet_missions')
       .select('*')
       .in('mission_status', ['active', 'planned'])
@@ -31,16 +57,14 @@ async function fetchActiveMission(): Promise<{ mission: LoadMission | null; tier
 
     if (!fmErr && fm) {
       const m = parseFleetMission(fm)
-      opLog.mission('Loaded from fleet_missions', { id: m.id, loadNumber: m.loadNumber })
+      opLog.mission('Loaded from fleet_missions (Tier 1)', { id: m.id, loadNumber: m.loadNumber })
       return { mission: m, tier: 'fleet_missions' }
     }
   } catch { /* table may not exist yet */ }
 
   // Tier 2 — loads (legacy META-encoded)
-  // Guard: skip any load whose ID is already archived as completed in fleet_missions.
-  // This prevents a legacy row from reappearing after completeMission() runs.
   try {
-    const { data: load, error: loadErr } = await supabase
+    const { data: load, error: loadErr } = await legacySupabase
       .from('loads')
       .select('*')
       .order('date', { ascending: false })
@@ -48,8 +72,7 @@ async function fetchActiveMission(): Promise<{ mission: LoadMission | null; tier
       .single()
 
     if (!loadErr && load) {
-      // Check whether this id was completed in fleet_missions
-      const { data: archived } = await supabase
+      const { data: archived } = await legacySupabase
         .from('fleet_missions')
         .select('id')
         .eq('id', load.id)
@@ -58,16 +81,16 @@ async function fetchActiveMission(): Promise<{ mission: LoadMission | null; tier
 
       if (!archived) {
         const m = parseMission(load)
-        opLog.mission('Loaded from loads (legacy tier)', { id: m.id })
+        opLog.mission('Loaded from loads (Tier 2, legacy)', { id: m.id })
         return { mission: m, tier: 'loads' }
       }
-      opLog.mission('Loads tier skipped — mission already completed in fleet_missions', { id: load.id })
+      opLog.mission('Loads tier skipped — already completed', { id: load.id })
     }
   } catch { /* ignore */ }
 
   // Tier 3 — localStorage
   const m = readLocalMission()
-  opLog.mission(m ? 'Loaded from localStorage (Supabase miss)' : 'No mission found', { id: m?.id })
+  opLog.mission(m ? 'Loaded from localStorage (Tier 3)' : 'No mission found', { id: m?.id })
   return { mission: m, tier: 'localStorage' }
 }
 
@@ -83,7 +106,7 @@ function readLocalMission(): LoadMission | null {
 export function useMission() {
   const [mission,          setMission]          = useState<LoadMission | null>(null)
   const [missionSaveError, setMissionSaveError] = useState<string | null>(null)
-  const [syncState,        setSyncState]        = useState<SyncState>(() => supabase ? 'idle' : 'local_only')
+  const [syncState,        setSyncState]        = useState<SyncState>(() => legacySupabase ? 'idle' : 'local_only')
 
   // Debounce + concurrency guards
   const lastSaveMs      = useRef<number>(0)
@@ -131,16 +154,38 @@ export function useMission() {
       setMission(m)
       opLog.mission('Mission saved locally', { loadNumber: m.loadNumber, origin: m.origin, dest: m.destination })
 
-      if (!supabase) {
+      if (!legacySupabase) {
         setSyncState('local_only')
         return
       }
 
-      // 3. Supabase — attach 3B identity when signed in (nullable fallback for alpha mode)
+      // 3. Supabase — fleet_active_missions (Tier 0) + fleet_missions (history)
       setSyncState('saving')
       const { userId, businessId } = await getFleetIdentity()
+
+      // 3a. fleet_active_missions — single JSONB row, always up to date
+      try {
+        const { data: { user } } = await db.auth.getUser()
+        if (user) {
+          const { error: amErr } = await db
+            .from('fleet_active_missions')
+            .upsert({
+              user_id:      user.id,
+              business_id:  businessId ?? null,
+              load_id:      m.id ?? null,
+              mission:      m,
+              status:       'active',
+              last_seen_at: new Date().toISOString(),
+              updated_at:   new Date().toISOString(),
+            }, { onConflict: 'user_id' })
+          if (amErr) opLog.syncErr('fleet_active_missions upsert failed', { error: amErr.message })
+          else opLog.sync('fleet_active_missions upsert OK', { loadNumber: m.loadNumber })
+        }
+      } catch { /* non-blocking */ }
+
+      // 3b. fleet_missions — historical record
       const row = missionToRow(m, { userId, businessId })
-      const { error } = await supabase
+      const { error } = await legacySupabase
         .from('fleet_missions')
         .upsert(row, { onConflict: 'id' })
 
@@ -151,7 +196,6 @@ export function useMission() {
       } else {
         setSyncState('saved')
         opLog.sync('fleet_missions upsert OK', { loadNumber: m.loadNumber })
-        // Return to idle after 3s so badge doesn't linger
         setTimeout(() => setSyncState('idle'), 3000)
       }
     } finally {
@@ -272,17 +316,31 @@ export function useMission() {
     setMission(null)
     opLog.mission('Mission completed', { loadNumber: completed.loadNumber })
 
-    if (!supabase) {
+    if (!legacySupabase) {
       setSyncState('local_only')
       return
     }
 
-    // 4. Supabase upsert — status='completed', review in metadata
+    // 4. Supabase — mark active mission completed + archive in fleet_missions
     setSyncState('saving')
     try {
       const { userId, businessId } = await getFleetIdentity()
+
+      // 4a. fleet_active_missions — mark completed so it won't restore on reload
+      try {
+        const { data: { user } } = await db.auth.getUser()
+        if (user) {
+          await db
+            .from('fleet_active_missions')
+            .update({ status: 'completed', updated_at: new Date().toISOString() })
+            .eq('user_id', user.id)
+          opLog.sync('fleet_active_missions marked completed', { loadNumber: completed.loadNumber })
+        }
+      } catch { /* non-blocking */ }
+
+      // 4b. fleet_missions — historical archive
       const row = missionToRow(completed, { userId, businessId })
-      const { error } = await supabase
+      const { error } = await legacySupabase
         .from('fleet_missions')
         .upsert(row, { onConflict: 'id' })
 
