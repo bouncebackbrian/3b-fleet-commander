@@ -8,13 +8,15 @@
 import type { SpotifyTrack, SpotifyStatus } from '@/hooks/useSpotify'
 
 interface Props {
-  track:      SpotifyTrack | null
-  status:     SpotifyStatus
-  driving?:   boolean
-  onToggle:   () => void
-  onNext:     () => void
-  onPrevious: () => void
-  onOpen?:    () => void   // open Spotify app
+  track:        SpotifyTrack | null
+  status:       SpotifyStatus
+  driving?:     boolean
+  trackSaved?:  boolean
+  onToggle:     () => void
+  onNext:       () => void
+  onPrevious:   () => void
+  onLike?:      () => void
+  onOpen?:      () => void   // open Spotify app
 }
 
 const SPOTIFY_GREEN = '#1ed760'
@@ -29,7 +31,8 @@ function fmtMs(ms: number) {
 }
 
 export default function SpotifyWidget({
-  track, status, driving = false, onToggle, onNext, onPrevious, onOpen,
+  track, status, driving = false, trackSaved = false,
+  onToggle, onNext, onPrevious, onLike, onOpen,
 }: Props) {
   const btnSize = driving ? 72 : 52
   const iconSz  = driving ? '2rem' : '1.35rem'
@@ -126,7 +129,7 @@ export default function SpotifyWidget({
             </div>
           </div>
 
-          {/* Controls — ⏮ ⏯ ⏭ */}
+          {/* Controls — ⏮ ⏯ ⏭ ♡ */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
             <button onClick={onPrevious} aria-label="Previous"
               style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', color: '#fff', fontSize: '1.2rem', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
@@ -140,6 +143,22 @@ export default function SpotifyWidget({
               style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', color: '#fff', fontSize: '1.2rem', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
               ⏭
             </button>
+            {onLike && (
+              <button
+                onClick={onLike}
+                aria-label={trackSaved ? 'Remove from library' : 'Save to library'}
+                style={{
+                  width: 44, height: 44, borderRadius: '50%',
+                  background: trackSaved ? `${SPOTIFY_GREEN}20` : 'rgba(255,255,255,.08)',
+                  border: `1px solid ${trackSaved ? SPOTIFY_GREEN : 'rgba(255,255,255,.12)'}`,
+                  color: trackSaved ? SPOTIFY_GREEN : 'rgba(255,255,255,.5)',
+                  fontSize: '1.25rem', cursor: 'pointer', display: 'grid', placeItems: 'center',
+                  transition: 'background .15s, color .15s, border-color .15s',
+                }}
+              >
+                {trackSaved ? '♥' : '♡'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -186,6 +205,23 @@ export default function SpotifyWidget({
             {track.isPlaying ? '⏸' : '▶'}
           </button>
           <button onClick={onNext} style={{ width: btnSize, height: btnSize, borderRadius: '50%', background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: iconSz, cursor: 'pointer', display: 'grid', placeItems: 'center' }} aria-label="Next">⏭</button>
+          {onLike && (
+            <button
+              onClick={onLike}
+              aria-label={trackSaved ? 'Remove from library' : 'Save to library'}
+              style={{
+                width: btnSize, height: btnSize, borderRadius: '50%',
+                background: trackSaved ? `${SPOTIFY_GREEN}18` : 'var(--surface-2)',
+                border: `1px solid ${trackSaved ? SPOTIFY_GREEN : 'var(--border)'}`,
+                color: trackSaved ? SPOTIFY_GREEN : 'var(--muted)',
+                fontSize: iconSz, cursor: 'pointer', display: 'grid', placeItems: 'center',
+                transition: 'background .15s, color .15s, border-color .15s',
+              }}
+              aria-pressed={trackSaved}
+            >
+              {trackSaved ? '♥' : '♡'}
+            </button>
+          )}
         </div>
       </div>
 

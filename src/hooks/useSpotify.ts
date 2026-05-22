@@ -53,7 +53,7 @@ const K = {
 } as const
 
 const SCOPES =
-  'user-read-playback-state user-modify-playback-state user-read-currently-playing'
+  'user-read-playback-state user-modify-playback-state user-read-currently-playing user-library-read user-library-modify'
 
 // ── Spotify fetch wrapper ─────────────────────────────────────────────────────
 async function spotifyFetch(
@@ -75,6 +75,7 @@ async function spotifyFetch(
 export function useSpotify(activePolling = false) {
   const [status,      setStatus]      = useState<SpotifyStatus>('disconnected')
   const [track,       setTrack]       = useState<SpotifyTrack | null>(null)
+  const [trackSaved,  setTrackSaved]  = useState(false)
   const [clientId,    setClientIdState] = useState('')
   const [accessToken, setAccessToken] = useState('')
 
@@ -143,20 +144,41 @@ export function useSpotify(activePolling = false) {
       const data = await res.json()
       if (!data?.item) { setTrack(null); return }
       setStatus('connected')
-      setTrack({
-        isPlaying:  !!data.is_playing,
-        trackName:  data.item.name ?? 'Unknown',
-        artistName: (data.item.artists as { name: string }[])
-                      ?.map(a => a.name).join(', ') ?? '',
-        albumName:  data.item.album?.name ?? '',
-        albumArt:   data.item.album?.images?.[0]?.url ?? null,
-        progressMs: data.progress_ms ?? 0,
-        durationMs: data.item.duration_ms ?? 1,
-        trackId:    data.item.id ?? '',
-        deviceName: data.device?.name ?? null,
+      const newTrackId = data.item.id ?? ''
+      setTrack(prev => {
+        // Only update if something changed (avoids needless re-renders on same track)
+        if (
+          prev?.trackId    === newTrackId &&
+          prev?.isPlaying  === !!data.is_playing &&
+          prev?.progressMs === (data.progress_ms ?? 0)
+        ) return prev
+        return {
+          isPlaying:  !!data.is_playing,
+          trackName:  data.item.name ?? 'Unknown',
+          artistName: (data.item.artists as { name: string }[])
+                        ?.map(a => a.name).join(', ') ?? '',
+          albumName:  data.item.album?.name ?? '',
+          albumArt:   data.item.album?.images?.[0]?.url ?? null,
+          progressMs: data.progress_ms ?? 0,
+          durationMs: data.item.duration_ms ?? 1,
+          trackId:    newTrackId,
+          deviceName: data.device?.name ?? null,
+        }
       })
+      // Check saved state when track id changes (cheap — one call)
+      if (newTrackId) checkSaved(token, newTrackId)
     } catch { /* network blip — keep last track state */ }
-  }, [refreshToken])
+  }, [refreshToken]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Check if current track is saved to user's library ────────────────────
+  const checkSaved = useCallback(async (token: string, id: string) => {
+    try {
+      const res = await spotifyFetch(`/me/tracks/contains?ids=${id}`, token)
+      if (!res.ok) return
+      const arr = await res.json() as boolean[]
+      setTrackSaved(!!arr[0])
+    } catch { /* ignore */ }
+  }, [])
 
   // ── Polling ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -235,10 +257,29 @@ export function useSpotify(activePolling = false) {
     }
   }, [getToken, fetchPlayback])
 
+  // ── Like / unlike current track ──────────────────────────────────────────
+  const toggleLike = useCallback(async () => {
+    const tok = await getToken()
+    if (!tok || !track?.trackId) return
+    const saving = !trackSaved
+    // Optimistic UI
+    setTrackSaved(saving)
+    const res = await spotifyFetch(
+      `/me/tracks?ids=${track.trackId}`,
+      tok,
+      { method: saving ? 'PUT' : 'DELETE' },
+    )
+    // Roll back if API rejected
+    if (!res.ok && res.status !== 200 && res.status !== 201) {
+      setTrackSaved(!saving)
+    }
+  }, [getToken, track?.trackId, trackSaved])
+
   return {
     // State
     status,
     track,
+    trackSaved,
     clientId,
     isConnected: status === 'connected' || status === 'no_device',
     // Setter (for settings page input)
@@ -249,11 +290,12 @@ export function useSpotify(activePolling = false) {
     // Actions
     connect,
     disconnect,
-    play:     () => control('play'),
-    pause:    () => control('pause'),
-    next:     () => control('next'),
-    previous: () => control('previous'),
-    toggle:   () => (track?.isPlaying ? control('pause') : control('play')),
-    refresh:  async () => { const tok = await getToken(); if (tok) fetchPlayback(tok) },
+    play:       () => control('play'),
+    pause:      () => control('pause'),
+    next:       () => control('next'),
+    previous:   () => control('previous'),
+    toggle:     () => (track?.isPlaying ? control('pause') : control('play')),
+    toggleLike,
+    refresh:    async () => { const tok = await getToken(); if (tok) fetchPlayback(tok) },
   }
 }

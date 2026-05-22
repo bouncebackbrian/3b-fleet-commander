@@ -68,11 +68,13 @@ interface Props {
   weather:     { temp: number; windSpeed: number } | null
   wx:          WeatherInfo | null
   // Spotify
-  spotifyTrack?:    SpotifyTrack | null
-  spotifyStatus?:   SpotifyStatus
-  onSpotifyToggle?: () => void
-  onSpotifyNext?:   () => void
-  onSpotifyPrev?:   () => void
+  spotifyTrack?:      SpotifyTrack | null
+  spotifyStatus?:     SpotifyStatus
+  spotifyTrackSaved?: boolean
+  onSpotifyToggle?:   () => void
+  onSpotifyNext?:     () => void
+  onSpotifyPrev?:     () => void
+  onSpotifyLike?:     () => void
   // Actions
   onEmergency: () => void
   onExit:      () => void
@@ -81,7 +83,8 @@ interface Props {
 export default function DrivingModeOverlay({
   liveClock, mission, nextStop, hosDisplay, driveColor,
   missionFuel, weather, wx,
-  spotifyTrack, spotifyStatus, onSpotifyToggle, onSpotifyNext, onSpotifyPrev,
+  spotifyTrack, spotifyStatus, spotifyTrackSaved,
+  onSpotifyToggle, onSpotifyNext, onSpotifyPrev, onSpotifyLike,
   onEmergency, onExit,
 }: Props) {
   const showSpotify  = spotifyStatus && spotifyStatus !== 'disconnected'
@@ -128,9 +131,11 @@ export default function DrivingModeOverlay({
             track={spotifyTrack ?? null}
             status={spotifyStatus!}
             driving
+            trackSaved={spotifyTrackSaved}
             onToggle={onSpotifyToggle ?? (() => {})}
             onNext={onSpotifyNext ?? (() => {})}
             onPrevious={onSpotifyPrev ?? (() => {})}
+            onLike={onSpotifyLike}
             onOpen={() => window.open('https://open.spotify.com', '_blank', 'noopener')}
           />
         </div>

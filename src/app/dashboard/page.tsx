@@ -438,9 +438,11 @@ export default function Dashboard() {
           wx={wx}
           spotifyTrack={spotify.track}
           spotifyStatus={spotify.status}
+          spotifyTrackSaved={spotify.trackSaved}
           onSpotifyToggle={spotify.toggle}
           onSpotifyNext={spotify.next}
           onSpotifyPrev={spotify.previous}
+          onSpotifyLike={spotify.toggleLike}
           onEmergency={() => setShowEmergency(true)}
           onExit={() => setDrivingMode(false)}
         />
@@ -547,9 +549,11 @@ export default function Dashboard() {
         onClose={() => setShowMusicPanel(false)}
         spotifyTrack={spotify.track}
         spotifyStatus={spotify.status}
+        spotifyTrackSaved={spotify.trackSaved}
         onSpotifyToggle={spotify.toggle}
         onSpotifyNext={spotify.next}
         onSpotifyPrev={spotify.previous}
+        onSpotifyLike={spotify.toggleLike}
         drivingMode={drivingMode}
       />
       <GymFinderPanel

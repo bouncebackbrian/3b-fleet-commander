@@ -17,16 +17,19 @@ interface Props {
   onClose:      () => void
   drivingMode?: boolean
   // Spotify live state
-  spotifyTrack?:    SpotifyTrack | null
-  spotifyStatus?:   SpotifyStatus
-  onSpotifyToggle?: () => void
-  onSpotifyNext?:   () => void
-  onSpotifyPrev?:   () => void
+  spotifyTrack?:      SpotifyTrack | null
+  spotifyStatus?:     SpotifyStatus
+  spotifyTrackSaved?: boolean
+  onSpotifyToggle?:   () => void
+  onSpotifyNext?:     () => void
+  onSpotifyPrev?:     () => void
+  onSpotifyLike?:     () => void
 }
 
 export default function MusicPanel({
   open, onClose, drivingMode,
-  spotifyTrack, spotifyStatus, onSpotifyToggle, onSpotifyNext, onSpotifyPrev,
+  spotifyTrack, spotifyStatus, spotifyTrackSaved,
+  onSpotifyToggle, onSpotifyNext, onSpotifyPrev, onSpotifyLike,
 }: Props) {
   if (!open) return null
 
@@ -78,9 +81,11 @@ export default function MusicPanel({
               track={spotifyTrack ?? null}
               status={spotifyStatus!}
               driving={false}
+              trackSaved={spotifyTrackSaved}
               onToggle={onSpotifyToggle ?? (() => {})}
               onNext={onSpotifyNext ?? (() => {})}
               onPrevious={onSpotifyPrev ?? (() => {})}
+              onLike={onSpotifyLike}
               onOpen={() => go('https://open.spotify.com')}
             />
           </div>
