@@ -63,15 +63,16 @@ export default function SpotifyWidget({
   if (status === 'no_device' || !track) {
     return (
       <div style={{
-        padding: driving ? '1rem 1.25rem' : '.65rem .9rem',
-        borderRadius: 14, border: '1px solid rgba(30,215,96,.2)',
-        background: 'rgba(30,215,96,.04)',
+        padding: driving ? '.65rem .85rem' : '.65rem .9rem',
+        borderRadius: driving ? 16 : 14,
+        border: `1px solid ${SPOTIFY_GREEN}28`,
+        background: driving ? 'rgba(0,0,0,.45)' : 'rgba(30,215,96,.04)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
       }}>
         <div>
-          <div style={{ fontWeight: 800, fontSize: driving ? '.95rem' : '.8rem', color: SPOTIFY_GREEN }}>🎵 Spotify connected</div>
-          <div style={{ fontSize: driving ? '.78rem' : '.62rem', color: 'var(--muted)', marginTop: 2 }}>
-            No active device — open Spotify on your phone first
+          <div style={{ fontWeight: 800, fontSize: driving ? '.9rem' : '.8rem', color: SPOTIFY_GREEN }}>🎵 Spotify ready</div>
+          <div style={{ fontSize: driving ? '.72rem' : '.62rem', color: 'var(--muted)', marginTop: 2 }}>
+            Open Spotify on your phone to start playing
           </div>
         </div>
         <button
@@ -95,102 +96,56 @@ export default function SpotifyWidget({
 
   const progress = track.durationMs > 0 ? (track.progressMs / track.durationMs) : 0
 
-  // ── DRIVING MODE — big, glanceable ───────────────────────────────────────
+  // ── DRIVING MODE — compact always-visible strip ──────────────────────────
   if (driving) {
     return (
       <div style={{
         width: '100%',
-        padding: '1rem 1.25rem',
-        borderRadius: 18,
-        background: 'rgba(0,0,0,.35)',
-        border: `1px solid ${SPOTIFY_GREEN}30`,
-        display: 'flex', flexDirection: 'column', gap: '.75rem',
+        borderRadius: 16,
+        background: 'rgba(0,0,0,.45)',
+        border: `1px solid ${SPOTIFY_GREEN}28`,
+        overflow: 'hidden',
       }}>
-        {/* Track info row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        {/* Main row: art + track info + controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '.65rem .85rem' }}>
           {/* Album art */}
           {track.albumArt ? (
-            <img
-              src={track.albumArt} alt="album"
-              style={{ width: 64, height: 64, borderRadius: 10, objectFit: 'cover', flexShrink: 0, boxShadow: `0 0 16px ${SPOTIFY_GREEN}30` }}
-            />
+            <img src={track.albumArt} alt="album"
+              style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
           ) : (
-            <div style={{ width: 64, height: 64, borderRadius: 10, background: 'rgba(30,215,96,.1)', border: `1px solid ${SPOTIFY_GREEN}25`, flexShrink: 0, display: 'grid', placeItems: 'center', fontSize: '1.75rem' }}>
-              🎵
-            </div>
+            <div style={{ width: 48, height: 48, borderRadius: 8, background: `${SPOTIFY_GREEN}15`, flexShrink: 0, display: 'grid', placeItems: 'center', fontSize: '1.3rem' }}>🎵</div>
           )}
 
-          {/* Track name + artist */}
+          {/* Track + artist */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 900, fontSize: '1.1rem', color: '#fff', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {truncate(track.trackName, 30)}
+            <div style={{ fontWeight: 900, fontSize: '1rem', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}>
+              {truncate(track.trackName, 28)}
             </div>
-            <div style={{ fontSize: '.85rem', color: 'rgba(255,255,255,.65)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {truncate(track.artistName, 36)}
+            <div style={{ fontSize: '.78rem', color: 'rgba(255,255,255,.55)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {truncate(track.artistName, 32)}
             </div>
-            {track.deviceName && (
-              <div style={{ fontSize: '.6rem', color: `${SPOTIFY_GREEN}90`, marginTop: 3 }}>
-                ▶ {track.deviceName}
-              </div>
-            )}
+          </div>
+
+          {/* Controls — ⏮ ⏯ ⏭ */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <button onClick={onPrevious} aria-label="Previous"
+              style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', color: '#fff', fontSize: '1.2rem', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+              ⏮
+            </button>
+            <button onClick={onToggle} aria-label={track.isPlaying ? 'Pause' : 'Play'}
+              style={{ width: 56, height: 56, borderRadius: '50%', background: SPOTIFY_GREEN, border: 'none', color: '#000', fontSize: '1.5rem', cursor: 'pointer', display: 'grid', placeItems: 'center', boxShadow: `0 0 16px ${SPOTIFY_GREEN}50` }}>
+              {track.isPlaying ? '⏸' : '▶'}
+            </button>
+            <button onClick={onNext} aria-label="Next"
+              style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', color: '#fff', fontSize: '1.2rem', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+              ⏭
+            </button>
           </div>
         </div>
 
-        {/* Progress bar */}
-        <div style={{ height: 3, background: 'rgba(255,255,255,.15)', borderRadius: 2, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${progress * 100}%`, background: SPOTIFY_GREEN, borderRadius: 2, transition: 'width .5s linear' }} />
-        </div>
-
-        {/* Controls row — large touch targets */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
-          {/* Previous */}
-          <button
-            onClick={onPrevious}
-            style={{
-              width: btnSize, height: btnSize, borderRadius: '50%',
-              background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.15)',
-              color: '#fff', fontSize: iconSz, cursor: 'pointer',
-              display: 'grid', placeItems: 'center',
-            }}
-            aria-label="Previous track"
-          >
-            ⏮
-          </button>
-
-          {/* Play / Pause — biggest button */}
-          <button
-            onClick={onToggle}
-            style={{
-              width: btnSize + 24, height: btnSize + 24, borderRadius: '50%',
-              background: SPOTIFY_GREEN, border: 'none',
-              color: '#000', fontSize: '2.25rem', cursor: 'pointer',
-              display: 'grid', placeItems: 'center',
-              boxShadow: `0 0 24px ${SPOTIFY_GREEN}55`,
-            }}
-            aria-label={track.isPlaying ? 'Pause' : 'Play'}
-          >
-            {track.isPlaying ? '⏸' : '▶'}
-          </button>
-
-          {/* Next */}
-          <button
-            onClick={onNext}
-            style={{
-              width: btnSize, height: btnSize, borderRadius: '50%',
-              background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.15)',
-              color: '#fff', fontSize: iconSz, cursor: 'pointer',
-              display: 'grid', placeItems: 'center',
-            }}
-            aria-label="Next track"
-          >
-            ⏭
-          </button>
-        </div>
-
-        {/* Time */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.65rem', color: 'rgba(255,255,255,.4)', fontVariantNumeric: 'tabular-nums' }}>
-          <span>{fmtMs(track.progressMs)}</span>
-          <span>{fmtMs(track.durationMs)}</span>
+        {/* Progress bar — flush to bottom */}
+        <div style={{ height: 3, background: 'rgba(255,255,255,.1)' }}>
+          <div style={{ height: '100%', width: `${progress * 100}%`, background: SPOTIFY_GREEN, transition: 'width .5s linear' }} />
         </div>
       </div>
     )
