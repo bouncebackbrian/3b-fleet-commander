@@ -1,7 +1,8 @@
 'use client'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import Link from 'next/link'
-import TopBar from '@/components/layout/TopBar'
+import TopBar     from '@/components/layout/TopBar'
+import CcSidebar  from '@/components/dashboard/CcSidebar'
 
 // ── Types
 import type { EldMode, VehicleSetup, HOSData, SamsaraData, ActiveTrip, MissionStop } from '@/lib/dashboard/types'
@@ -554,7 +555,7 @@ export default function Dashboard() {
           <TopBar title="Command Center" module="mis" subtitle={liveDate} />
         </div>
 
-        {/* Landscape status bar */}
+        {/* Status bar — iPad landscape only */}
         <StatusBar
           liveClock={liveClock}
           liveDate={liveDate}
@@ -573,103 +574,122 @@ export default function Dashboard() {
           onEmergency={() => setShowEmergency(true)}
         />
 
-        {/* Content grid */}
-        <div className="cc-grid">
+        {/* ── Body: sidebar + center + right ── */}
+        <div className="cc-body">
 
-          {/* ══ LEFT COLUMN ══ */}
-          <div className="cc-col-left">
-            <LocationBar mission={mission} />
-            <ActiveMissionCard
-              mission={mission}
-              missionScore={missionScore}
-              missionFuel={missionFuel}
-              insights={opInsights}
-              syncState={syncState}
-              routeRisk={routeRisk}
-              driverMode={driverMode}
-              laneSummary={mission ? laneMetrics : undefined}
-              laneLoading={mission ? laneLoading : undefined}
-              onLogEvent={mission ? () => setShowLogEvent(true) : undefined}
-              onShowHistory={mission ? () => setShowHistoryPanel(true) : undefined}
-              onCompleteStop={handleCompleteStop}
-              onUndoStop={handleUndoStop}
-              onAddStop={mission ? () => setShowAddStop(true) : undefined}
-              onTapStop={mission ? (stop) => setSelectedStop(stop) : undefined}
-              onTapLane={mission ? () => setShowLanePanel(true) : undefined}
-              onQuickArrive={mission && currentActiveStop ? handleQuickArrive : undefined}
-              onQuickLeave={mission && currentActiveStop ? handleQuickLeave : undefined}
-              quickSubmitting={quickSubmitting}
-              onCompleteTrip={mission ? () => setShowTripReview(true) : undefined}
-              onShowCompleted={() => setShowCompletedTrips(true)}
-            />
-            {activeTrip && (
-              <ActiveTripCard
-                activeTrip={activeTrip}
-                nextStop={nextStop}
-                onClear={() => { localStorage.removeItem('3b-active-trip'); setActiveTrip(null) }}
+          {/* Left navigation sidebar — iPad landscape only */}
+          <CcSidebar
+            hasMission={!!mission}
+            onNewLoad={() => setShowNewLoadSheet(true)}
+            onMusic={() => setShowMusicPanel(true)}
+            onGym={() => setShowGymFinder(true)}
+            onSettlement={() => setShowSettlementPanel(true)}
+            onTimeline={mission ? () => setShowTimeline(true) : undefined}
+            onEmergency={() => setShowEmergency(true)}
+          />
+
+          {/* Content grid: center column + right panel */}
+          <div className="cc-grid">
+
+            {/* ══ CENTER / LEFT COLUMN ══ */}
+            <div className="cc-col-left">
+              <LocationBar mission={mission} />
+              <ActiveMissionCard
+                mission={mission}
+                missionScore={missionScore}
+                missionFuel={missionFuel}
+                insights={opInsights}
+                syncState={syncState}
+                routeRisk={routeRisk}
+                driverMode={driverMode}
+                laneSummary={mission ? laneMetrics : undefined}
+                laneLoading={mission ? laneLoading : undefined}
+                onLogEvent={mission ? () => setShowLogEvent(true) : undefined}
+                onShowHistory={mission ? () => setShowHistoryPanel(true) : undefined}
+                onCompleteStop={handleCompleteStop}
+                onUndoStop={handleUndoStop}
+                onAddStop={mission ? () => setShowAddStop(true) : undefined}
+                onTapStop={mission ? (stop) => setSelectedStop(stop) : undefined}
+                onTapLane={mission ? () => setShowLanePanel(true) : undefined}
+                onQuickArrive={mission && currentActiveStop ? handleQuickArrive : undefined}
+                onQuickLeave={mission && currentActiveStop ? handleQuickLeave : undefined}
+                quickSubmitting={quickSubmitting}
+                onCompleteTrip={mission ? () => setShowTripReview(true) : undefined}
+                onShowCompleted={() => setShowCompletedTrips(true)}
               />
-            )}
-            <AlertsCard operationalAlerts={operationalAlerts} onOpenHos={() => setShowHosDetail(true)} />
-            <QuickNavCard
-              onMusic={() => setShowMusicPanel(true)}
-              onGym={() => setShowGymFinder(true)}
-              onSettlement={() => setShowSettlementPanel(true)}
-              onTimeline={mission ? () => setShowTimeline(true) : undefined}
-            />
-          </div>
+              {activeTrip && (
+                <ActiveTripCard
+                  activeTrip={activeTrip}
+                  nextStop={nextStop}
+                  onClear={() => { localStorage.removeItem('3b-active-trip'); setActiveTrip(null) }}
+                />
+              )}
+              <AlertsCard operationalAlerts={operationalAlerts} onOpenHos={() => setShowHosDetail(true)} />
 
-          {/* ══ RIGHT COLUMN ══ */}
-          <div className="cc-col-right">
-            <HosCard
-              hosDisplay={hosDisplay}
-              hosError={hosError}
-              hosScanning={hosScanning}
-              eldMode={eldMode}
-              setEldMode={setEldMode}
-              driveColor={driveColor}
-              shiftColor={shiftColor}
-              statusLabel={statusLabel}
-              statusColor={statusColor}
-              samsara={samsara}
-              onScanClick={() => hosInputRef.current?.click()}
-              onClearHos={() => { localStorage.removeItem('3b-hos-data'); setHos(null); setSamsara(null) }}
-            />
-            <FuelWeatherRow missionFuel={missionFuel} weather={weather} wx={wx} weatherLoading={weatherLoading} lastUpdated={weatherUpdated} onRefresh={refreshWeather} />
-            {!driverMode && <ExpensesCard />}
-
-            {/* MIS footer — owner-operator only */}
-            {!driverMode && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '.5rem .75rem', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, flexWrap: 'wrap', gap: 6 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--primary)', boxShadow: '0 0 5px var(--primary)' }} />
-                  <span style={{ fontSize: '.65rem', fontWeight: 700, color: 'var(--primary)', letterSpacing: '.07em' }}>MIS ACTIVE</span>
-                </div>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <Link href="/mis"   style={{ fontSize: '.65rem', color: 'var(--muted)', textDecoration: 'none', fontWeight: 600 }}>📊 MIS →</Link>
-                  <Link href="/audit" style={{ fontSize: '.65rem', color: 'var(--muted)', textDecoration: 'none', fontWeight: 600 }}>📋 Audit →</Link>
-                </div>
+              {/* QuickNavCard — phone only (sidebar replaces on iPad) */}
+              <div className="cc-phone-only">
+                <QuickNavCard
+                  onMusic={() => setShowMusicPanel(true)}
+                  onGym={() => setShowGymFinder(true)}
+                  onSettlement={() => setShowSettlementPanel(true)}
+                  onTimeline={mission ? () => setShowTimeline(true) : undefined}
+                />
               </div>
-            )}
-          </div>
+            </div>
 
-        </div>
+            {/* ══ RIGHT STATUS PANEL ══ */}
+            <div className="cc-col-right">
+              <HosCard
+                hosDisplay={hosDisplay}
+                hosError={hosError}
+                hosScanning={hosScanning}
+                eldMode={eldMode}
+                setEldMode={setEldMode}
+                driveColor={driveColor}
+                shiftColor={shiftColor}
+                statusLabel={statusLabel}
+                statusColor={statusColor}
+                samsara={samsara}
+                onScanClick={() => hosInputRef.current?.click()}
+                onClearHos={() => { localStorage.removeItem('3b-hos-data'); setHos(null); setSamsara(null) }}
+              />
+              <FuelWeatherRow missionFuel={missionFuel} weather={weather} wx={wx} weatherLoading={weatherLoading} lastUpdated={weatherUpdated} onRefresh={refreshWeather} />
+              {!driverMode && <ExpensesCard />}
 
-        {/* Bottom persistent bar */}
+              {/* MIS footer — owner-operator only */}
+              {!driverMode && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '.6rem .85rem', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, flexWrap: 'wrap', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--primary)', boxShadow: '0 0 5px var(--primary)' }} />
+                    <span style={{ fontSize: '.7rem', fontWeight: 700, color: 'var(--primary)', letterSpacing: '.07em' }}>MIS ACTIVE</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <Link href="/mis"   style={{ fontSize: '.7rem', color: 'var(--muted)', textDecoration: 'none', fontWeight: 600 }}>📊 MIS →</Link>
+                    <Link href="/audit" style={{ fontSize: '.7rem', color: 'var(--muted)', textDecoration: 'none', fontWeight: 600 }}>📋 Audit →</Link>
+                  </div>
+                </div>
+              )}
+            </div>
+
+          </div>{/* /cc-grid */}
+        </div>{/* /cc-body */}
+
+        {/* ── Bottom persistent bar ── */}
         <div className="cc-bottom-bar">
           <button className="cc-bottom-btn" onClick={() => setShowVoicePanel(true)}
             style={{ background: 'rgba(0,232,176,.06)', borderColor: 'rgba(0,232,176,.2)', color: 'var(--primary)' }}>
-            <span style={{ fontSize: '1.2rem' }}>🎙</span>
-            <span>Voice</span>
+            <span style={{ fontSize: '1.35rem' }}>🎙</span>
+            <span style={{ fontSize: '1rem', fontWeight: 900 }}>Voice</span>
           </button>
           <button className="cc-bottom-btn cc-bottom-btn-primary" onClick={() => setDrivingMode(true)}>
-            <span style={{ fontSize: '1.3rem' }}>🚛</span>
-            <span>I&apos;M DRIVING</span>
-            <span style={{ fontSize: '.7rem', color: 'rgba(6,18,16,.65)', fontWeight: 600 }}>Hands-free mode</span>
+            <span style={{ fontSize: '1.5rem' }}>🚛</span>
+            <span style={{ fontSize: '1.15rem', fontWeight: 900, letterSpacing: '.03em' }}>I&apos;M DRIVING</span>
+            <span style={{ fontSize: '.78rem', color: 'rgba(6,18,16,.65)', fontWeight: 700 }}>Hands-free mode</span>
           </button>
           <Link href="/dispatch" className="cc-bottom-btn"
             style={{ background: 'rgba(74,196,255,.06)', borderColor: 'rgba(74,196,255,.2)', color: 'var(--blue)', textDecoration: 'none' }}>
-            <span style={{ fontSize: '1.2rem' }}>📞</span>
-            <span>Dispatch</span>
+            <span style={{ fontSize: '1.35rem' }}>📞</span>
+            <span style={{ fontSize: '1rem', fontWeight: 900 }}>Dispatch</span>
           </Link>
         </div>
 
