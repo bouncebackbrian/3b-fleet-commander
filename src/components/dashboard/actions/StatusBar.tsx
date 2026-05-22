@@ -55,9 +55,29 @@ export default function StatusBar({
         )}
       </div>
 
+      {/* HOS glance pills — fixed position before QABs so they never overlap */}
+      {hosDisplay && (
+        <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+          <div style={{ textAlign: 'center', padding: '.28rem .6rem', borderRadius: 8, background: `${driveColor}18`, border: `1px solid ${driveColor}35` }}>
+            <div style={{ fontSize: '.44rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em', color: driveColor }}>Drive</div>
+            <div style={{ fontWeight: 900, fontSize: '1rem', color: driveColor, fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>{hosDisplay.driveRem.toFixed(1)}h</div>
+          </div>
+          <div style={{ textAlign: 'center', padding: '.28rem .6rem', borderRadius: 8, background: `${shiftColor}18`, border: `1px solid ${shiftColor}35` }}>
+            <div style={{ fontSize: '.44rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em', color: shiftColor }}>Shift</div>
+            <div style={{ fontWeight: 900, fontSize: '1rem', color: shiftColor, fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>{hosDisplay.shiftRem.toFixed(1)}h</div>
+          </div>
+          {hosDisplay.cycleRem != null && (
+            <div style={{ textAlign: 'center', padding: '.28rem .6rem', borderRadius: 8, background: 'rgba(0,232,176,.06)', border: '1px solid rgba(0,232,176,.15)' }}>
+              <div style={{ fontSize: '.44rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--muted)' }}>Cycle</div>
+              <div style={{ fontWeight: 900, fontSize: '1rem', color: 'var(--text)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>{hosDisplay.cycleRem.toFixed(1)}h</div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={{ width: 1, height: 36, background: 'var(--border)', flexShrink: 0 }} />
 
-      {/* 6 Quick Action Buttons */}
+      {/* Quick Action Buttons — scrollable row so nothing falls off-screen */}
       <div className="cc-qab-row">
         <button className="cc-qab cc-qab-primary" onClick={onNewLoad}>
           <span className="cc-qab-icon">＋</span>
@@ -66,11 +86,11 @@ export default function StatusBar({
         <button className="cc-qab" onClick={onStartBreak}
           style={breakActive ? { background: 'rgba(245,194,0,.12)', borderColor: 'rgba(245,194,0,.3)', color: 'var(--warn)' } : undefined}>
           <span className="cc-qab-icon">{breakActive ? '⏸' : '☕'}</span>
-          <span className="cc-qab-label">{breakActive ? fmtBreak(breakSecs) : 'Start Break'}</span>
+          <span className="cc-qab-label">{breakActive ? fmtBreak(breakSecs) : 'Break'}</span>
         </button>
         <button className="cc-qab" onClick={onShowHos}>
           <span className="cc-qab-icon">⏱</span>
-          <span className="cc-qab-label">Check HOS</span>
+          <span className="cc-qab-label">HOS</span>
         </button>
         <button className="cc-qab" onClick={onShowFuel}>
           <span className="cc-qab-icon">⛽</span>
@@ -90,26 +110,6 @@ export default function StatusBar({
           <span className="cc-qab-label">Emergency</span>
         </button>
       </div>
-
-      {/* HOS glance pills */}
-      {hosDisplay && (
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexShrink: 0 }}>
-          <div style={{ textAlign: 'center', padding: '.3rem .7rem', borderRadius: 8, background: `${driveColor}18`, border: `1px solid ${driveColor}35` }}>
-            <div style={{ fontSize: '.48rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em', color: driveColor }}>Drive</div>
-            <div style={{ fontWeight: 900, fontSize: '1.1rem', color: driveColor, fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>{hosDisplay.driveRem.toFixed(1)}h</div>
-          </div>
-          <div style={{ textAlign: 'center', padding: '.3rem .7rem', borderRadius: 8, background: `${shiftColor}18`, border: `1px solid ${shiftColor}35` }}>
-            <div style={{ fontSize: '.48rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em', color: shiftColor }}>Shift</div>
-            <div style={{ fontWeight: 900, fontSize: '1.1rem', color: shiftColor, fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>{hosDisplay.shiftRem.toFixed(1)}h</div>
-          </div>
-          {hosDisplay.cycleRem != null && (
-            <div style={{ textAlign: 'center', padding: '.3rem .7rem', borderRadius: 8, background: 'rgba(0,232,176,.06)', border: '1px solid rgba(0,232,176,.15)' }}>
-              <div style={{ fontSize: '.48rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--muted)' }}>Cycle</div>
-              <div style={{ fontWeight: 900, fontSize: '1.1rem', color: 'var(--text)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>{hosDisplay.cycleRem.toFixed(1)}h</div>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
 }

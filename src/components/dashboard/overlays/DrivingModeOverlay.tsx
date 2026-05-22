@@ -1,9 +1,17 @@
 'use client'
+import { useState } from 'react'
 import { fmtTime } from '@/lib/dashboard/helpers'
 import type { HOSDisplay, WeatherInfo, LoadMission, ActiveTrip } from '@/lib/dashboard/types'
 import type { FuelIntelResult } from '@/lib/scoreLoad'
 import SpotifyWidget from '@/components/spotify/SpotifyWidget'
 import type { SpotifyTrack, SpotifyStatus } from '@/hooks/useSpotify'
+
+// ── Nav app deep-link targets ─────────────────────────────────────────────────
+const NAV_APPS = [
+  { label: "Truckers Path", emoji: "🛣", url: "truckerspath://",   fallback: "https://truckerspath.com" },
+  { label: "Google Maps",   emoji: "🗺", url: "comgooglemaps://",  fallback: "https://maps.google.com"  },
+  { label: "Waze",          emoji: "🔵", url: "waze://",           fallback: "https://waze.com"         },
+]
 
 interface Props {
   liveClock:   string
@@ -32,6 +40,17 @@ export default function DrivingModeOverlay({
   onEmergency, onExit,
 }: Props) {
   const showSpotify = spotifyStatus && spotifyStatus !== 'disconnected'
+  const [mapOpen, setMapOpen] = useState(false)
+
+  function openNavApp(app: typeof NAV_APPS[number]) {
+    // Try deep link first; fall back to web URL after 600ms if app doesn't open
+    const start = Date.now()
+    window.location.href = app.url
+    setTimeout(() => {
+      if (Date.now() - start < 1500) window.open(app.fallback, '_blank', 'noopener')
+    }, 600)
+    setMapOpen(false)
+  }
 
   return (
     <div className="cc-driving-overlay">
@@ -101,6 +120,68 @@ export default function DrivingModeOverlay({
           {wx.severe && <span style={{ color: 'var(--error)' }}> — ⚠️ HAZARDOUS</span>}
         </div>
       )}
+
+      {/* ── Map / Navigation PiP ── */}
+      <div style={{ width: '100%', maxWidth: 420 }}>
+        {!mapOpen ? (
+          /* Collapsed PiP chip */
+          <button
+            onClick={() => setMapOpen(true)}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 10, padding: '.85rem 1.5rem', borderRadius: 16,
+              background: 'rgba(74,196,255,.07)', border: '1px solid rgba(74,196,255,.25)',
+              color: 'var(--blue)', fontWeight: 800, fontSize: '1rem', cursor: 'pointer',
+            }}
+          >
+            <span style={{ fontSize: '1.35rem' }}>🗺</span>
+            Open Navigation App
+            <span style={{ fontSize: '.75rem', opacity: .65, marginLeft: 2 }}>▾</span>
+          </button>
+        ) : (
+          /* Expanded nav picker */
+          <div style={{
+            borderRadius: 18, background: 'rgba(10,24,22,.92)', border: '1px solid rgba(74,196,255,.3)',
+            backdropFilter: 'blur(12px)', overflow: 'hidden',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '.8rem 1.1rem .5rem' }}>
+              <div style={{ fontSize: '.7rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em' }}>
+                📍 Open Navigation
+              </div>
+              <button onClick={() => setMapOpen(false)} style={{ padding: '.2rem .5rem', borderRadius: 6, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '.75rem' }}>✕</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '.4rem .8rem .9rem' }}>
+              {NAV_APPS.map(app => (
+                <button
+                  key={app.label}
+                  onClick={() => openNavApp(app)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 14, padding: '.9rem 1.2rem',
+                    borderRadius: 13, border: '1px solid rgba(74,196,255,.2)',
+                    background: 'rgba(74,196,255,.06)', cursor: 'pointer',
+                    color: 'var(--text)', fontWeight: 800, fontSize: '1.05rem',
+                    textAlign: 'left', minHeight: 64,
+                  }}
+                >
+                  <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>{app.emoji}</span>
+                  <div>
+                    <div style={{ fontWeight: 900, fontSize: '1rem' }}>{app.label}</div>
+                    <div style={{ fontSize: '.62rem', color: 'var(--muted)', marginTop: 1 }}>
+                      {app.label === 'Truckers Path' ? 'Weigh stations · truck routes · fuel' :
+                       app.label === 'Google Maps'   ? 'Turn-by-turn navigation' :
+                       'Live traffic & hazards'}
+                    </div>
+                  </div>
+                  <span style={{ marginLeft: 'auto', fontSize: '1rem', color: 'var(--muted)' }}>→</span>
+                </button>
+              ))}
+            </div>
+            <div style={{ padding: '.4rem .9rem .7rem', fontSize: '.6rem', color: 'var(--faint)', textAlign: 'center', lineHeight: 1.5 }}>
+              ℹ️ App will open full-screen. Double-press home to switch back to Fleet Commander.
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ── Action row ── */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'center', marginTop: '1rem' }}>
