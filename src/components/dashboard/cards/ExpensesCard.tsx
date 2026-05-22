@@ -3,10 +3,12 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import type { Expense } from '@/lib/dashboard/types'
 import { QUICK_CATS, todayISO } from '@/lib/dashboard/helpers'
+import ExpenseScanSheet from '@/components/expenses/ExpenseScanSheet'
 
 export default function ExpensesCard() {
   const [todayExpenses, setTodayExpenses] = useState<Expense[]>([])
   const [showQuickAdd,  setShowQuickAdd]  = useState(false)
+  const [showScan,      setShowScan]      = useState(false)
   const [qaCategory,    setQaCategory]    = useState('fuel')
   const [qaAmount,      setQaAmount]      = useState('')
   const [qaDesc,        setQaDesc]        = useState('')
@@ -59,9 +61,19 @@ export default function ExpensesCard() {
 
   return (
     <div className="cc-card">
+      <ExpenseScanSheet
+        open={showScan}
+        onClose={() => setShowScan(false)}
+        onSaved={() => { setShowScan(false); refresh() }}
+      />
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.5rem' }}>
         <span style={{ fontWeight: 800, fontSize: '1rem' }}>💵 Today</span>
         <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => setShowScan(true)}
+            style={{ fontSize: '.72rem', fontWeight: 700, padding: '.3rem .7rem', borderRadius: 7, border: '1px solid rgba(0,232,176,.3)', background: 'rgba(0,232,176,.06)', color: 'var(--primary)', cursor: 'pointer', minHeight: 34 }}>
+            📷
+          </button>
           <button onClick={() => setShowQuickAdd(v => !v)}
             style={{ fontSize: '.72rem', fontWeight: 700, padding: '.3rem .7rem', borderRadius: 7, border: '1px solid rgba(0,232,176,.3)', background: showQuickAdd ? 'rgba(0,232,176,.12)' : 'rgba(0,232,176,.06)', color: 'var(--primary)', cursor: 'pointer', minHeight: 34 }}>
             {showQuickAdd ? '✕' : '➕ Add'}

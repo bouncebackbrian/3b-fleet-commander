@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import TopBar from '@/components/layout/TopBar'
+import ExpenseScanSheet from '@/components/expenses/ExpenseScanSheet'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Expense = {
@@ -92,6 +93,7 @@ const S = {
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function ExpensesPage() {
   const [expenses,    setExpenses]    = useState<Expense[]>([])
+  const [showScan,    setShowScan]    = useState(false)
   const [filter,      setFilter]      = useState<FilterPeriod>('month')
   const [selectedCat, setSelectedCat] = useState<CatId>('fuel')
   const [amount,      setAmount]      = useState('')
@@ -184,9 +186,22 @@ export default function ExpensesPage() {
 
   const activeCat = cat(selectedCat)
 
+  function loadExpenses() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (raw) setExpenses(JSON.parse(raw))
+    } catch { /* ignore */ }
+  }
+
   return (
     <>
       <TopBar title="Expense Tracker" module="ops" subtitle="Tax-deductible road expenses — IRS Schedule C" />
+
+      <ExpenseScanSheet
+        open={showScan}
+        onClose={() => setShowScan(false)}
+        onSaved={() => { setShowScan(false); loadExpenses() }}
+      />
 
       <style>{`
         @media (max-width: 768px) {
@@ -214,7 +229,15 @@ export default function ExpensesPage() {
         {/* ── LEFT: Add Expense ── */}
         <div style={{ display: 'grid', gap: '.75rem' }}>
           <div style={S.card}>
-            <div style={S.sec}>➕ Add Expense</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '.5rem', borderBottom: '1px solid var(--border)', marginBottom: '.9rem' }}>
+              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: 'var(--primary)' }}>➕ Add Expense</div>
+              <button
+                onClick={() => setShowScan(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '.45rem .85rem', borderRadius: 9, border: '1px solid rgba(0,232,176,.35)', background: 'rgba(0,232,176,.08)', color: 'var(--primary)', fontWeight: 800, fontSize: 'var(--text-xs)', cursor: 'pointer' }}
+              >
+                📷 Scan Receipt
+              </button>
+            </div>
 
             {/* Category picker */}
             <div style={{ marginBottom: '.85rem' }}>
