@@ -24,6 +24,7 @@ import { useOnlineStatus }       from '@/hooks/useOnlineStatus'
 import { useMovementDetector }   from '@/hooks/useMovementDetector'
 import { useAutosave }           from '@/hooks/useAutosave'
 import { useResetEngine }        from '@/hooks/useResetEngine'
+import { useSpotify }            from '@/hooks/useSpotify'
 
 // ── Overlays
 import EmergencySheet    from '@/components/dashboard/overlays/EmergencySheet'
@@ -303,6 +304,9 @@ export default function Dashboard() {
 
   // ── Panel toggles
   const [drivingMode,       setDrivingMode]       = useState(false)
+  // ── Spotify — active polling (5s) during driving mode, background (30s) otherwise
+  const spotify = useSpotify(drivingMode)
+
   const [showNewLoadSheet,  setShowNewLoadSheet]  = useState(false)
   const [showHosDetail,     setShowHosDetail]     = useState(false)
   const [showFuelSheet,     setShowFuelSheet]     = useState(false)
@@ -432,6 +436,11 @@ export default function Dashboard() {
           missionFuel={missionFuel}
           weather={weather}
           wx={wx}
+          spotifyTrack={spotify.track}
+          spotifyStatus={spotify.status}
+          onSpotifyToggle={spotify.toggle}
+          onSpotifyNext={spotify.next}
+          onSpotifyPrev={spotify.previous}
           onEmergency={() => setShowEmergency(true)}
           onExit={() => setDrivingMode(false)}
         />
@@ -536,6 +545,11 @@ export default function Dashboard() {
       <MusicPanel
         open={showMusicPanel}
         onClose={() => setShowMusicPanel(false)}
+        spotifyTrack={spotify.track}
+        spotifyStatus={spotify.status}
+        onSpotifyToggle={spotify.toggle}
+        onSpotifyNext={spotify.next}
+        onSpotifyPrev={spotify.previous}
         drivingMode={drivingMode}
       />
       <GymFinderPanel
