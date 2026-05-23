@@ -188,8 +188,10 @@ interface Props {
   // Actions
   onEmergency:  () => void
   onExit:       () => void
-  onStartBreak?: () => void
-  onShowFuel?:   () => void
+  onStartBreak?:      () => void
+  onShowFuel?:        () => void
+  onDocumentEvent?:   () => void
+  onComplianceProof?: () => void
 }
 
 export default function DrivingModeOverlay({
@@ -198,6 +200,7 @@ export default function DrivingModeOverlay({
   spotifyTrack, spotifyStatus, spotifyTrackSaved,
   onSpotifyToggle, onSpotifyNext, onSpotifyPrev, onSpotifyLike,
   onEmergency, onExit, onStartBreak, onShowFuel,
+  onDocumentEvent, onComplianceProof,
 }: Props) {
   const showSpotify  = spotifyStatus && spotifyStatus !== 'disconnected'
   const [mapOpen,    setMapOpen]    = useState(false)
@@ -497,6 +500,37 @@ export default function DrivingModeOverlay({
 
       {/* ── ZONE 4: Action buttons — pinned to bottom, never covered ── */}
       <div className="cc-driving-actions">
+        {/* Incident / compliance row */}
+        <div style={{ display: 'flex', gap: 8, width: '100%', marginBottom: 8 }}>
+          {onDocumentEvent && (
+            <button
+              onClick={onDocumentEvent}
+              style={{
+                flex: '1 1 0', padding: '.7rem .5rem', borderRadius: 14,
+                background: 'rgba(0,160,255,.1)', border: '1px solid rgba(0,160,255,.35)',
+                color: '#60c8ff', fontWeight: 800, fontSize: '.82rem',
+                cursor: 'pointer', minHeight: 52, lineHeight: 1.2,
+              }}
+            >
+              📸 Document<br />Event
+            </button>
+          )}
+          {onComplianceProof && (
+            <button
+              onClick={onComplianceProof}
+              style={{
+                flex: '1 1 0', padding: '.7rem .5rem', borderRadius: 14,
+                background: 'rgba(255,200,0,.08)', border: '1px solid rgba(255,200,0,.3)',
+                color: '#ffd060', fontWeight: 800, fontSize: '.82rem',
+                cursor: 'pointer', minHeight: 52, lineHeight: 1.2,
+              }}
+            >
+              ⚖️ Compliance<br />Proof
+            </button>
+          )}
+        </div>
+
+        {/* End / emergency row */}
         <button onClick={onEmergency}
           style={{ flex: '1 1 140px', padding: '1rem 1.5rem', borderRadius: 16, background: 'rgba(232,64,0,.12)', border: '1px solid var(--error)', color: 'var(--error)', fontWeight: 800, fontSize: '.95rem', cursor: 'pointer', minHeight: 60 }}>
           🚨 Emergency

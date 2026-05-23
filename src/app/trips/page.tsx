@@ -6,7 +6,9 @@ import TopBar from '@/components/layout/TopBar'
 import { loadSettings } from '@/lib/settings'
 import StopTimeline from '@/components/dashboard/cards/StopTimeline'
 import AddStopSheet  from '@/components/dashboard/sheets/AddStopSheet'
-import TimelineFeed  from '@/components/timeline/TimelineFeed'
+import TimelineFeed    from '@/components/timeline/TimelineFeed'
+import IncidentSheet   from '@/components/incidents/IncidentSheet'
+import ComplianceProofModal from '@/components/incidents/ComplianceProofModal'
 import type { MissionStop } from '@/lib/dashboard/types'
 import { useMission } from '@/hooks/useMission'
 
@@ -1087,7 +1089,9 @@ export default function TripPlanner() {
 
   // Mission Stops — same persistence path as dashboard (localStorage + Supabase async)
   const { mission, addStop, updateStop } = useMission()
-  const [showTripAddStop,  setShowTripAddStop]  = useState(false)
+  const [showTripAddStop,      setShowTripAddStop]      = useState(false)
+  const [showTripIncident,     setShowTripIncident]     = useState(false)
+  const [showTripCompliance,   setShowTripCompliance]   = useState(false)
 
   // AI Load Prep
   const [aiText,    setAiText]    = useState('')
@@ -2365,13 +2369,45 @@ export default function TripPlanner() {
           }}>
             <span style={{ fontSize: '1rem' }}>⚡</span>
             Operational Activity
-            <span style={{ fontSize: '.65rem', color: 'var(--muted)', fontWeight: 700, marginLeft: 'auto' }}>
-              Local · last 50 events
-            </span>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+              <button
+                onClick={() => setShowTripCompliance(true)}
+                style={{
+                  padding: '.25rem .6rem', borderRadius: 8,
+                  border: '1px solid rgba(255,200,0,.3)', background: 'rgba(255,200,0,.07)',
+                  color: '#ffd060', fontSize: '.72rem', fontWeight: 700, cursor: 'pointer',
+                }}>
+                ⚖️ Proof
+              </button>
+              <button
+                onClick={() => setShowTripIncident(true)}
+                style={{
+                  padding: '.25rem .6rem', borderRadius: 8,
+                  border: '1px solid rgba(0,160,255,.3)', background: 'rgba(0,160,255,.07)',
+                  color: '#60c8ff', fontSize: '.72rem', fontWeight: 700, cursor: 'pointer',
+                }}>
+                📸 Document
+              </button>
+              <span style={{ fontSize: '.65rem', color: 'var(--muted)', fontWeight: 700 }}>
+                last 50
+              </span>
+            </div>
           </div>
           <TimelineFeed limit={50} />
         </div>
       </section>
+
+      {/* ── Incident / Compliance modals */}
+      <IncidentSheet
+        open={showTripIncident}
+        onClose={() => setShowTripIncident(false)}
+        mission={mission}
+      />
+      <ComplianceProofModal
+        open={showTripCompliance}
+        onClose={() => setShowTripCompliance(false)}
+        mission={mission}
+      />
 
     </>
   )

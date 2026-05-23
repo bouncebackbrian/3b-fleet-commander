@@ -31,6 +31,8 @@ import { useSpotify }            from '@/hooks/useSpotify'
 import EmergencySheet    from '@/components/dashboard/overlays/EmergencySheet'
 import BreakTimerModal   from '@/components/dashboard/overlays/BreakTimerModal'
 import DrivingModeOverlay from '@/components/dashboard/overlays/DrivingModeOverlay'
+import IncidentSheet       from '@/components/incidents/IncidentSheet'
+import ComplianceProofModal from '@/components/incidents/ComplianceProofModal'
 
 // ── Sheets
 import NewLoadSheet      from '@/components/dashboard/sheets/NewLoadSheet'
@@ -331,6 +333,8 @@ export default function Dashboard() {
   const [showSettlementPanel, setShowSettlementPanel] = useState(false)
   const [showTimeline,        setShowTimeline]        = useState(false)
   const [showReceiverIntel,   setShowReceiverIntel]   = useState(false)
+  const [showIncidentSheet,   setShowIncidentSheet]   = useState(false)
+  const [showComplianceProof, setShowComplianceProof] = useState(false)
 
   // ── Movement detector — only active when driving mode is on
   const movement = useMovementDetector(drivingMode)
@@ -458,8 +462,22 @@ export default function Dashboard() {
           }}
           onStartBreak={handleStartBreak}
           onShowFuel={() => setShowFuelSheet(true)}
+          onDocumentEvent={() => setShowIncidentSheet(true)}
+          onComplianceProof={() => setShowComplianceProof(true)}
         />
       )}
+
+      {/* ── Incident / Compliance */}
+      <IncidentSheet
+        open={showIncidentSheet}
+        onClose={() => setShowIncidentSheet(false)}
+        mission={mission}
+      />
+      <ComplianceProofModal
+        open={showComplianceProof}
+        onClose={() => setShowComplianceProof(false)}
+        mission={mission}
+      />
 
       {/* ── Sheets */}
       {/* Supabase save error — non-blocking toast */}
@@ -683,6 +701,7 @@ export default function Dashboard() {
                 laneLoading={mission ? laneLoading : undefined}
                 onLogEvent={mission ? () => setShowLogEvent(true) : undefined}
                 onShowHistory={mission ? () => setShowHistoryPanel(true) : undefined}
+                onDocumentEvent={() => setShowIncidentSheet(true)}
                 onCompleteStop={handleCompleteStop}
                 onUndoStop={handleUndoStop}
                 onAddStop={mission ? () => setShowAddStop(true) : undefined}

@@ -43,6 +43,8 @@ export type TimelineEventType =
   | 'document_uploaded'
   // Weather
   | 'weather_alert_shown'
+  // Incidents / compliance
+  | 'incident_logged'
   // Generic
   | 'note'
 
@@ -92,6 +94,7 @@ export const EVENT_META: Record<TimelineEventType, { emoji: string; label: strin
   expense_scanned:                     { emoji: '🧾', label: 'Expense scanned'         },
   document_uploaded:                   { emoji: '📄', label: 'Document uploaded'       },
   weather_alert_shown:                 { emoji: '🌩', label: 'Weather alert'           },
+  incident_logged:                     { emoji: '🚨', label: 'Incident logged'        },
   note:                                { emoji: '📝', label: 'Note'                    },
 }
 

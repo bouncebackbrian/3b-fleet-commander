@@ -19,8 +19,9 @@ interface Props {
   driverMode?:    boolean
   laneSummary?:   LaneMetrics | null
   laneLoading?:   boolean
-  onLogEvent?:    () => void
-  onShowHistory?: () => void
+  onLogEvent?:       () => void
+  onShowHistory?:    () => void
+  onDocumentEvent?:  () => void
   onCompleteStop?:  (stopId: string) => void
   onUndoStop?:      (stopId: string) => void
   onAddStop?:       () => void
@@ -54,7 +55,7 @@ function SyncBadge({ state }: { state: SyncState }) {
   )
 }
 
-export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', routeRisk, driverMode = false, laneSummary, laneLoading, onLogEvent, onShowHistory, onCompleteStop, onUndoStop, onAddStop, onTapStop, onTapLane, onQuickArrive, onQuickLeave, quickSubmitting, onCompleteTrip, onShowCompleted }: Props) {
+export default function ActiveMissionCard({ mission, missionScore, missionFuel, insights = [], syncState = 'idle', routeRisk, driverMode = false, laneSummary, laneLoading, onLogEvent, onShowHistory, onDocumentEvent, onCompleteStop, onUndoStop, onAddStop, onTapStop, onTapLane, onQuickArrive, onQuickLeave, quickSubmitting, onCompleteTrip, onShowCompleted }: Props) {
   const stops = mission?.stops ?? []
   const sortedStops = [...stops].sort((a, b) => a.sequence - b.sequence)
   const currentStop = sortedStops.find(s => !s.completed) ?? null
@@ -76,6 +77,11 @@ export default function ActiveMissionCard({ mission, missionScore, missionFuel, 
               {onLogEvent && (
                 <button onClick={onLogEvent} style={{ padding: '.5rem .9rem', borderRadius: 10, border: '1px solid rgba(0,232,176,.3)', background: 'rgba(0,232,176,.07)', fontSize: '.82rem', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', minHeight: 40, display: 'flex', alignItems: 'center', gap: 5 }}>
                   📋 Log
+                </button>
+              )}
+              {onDocumentEvent && (
+                <button onClick={onDocumentEvent} style={{ padding: '.5rem .9rem', borderRadius: 10, border: '1px solid rgba(0,160,255,.3)', background: 'rgba(0,160,255,.07)', fontSize: '.82rem', color: '#60c8ff', fontWeight: 700, cursor: 'pointer', minHeight: 40, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  📸 Document
                 </button>
               )}
               {onShowHistory && (
