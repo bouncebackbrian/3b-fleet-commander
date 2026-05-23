@@ -194,6 +194,7 @@ interface Props {
   onComplianceProof?: () => void
   onTrailerHook?:     () => void
   onTrailerDrop?:     () => void
+  onSendUpdate?:      () => void
 }
 
 export default function DrivingModeOverlay({
@@ -203,7 +204,7 @@ export default function DrivingModeOverlay({
   onSpotifyToggle, onSpotifyNext, onSpotifyPrev, onSpotifyLike,
   onEmergency, onExit, onStartBreak, onShowFuel,
   onDocumentEvent, onComplianceProof,
-  onTrailerHook, onTrailerDrop,
+  onTrailerHook, onTrailerDrop, onSendUpdate,
 }: Props) {
   const showSpotify  = spotifyStatus && spotifyStatus !== 'disconnected'
   const [mapOpen,    setMapOpen]    = useState(false)
@@ -535,8 +536,21 @@ export default function DrivingModeOverlay({
           </div>
         )}
 
-        {/* Incident / compliance row */}
+        {/* Dispatch + Incident + Compliance row */}
         <div style={{ display: 'flex', gap: 8, width: '100%', marginBottom: 8 }}>
+          {onSendUpdate && (
+            <button
+              onClick={onSendUpdate}
+              style={{
+                flex: '1 1 0', padding: '.7rem .5rem', borderRadius: 14,
+                background: 'rgba(0,232,176,.1)', border: '1px solid rgba(0,232,176,.35)',
+                color: 'var(--primary)', fontWeight: 800, fontSize: '.82rem',
+                cursor: 'pointer', minHeight: 52, lineHeight: 1.2,
+              }}
+            >
+              📡 Send<br />Update
+            </button>
+          )}
           {onDocumentEvent && (
             <button
               onClick={onDocumentEvent}

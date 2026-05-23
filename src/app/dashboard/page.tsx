@@ -36,6 +36,7 @@ import ComplianceProofModal  from '@/components/incidents/ComplianceProofModal'
 import TrailerHookSheet       from '@/components/trailer/TrailerHookSheet'
 import TrailerHistoryPanel    from '@/components/trailer/TrailerHistoryPanel'
 import ComplianceEventSheet   from '@/components/compliance/ComplianceEventSheet'
+import DriverUpdateSheet      from '@/components/dispatch/DriverUpdateSheet'
 
 // ── Sheets
 import NewLoadSheet      from '@/components/dashboard/sheets/NewLoadSheet'
@@ -341,7 +342,8 @@ export default function Dashboard() {
   const [showTrailerHook,     setShowTrailerHook]     = useState(false)
   const [showTrailerHistory,  setShowTrailerHistory]  = useState(false)
   const [trailerHookType,     setTrailerHookType]     = useState<'empty_hook' | 'loaded_hook' | 'empty_drop' | 'loaded_drop'>('empty_hook')
-  const [showComplianceEvent, setShowComplianceEvent] = useState(false)
+  const [showComplianceEvent,  setShowComplianceEvent]  = useState(false)
+  const [showDriverUpdate,     setShowDriverUpdate]     = useState(false)
 
   // ── Movement detector — only active when driving mode is on
   const movement = useMovementDetector(drivingMode)
@@ -473,6 +475,7 @@ export default function Dashboard() {
           onComplianceProof={() => setShowComplianceProof(true)}
           onTrailerHook={() => { setTrailerHookType('empty_hook'); setShowTrailerHook(true) }}
           onTrailerDrop={() => { setTrailerHookType('empty_drop'); setShowTrailerHook(true) }}
+          onSendUpdate={() => setShowDriverUpdate(true)}
         />
       )}
 
@@ -493,6 +496,13 @@ export default function Dashboard() {
         open={showComplianceEvent}
         onClose={() => setShowComplianceEvent(false)}
         mission={mission}
+      />
+
+      {/* ── Driver Update Sheet — accessible from Cab Mode and dashboard */}
+      <DriverUpdateSheet
+        open={showDriverUpdate}
+        onClose={() => setShowDriverUpdate(false)}
+        loadNumber={mission?.loadNumber ?? activeTrip?.loadNumber ?? undefined}
       />
 
       {/* ── Trailer Lifecycle */}
@@ -752,6 +762,29 @@ export default function Dashboard() {
                 />
               )}
               <AlertsCard operationalAlerts={operationalAlerts} onOpenHos={() => setShowHosDetail(true)} />
+
+              {/* ── Send Update quick-action — visible whenever a load is active ── */}
+              {(mission || activeTrip) && (
+                <button
+                  onClick={() => setShowDriverUpdate(true)}
+                  style={{
+                    width: '100%', padding: '.85rem 1rem', borderRadius: 14,
+                    background: 'rgba(0,232,176,.07)', border: '1px solid rgba(0,232,176,.28)',
+                    color: 'var(--primary)', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                    fontWeight: 800, fontSize: '1rem', letterSpacing: '.02em',
+                    boxShadow: '0 2px 12px rgba(0,232,176,.08)',
+                  }}
+                >
+                  <span style={{ fontSize: '1.25rem' }}>📡</span>
+                  Send Driver Update
+                  {mission?.loadNumber && (
+                    <span style={{ fontSize: '.72rem', fontWeight: 600, color: 'var(--muted)', marginLeft: 2 }}>
+                      · Load #{mission.loadNumber}
+                    </span>
+                  )}
+                </button>
+              )}
 
               <NavigationSnapshotCard mission={mission} />
 
