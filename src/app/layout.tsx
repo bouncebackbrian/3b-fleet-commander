@@ -1,5 +1,11 @@
 import type { Metadata, Viewport } from 'next'
+import { Analytics } from '@vercel/analytics/react'
+import { SpeedInsights } from '@vercel/speed-insights/next'
+import { GoogleAnalytics, MicrosoftClarity } from './components/Analytics'
 import './globals.css'
+
+const GA_ID      = process.env.NEXT_PUBLIC_GA_ID
+const CLARITY_ID = process.env.NEXT_PUBLIC_CLARITY_ID
 
 const BASE_URL = 'https://fleet.bouncebackbrian.com'
 
@@ -110,7 +116,13 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" data-theme="dark" suppressHydrationWarning>
-      <body>{children}</body>
+      <body>
+        {children}
+        <Analytics />
+        <SpeedInsights />
+        {GA_ID      && <GoogleAnalytics    id={GA_ID}      />}
+        {CLARITY_ID && <MicrosoftClarity   id={CLARITY_ID} />}
+      </body>
     </html>
   )
 }
