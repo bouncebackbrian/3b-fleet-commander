@@ -11,6 +11,7 @@
  * Bottom section: Full document grid with tab filter by group.
  */
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   getDocs, getVaultSummary, deleteDoc,
   CATEGORY_META, ROADSIDE_GROUPS,
@@ -18,6 +19,8 @@ import {
 } from '@/lib/proofVault'
 import DocUploadSheet   from '@/components/vault/DocUploadSheet'
 import RoadsideProofView from '@/components/vault/RoadsideProofView'
+
+const VALID_GROUPS = new Set<string>(['load','inspection','violation','repair','truck','other'])
 
 // ── Tab filter ────────────────────────────────────────────────────────────────
 
@@ -34,7 +37,8 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function VaultPage() {
+function VaultPage() {
+  const searchParams  = useSearchParams()
   const [docs,          setDocs]          = useState<ProofDoc[]>([])
   const [tab,           setTab]           = useState<Tab>('all')
   const [showUpload,    setShowUpload]    = useState(false)
@@ -50,6 +54,17 @@ export default function VaultPage() {
   }, [])
 
   useEffect(() => { loadDocs() }, [loadDocs])
+
+  // ── Auto-open roadside proof view from URL param (?group=inspection etc.) ──
+  // This is the "3-second roadside doc" path: dashboard link → vault → overlay opens instantly.
+  useEffect(() => {
+    const g = searchParams.get('group')
+    if (g && VALID_GROUPS.has(g)) {
+      const group = g as RoadsideGroup
+      setTab(group)          // also set the background tab for context
+      setProofGroup(group)   // open the full-screen overlay immediately
+    }
+  }, [searchParams])
 
   // ── Filtered docs for grid ────────────────────────────────────────────────────
   const filtered = docs.filter(d => {
@@ -98,10 +113,9 @@ export default function VaultPage() {
           <button
             onClick={() => setShowUpload(true)}
             style={{
-              padding: '.6rem 1rem', borderRadius: 12, border: 'none',
-              background: 'var(--primary)', color: '#061210',
-              fontWeight: 800, fontSize: '.88rem', cursor: 'pointer',
-              boxShadow: '0 3px 12px rgba(0,232,176,.25)',
+              padding: '.5rem .9rem', borderRadius: 20, cursor: 'pointer',
+              border: '1.5px solid var(--primary)', background: 'rgba(0,232,176,.1)',
+              color: 'var(--primary)', fontWeight: 800, fontSize: '.82rem',
             }}
           >
             + Upload
@@ -133,43 +147,6 @@ export default function VaultPage() {
             color: 'var(--text)', fontSize: '.85rem', outline: 'none', boxSizing: 'border-box',
           }}
         />
-      </div>
-
-      {/* ── Quick Roadside Access ── */}
-      <div style={{ padding: '.85rem 1rem', background: 'var(--surface)', marginBottom: 8, borderBottom: '1px solid var(--border)' }}>
-        <div style={{ fontSize: '.58rem', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.6rem' }}>
-          ⚡ Quick Roadside Proof
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7 }}>
-          {(Object.entries(ROADSIDE_GROUPS) as [RoadsideGroup, typeof ROADSIDE_GROUPS[RoadsideGroup]][]).map(([group, meta]) => {
-            const count = summary.byGroup[group]
-            return (
-              <button
-                key={group}
-                onClick={() => setProofGroup(group)}
-                style={{
-                  padding: '.7rem .5rem', borderRadius: 12, cursor: 'pointer',
-                  border: count > 0 ? '1px solid rgba(0,232,176,.25)' : '1px solid var(--border)',
-                  background: count > 0 ? 'rgba(0,232,176,.05)' : 'var(--surface-2)',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                  position: 'relative',
-                }}
-              >
-                <span style={{ fontSize: '1.3rem' }}>{meta.emoji}</span>
-                <span style={{ fontSize: '.62rem', fontWeight: 800, color: count > 0 ? 'var(--text)' : 'var(--muted)', textAlign: 'center', lineHeight: 1.25 }}>
-                  {meta.label}
-                </span>
-                {count > 0 ? (
-                  <span style={{ position: 'absolute', top: 5, right: 7, fontSize: '.55rem', fontWeight: 800, color: 'var(--primary)' }}>
-                    {count}
-                  </span>
-                ) : (
-                  <span style={{ fontSize: '.55rem', color: 'var(--muted)' }}>empty</span>
-                )}
-              </button>
-            )
-          })}
-        </div>
       </div>
 
       {/* ── Tab filter ── */}
@@ -296,6 +273,20 @@ export default function VaultPage() {
     </div>
   )
 }
+
+// ── Suspense wrapper — required by useSearchParams in Next.js App Router ──────
+
+import { Suspense } from 'react'
+
+function VaultPageSuspense() {
+  return (
+    <Suspense fallback={<div style={{ padding: '2rem', color: 'var(--muted)' }}>Loading vault…</div>}>
+      <VaultPage />
+    </Suspense>
+  )
+}
+
+export { VaultPageSuspense as default }
 
 // ── DocCard ───────────────────────────────────────────────────────────────────
 

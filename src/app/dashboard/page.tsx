@@ -763,58 +763,75 @@ export default function Dashboard() {
               )}
               <AlertsCard operationalAlerts={operationalAlerts} onOpenHos={() => setShowHosDetail(true)} />
 
-              {/* ── Send Update quick-action — visible whenever a load is active ── */}
-              {(mission || activeTrip) && (
-                <button
-                  onClick={() => setShowDriverUpdate(true)}
-                  style={{
-                    width: '100%', padding: '.85rem 1rem', borderRadius: 14,
-                    background: 'rgba(0,232,176,.07)', border: '1px solid rgba(0,232,176,.28)',
-                    color: 'var(--primary)', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                    fontWeight: 800, fontSize: '1rem', letterSpacing: '.02em',
-                    boxShadow: '0 2px 12px rgba(0,232,176,.08)',
-                  }}
-                >
-                  <span style={{ fontSize: '1.25rem' }}>📡</span>
-                  Send Driver Update
-                  {mission?.loadNumber && (
-                    <span style={{ fontSize: '.72rem', fontWeight: 600, color: 'var(--muted)', marginLeft: 2 }}>
-                      · Load #{mission.loadNumber}
-                    </span>
-                  )}
-                </button>
-              )}
-
               <NavigationSnapshotCard mission={mission} />
 
-              {/* ── Proof Vault quick-access — roadside one-tap buttons ── */}
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '.7rem .85rem' }}>
-                <div style={{ fontSize: '.55rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.55rem' }}>
-                  🗄️ Roadside Proof
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
-                  {([
-                    { href: '/vault?group=inspection', emoji: '🔍', label: 'Inspection\nProof' },
-                    { href: '/vault?group=repair',     emoji: '🔧', label: 'Repair\nProof'     },
-                    { href: '/vault?group=truck',      emoji: '🚛', label: 'Truck &\nTrailer'  },
-                    { href: '/vault',                  emoji: '🗄️', label: 'All\nDocuments'    },
-                  ] as const).map(item => (
-                    <a
-                      key={item.href}
-                      href={item.href}
+              {/* ── Quick links — horizontal scroll, 3-tier hierarchy ── */}
+              {/* Tier 1 (primary): Send Update — only when a load is active          */}
+              {/* Tier 2 (secondary): Vault, Trailer — always visible                  */}
+              {/* Tier 3 (roadside): Inspection, Load Docs, Repairs — doc shortcuts    */}
+              <div className="cc-quicklinks">
+
+                {/* ── Tier 1: primary action ── */}
+                {(mission || activeTrip) && (
+                  <>
+                    <button
+                      onClick={() => setShowDriverUpdate(true)}
                       style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        padding: '.5rem .65rem', borderRadius: 10,
-                        border: '1px solid var(--border)', background: 'var(--surface-2)',
-                        textDecoration: 'none', cursor: 'pointer',
+                        flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer',
+                        padding: '.3rem .55rem', borderRadius: 7,
+                        fontSize: '.76rem', fontWeight: 800, color: 'var(--primary)',
+                        display: 'flex', alignItems: 'center', gap: 4,
                       }}
                     >
-                      <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{item.emoji}</span>
-                      <span style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--text)', lineHeight: 1.3, whiteSpace: 'pre-line' }}>{item.label}</span>
+                      <span style={{ fontSize: '.8rem' }}>📡</span> Send Update
+                    </button>
+                    {/* tier divider */}
+                    <span style={{ flexShrink: 0, width: 1, height: 14, background: 'var(--border)', margin: '0 6px' }} />
+                  </>
+                )}
+
+                {/* ── Tier 2: secondary navigation ── */}
+                {([
+                  { href: '/vault',    label: 'Vault',   emoji: '🗄️' },
+                  { href: '/trailer',  label: 'Trailer', emoji: '🚚' },
+                ] as const).map((item, i, arr) => (
+                  <span key={item.href} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                    <a href={item.href} style={{
+                      padding: '.3rem .55rem', fontSize: '.76rem', fontWeight: 700,
+                      color: 'var(--text)', textDecoration: 'none', borderRadius: 7,
+                      display: 'flex', alignItems: 'center', gap: 4,
+                    }}>
+                      <span style={{ fontSize: '.8rem' }}>{item.emoji}</span> {item.label}
                     </a>
-                  ))}
-                </div>
+                    {i < arr.length - 1 && (
+                      <span style={{ color: 'rgba(255,255,255,.15)', fontSize: '.7rem', padding: '0 1px' }}>·</span>
+                    )}
+                  </span>
+                ))}
+
+                {/* tier divider */}
+                <span style={{ flexShrink: 0, width: 1, height: 14, background: 'var(--border)', margin: '0 6px' }} />
+
+                {/* ── Tier 3: roadside doc shortcuts ── */}
+                <span style={{ flexShrink: 0, fontSize: '.58rem', fontWeight: 900, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', paddingRight: 4 }}>Roadside</span>
+                {([
+                  { href: '/vault?group=inspection', label: 'Inspection', emoji: '🔍' },
+                  { href: '/vault?group=load',        label: 'Load Docs',  emoji: '📦' },
+                  { href: '/vault?group=repair',      label: 'Repairs',    emoji: '🔧' },
+                ] as const).map((item, i, arr) => (
+                  <span key={item.href} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                    <a href={item.href} style={{
+                      padding: '.3rem .5rem', fontSize: '.73rem', fontWeight: 600,
+                      color: 'var(--muted)', textDecoration: 'none', borderRadius: 7,
+                      display: 'flex', alignItems: 'center', gap: 3,
+                    }}>
+                      <span style={{ fontSize: '.78rem' }}>{item.emoji}</span> {item.label}
+                    </a>
+                    {i < arr.length - 1 && (
+                      <span style={{ color: 'rgba(255,255,255,.12)', fontSize: '.7rem' }}>·</span>
+                    )}
+                  </span>
+                ))}
               </div>
 
               {/* QuickNavCard — phone only (sidebar replaces on iPad) */}

@@ -74,18 +74,20 @@ const ALL_TABS: NavTab[] = [
   { href: '/dispatch',   label: 'Dispatch',   emoji: '📋', command: 'Dispatch'    },
   { href: '/loads',      label: 'Loads',      emoji: '📦', command: 'Dispatch'    },
   { href: '/vault',      label: 'Vault',      emoji: '🗄️', command: 'Compliance'  },
+  { href: '/trailer',    label: 'Trailer',    emoji: '🚚', command: 'Inspection'  },
   { href: '/expenses',   label: 'Owner',      emoji: '💰', command: 'Owner'       },
   { href: '/compliance', label: 'Compliance', emoji: '⚖️', command: 'Compliance'  },
   { href: '/settings',   label: 'Settings',   emoji: '⚙️', command: 'System'      },
 ]
 
 // Which tabs each mode sees (ordered for display)
-// Vault replaces standalone Compliance tab — it is the proof layer for all modes.
+// Vault is the proof/document layer. Trailer is the operational inspection layer.
+// driver mode swaps Owner (expenses) for Trailer Intel — more relevant on the road.
 const MODE_TAB_HREFS: Record<UserMode, string[]> = {
-  driver:         ['/dashboard', '/trips', '/vault', '/expenses'],
-  owner_operator: ['/dashboard', '/dispatch', '/trips', '/vault', '/expenses'],
+  driver:         ['/dashboard', '/trips', '/trailer', '/vault'],
+  owner_operator: ['/dashboard', '/dispatch', '/trips', '/trailer', '/vault'],
   dispatcher:     ['/dispatch', '/loads', '/trips', '/vault'],
-  fleet_admin:    ['/dashboard', '/dispatch', '/trips', '/loads', '/vault', '/expenses'],
+  fleet_admin:    ['/dashboard', '/dispatch', '/trips', '/loads', '/trailer', '/vault'],
 }
 
 export function getTabsForMode(mode: UserMode): NavTab[] {
