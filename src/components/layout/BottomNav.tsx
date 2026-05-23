@@ -14,12 +14,13 @@ import { usePathname } from 'next/navigation'
 import { readUserMode, getTabsForMode, type UserMode } from '@/lib/userMode'
 
 const TAB_ICONS: Record<string, string> = {
-  '/dashboard': '🚛',
-  '/trips':     '🗺️',
-  '/dispatch':  '📋',
-  '/loads':     '📦',
-  '/expenses':  '💰',
-  '/settings':  '⚙️',
+  '/dashboard':  '🚛',
+  '/trips':      '🗺️',
+  '/dispatch':   '📋',
+  '/loads':      '📦',
+  '/expenses':   '💰',
+  '/compliance': '⚖️',
+  '/settings':   '⚙️',
 }
 
 export default function BottomNav() {
