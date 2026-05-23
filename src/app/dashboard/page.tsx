@@ -31,8 +31,10 @@ import { useSpotify }            from '@/hooks/useSpotify'
 import EmergencySheet    from '@/components/dashboard/overlays/EmergencySheet'
 import BreakTimerModal   from '@/components/dashboard/overlays/BreakTimerModal'
 import DrivingModeOverlay from '@/components/dashboard/overlays/DrivingModeOverlay'
-import IncidentSheet       from '@/components/incidents/IncidentSheet'
-import ComplianceProofModal from '@/components/incidents/ComplianceProofModal'
+import IncidentSheet        from '@/components/incidents/IncidentSheet'
+import ComplianceProofModal  from '@/components/incidents/ComplianceProofModal'
+import TrailerHookSheet      from '@/components/trailer/TrailerHookSheet'
+import TrailerHistoryPanel   from '@/components/trailer/TrailerHistoryPanel'
 
 // ── Sheets
 import NewLoadSheet      from '@/components/dashboard/sheets/NewLoadSheet'
@@ -335,6 +337,9 @@ export default function Dashboard() {
   const [showReceiverIntel,   setShowReceiverIntel]   = useState(false)
   const [showIncidentSheet,   setShowIncidentSheet]   = useState(false)
   const [showComplianceProof, setShowComplianceProof] = useState(false)
+  const [showTrailerHook,     setShowTrailerHook]     = useState(false)
+  const [showTrailerHistory,  setShowTrailerHistory]  = useState(false)
+  const [trailerHookType,     setTrailerHookType]     = useState<'empty_hook' | 'loaded_hook' | 'empty_drop' | 'loaded_drop'>('empty_hook')
 
   // ── Movement detector — only active when driving mode is on
   const movement = useMovementDetector(drivingMode)
@@ -464,6 +469,8 @@ export default function Dashboard() {
           onShowFuel={() => setShowFuelSheet(true)}
           onDocumentEvent={() => setShowIncidentSheet(true)}
           onComplianceProof={() => setShowComplianceProof(true)}
+          onTrailerHook={() => { setTrailerHookType('empty_hook'); setShowTrailerHook(true) }}
+          onTrailerDrop={() => { setTrailerHookType('empty_drop'); setShowTrailerHook(true) }}
         />
       )}
 
@@ -477,6 +484,19 @@ export default function Dashboard() {
         open={showComplianceProof}
         onClose={() => setShowComplianceProof(false)}
         mission={mission}
+      />
+
+      {/* ── Trailer Lifecycle */}
+      <TrailerHookSheet
+        open={showTrailerHook}
+        onClose={() => setShowTrailerHook(false)}
+        mission={mission}
+        defaultType={trailerHookType}
+      />
+      <TrailerHistoryPanel
+        open={showTrailerHistory}
+        onClose={() => setShowTrailerHistory(false)}
+        trailerNumber={mission?.trailerNum}
       />
 
       {/* ── Sheets */}
@@ -702,6 +722,8 @@ export default function Dashboard() {
                 onLogEvent={mission ? () => setShowLogEvent(true) : undefined}
                 onShowHistory={mission ? () => setShowHistoryPanel(true) : undefined}
                 onDocumentEvent={() => setShowIncidentSheet(true)}
+                onTrailerHook={() => { setTrailerHookType('empty_hook'); setShowTrailerHook(true) }}
+                onTrailerHistory={() => setShowTrailerHistory(true)}
                 onCompleteStop={handleCompleteStop}
                 onUndoStop={handleUndoStop}
                 onAddStop={mission ? () => setShowAddStop(true) : undefined}

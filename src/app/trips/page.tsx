@@ -7,8 +7,10 @@ import { loadSettings } from '@/lib/settings'
 import StopTimeline from '@/components/dashboard/cards/StopTimeline'
 import AddStopSheet  from '@/components/dashboard/sheets/AddStopSheet'
 import TimelineFeed    from '@/components/timeline/TimelineFeed'
-import IncidentSheet   from '@/components/incidents/IncidentSheet'
-import ComplianceProofModal from '@/components/incidents/ComplianceProofModal'
+import IncidentSheet        from '@/components/incidents/IncidentSheet'
+import ComplianceProofModal  from '@/components/incidents/ComplianceProofModal'
+import TrailerHookSheet      from '@/components/trailer/TrailerHookSheet'
+import TrailerHistoryPanel   from '@/components/trailer/TrailerHistoryPanel'
 import type { MissionStop } from '@/lib/dashboard/types'
 import { useMission } from '@/hooks/useMission'
 
@@ -1092,6 +1094,8 @@ export default function TripPlanner() {
   const [showTripAddStop,      setShowTripAddStop]      = useState(false)
   const [showTripIncident,     setShowTripIncident]     = useState(false)
   const [showTripCompliance,   setShowTripCompliance]   = useState(false)
+  const [showTripTrailerHook,  setShowTripTrailerHook]  = useState(false)
+  const [showTripTrailerHist,  setShowTripTrailerHist]  = useState(false)
 
   // AI Load Prep
   const [aiText,    setAiText]    = useState('')
@@ -2371,6 +2375,24 @@ export default function TripPlanner() {
             Operational Activity
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
               <button
+                onClick={() => setShowTripTrailerHist(true)}
+                style={{
+                  padding: '.25rem .6rem', borderRadius: 8,
+                  border: '1px solid rgba(0,232,176,.3)', background: 'rgba(0,232,176,.07)',
+                  color: 'var(--primary)', fontSize: '.72rem', fontWeight: 700, cursor: 'pointer',
+                }}>
+                🚛 Trailer Log
+              </button>
+              <button
+                onClick={() => setShowTripTrailerHook(true)}
+                style={{
+                  padding: '.25rem .6rem', borderRadius: 8,
+                  border: '1px solid rgba(0,232,176,.25)', background: 'rgba(0,232,176,.05)',
+                  color: 'var(--primary)', fontSize: '.72rem', fontWeight: 700, cursor: 'pointer',
+                }}>
+                🔗 Hook/Drop
+              </button>
+              <button
                 onClick={() => setShowTripCompliance(true)}
                 style={{
                   padding: '.25rem .6rem', borderRadius: 8,
@@ -2407,6 +2429,18 @@ export default function TripPlanner() {
         open={showTripCompliance}
         onClose={() => setShowTripCompliance(false)}
         mission={mission}
+      />
+
+      {/* ── Trailer Lifecycle modals */}
+      <TrailerHookSheet
+        open={showTripTrailerHook}
+        onClose={() => setShowTripTrailerHook(false)}
+        mission={mission}
+      />
+      <TrailerHistoryPanel
+        open={showTripTrailerHist}
+        onClose={() => setShowTripTrailerHist(false)}
+        trailerNumber={mission?.trailerNum}
       />
 
     </>

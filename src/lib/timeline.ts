@@ -45,6 +45,11 @@ export type TimelineEventType =
   | 'weather_alert_shown'
   // Incidents / compliance
   | 'incident_logged'
+  // Trailer lifecycle
+  | 'trailer_hook'
+  | 'trailer_drop'
+  | 'trailer_inspection_verified'
+  | 'trailer_inspection_expired'
   // Generic
   | 'note'
 
@@ -59,6 +64,7 @@ export type TimelineSource =
   | 'fuel_log'
   | 'expense_scanner'
   | 'compliance_scanner'
+  | 'trailer_lifecycle'
   | 'dashboard'
   | 'settings'
 
@@ -95,6 +101,10 @@ export const EVENT_META: Record<TimelineEventType, { emoji: string; label: strin
   document_uploaded:                   { emoji: '📄', label: 'Document uploaded'       },
   weather_alert_shown:                 { emoji: '🌩', label: 'Weather alert'           },
   incident_logged:                     { emoji: '🚨', label: 'Incident logged'        },
+  trailer_hook:                        { emoji: '🔗', label: 'Trailer hooked'         },
+  trailer_drop:                        { emoji: '🅿️', label: 'Trailer dropped'        },
+  trailer_inspection_verified:         { emoji: '✅', label: 'Inspection verified'    },
+  trailer_inspection_expired:          { emoji: '🚨', label: 'Inspection expired'     },
   note:                                { emoji: '📝', label: 'Note'                    },
 }
 
