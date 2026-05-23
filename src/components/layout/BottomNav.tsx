@@ -18,6 +18,7 @@ const TAB_ICONS: Record<string, string> = {
   '/trips':      '🗺️',
   '/dispatch':   '📋',
   '/loads':      '📦',
+  '/vault':      '🗄️',
   '/expenses':   '💰',
   '/compliance': '⚖️',
   '/settings':   '⚙️',

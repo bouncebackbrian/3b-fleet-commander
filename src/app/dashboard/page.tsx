@@ -788,6 +788,35 @@ export default function Dashboard() {
 
               <NavigationSnapshotCard mission={mission} />
 
+              {/* ── Proof Vault quick-access — roadside one-tap buttons ── */}
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '.7rem .85rem' }}>
+                <div style={{ fontSize: '.55rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.55rem' }}>
+                  🗄️ Roadside Proof
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
+                  {([
+                    { href: '/vault?group=inspection', emoji: '🔍', label: 'Inspection\nProof' },
+                    { href: '/vault?group=repair',     emoji: '🔧', label: 'Repair\nProof'     },
+                    { href: '/vault?group=truck',      emoji: '🚛', label: 'Truck &\nTrailer'  },
+                    { href: '/vault',                  emoji: '🗄️', label: 'All\nDocuments'    },
+                  ] as const).map(item => (
+                    <a
+                      key={item.href}
+                      href={item.href}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '.5rem .65rem', borderRadius: 10,
+                        border: '1px solid var(--border)', background: 'var(--surface-2)',
+                        textDecoration: 'none', cursor: 'pointer',
+                      }}
+                    >
+                      <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{item.emoji}</span>
+                      <span style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--text)', lineHeight: 1.3, whiteSpace: 'pre-line' }}>{item.label}</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+
               {/* QuickNavCard — phone only (sidebar replaces on iPad) */}
               <div className="cc-phone-only">
                 <QuickNavCard
