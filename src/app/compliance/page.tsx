@@ -7,7 +7,10 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import TopBar from '@/components/layout/TopBar'
-import ComplianceEventSheet from '@/components/compliance/ComplianceEventSheet'
+import ComplianceEventSheet    from '@/components/compliance/ComplianceEventSheet'
+import DOTPacketSheet          from '@/components/compliance/DOTPacketSheet'
+import PreTripChecklistSheet   from '@/components/compliance/PreTripChecklistSheet'
+import TireDepthPressureSheet  from '@/components/compliance/TireDepthPressureSheet'
 import {
   readLocalComplianceEvents,
   readLocalPreTripRecords,
@@ -15,7 +18,6 @@ import {
   COMPLIANCE_EVENT_META,
   COMPLIANCE_STATUS_META,
   SEVERITY_META,
-  newComplianceEvent,
   type ComplianceEvent,
   type ComplianceStatus,
   type ComplianceSeverity,
@@ -143,6 +145,9 @@ export default function CompliancePage() {
   const [searchQ,      setSearchQ]      = useState('')
   const [sheetOpen,    setSheetOpen]    = useState(false)
   const [editEvent,    setEditEvent]    = useState<ComplianceEvent | undefined>(undefined)
+  const [dotOpen,      setDotOpen]      = useState(false)
+  const [preTripOpen,  setPreTripOpen]  = useState(false)
+  const [tireOpen,     setTireOpen]     = useState(false)
   const [preTripCount, setPreTripCount] = useState(0)
   const [preTripFail,  setPreTripFail]  = useState(0)
 
@@ -268,13 +273,13 @@ export default function CompliancePage() {
             Log Compliance Event
           </button>
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <button onClick={() => { /* TODO: PreTripSheet */ }} style={{ flex: 1, padding: '.65rem', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontWeight: 700, fontSize: '.8rem', cursor: 'pointer' }}>
+            <button onClick={() => setPreTripOpen(true)} style={{ flex: 1, padding: '.65rem', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontWeight: 700, fontSize: '.8rem', cursor: 'pointer' }}>
               🚛 Pre-Trip
             </button>
-            <button onClick={() => { /* TODO: TireLogSheet */ }} style={{ flex: 1, padding: '.65rem', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontWeight: 700, fontSize: '.8rem', cursor: 'pointer' }}>
+            <button onClick={() => setTireOpen(true)} style={{ flex: 1, padding: '.65rem', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontWeight: 700, fontSize: '.8rem', cursor: 'pointer' }}>
               🛞 Tire Log
             </button>
-            <button onClick={() => { /* TODO: DOTPacketModal */ }} style={{ flex: 1, padding: '.65rem', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontWeight: 700, fontSize: '.8rem', cursor: 'pointer' }}>
+            <button onClick={() => setDotOpen(true)} style={{ flex: 1, padding: '.65rem', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontWeight: 700, fontSize: '.8rem', cursor: 'pointer' }}>
               📋 DOT Packet
             </button>
           </div>
@@ -415,11 +420,31 @@ export default function CompliancePage() {
 
       </main>
 
-      {/* Sheet */}
+      {/* ── Compliance Event Sheet ── */}
       <ComplianceEventSheet
         open={sheetOpen}
         onClose={handleSheetClose}
         existingEvent={editEvent}
+      />
+
+      {/* ── DOT Packet Sheet ── */}
+      <DOTPacketSheet
+        open={dotOpen}
+        onClose={() => setDotOpen(false)}
+      />
+
+      {/* ── Pre-Trip Checklist Sheet ── */}
+      <PreTripChecklistSheet
+        open={preTripOpen}
+        onClose={() => { setPreTripOpen(false); load() }}
+        onNeedsCompliance={() => setSheetOpen(true)}
+      />
+
+      {/* ── Tire Depth / Pressure Sheet ── */}
+      <TireDepthPressureSheet
+        open={tireOpen}
+        onClose={() => { setTireOpen(false); load() }}
+        onNeedsCompliance={() => setSheetOpen(true)}
       />
     </>
   )
