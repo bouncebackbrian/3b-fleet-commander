@@ -14,6 +14,7 @@ type Expense = {
   loadNumber:    string
   deductPct:     number     // 0-100
   isDeductible:  boolean
+  gallons?:      number     // fuel fill-ups — used for MPG KPI
   createdAt:     string
 }
 
@@ -101,6 +102,7 @@ export default function ExpensesPage() {
   const [location,    setLocation]    = useState('')
   const [loadNumber,  setLoadNumber]  = useState('')
   const [dateVal,     setDateVal]     = useState(today())
+  const [gallons,     setGallons]     = useState('')
   const [geoLoading,  setGeoLoading]  = useState(false)
   const [added,       setAdded]       = useState(false)
   const [deleteId,    setDeleteId]    = useState<string | null>(null)
@@ -129,6 +131,7 @@ export default function ExpensesPage() {
     const amt = parseFloat(amount)
     if (!amt || amt <= 0) { amountRef.current?.focus(); return }
     const c = cat(selectedCat)
+    const gal = selectedCat === 'fuel' && gallons ? parseFloat(gallons) : undefined
     const entry: Expense = {
       id:           crypto.randomUUID(),
       date:         dateVal,
@@ -139,10 +142,11 @@ export default function ExpensesPage() {
       loadNumber,
       deductPct:    c.deduct,
       isDeductible: c.deduct > 0,
+      gallons:      gal && gal > 0 ? Math.round(gal * 10) / 10 : undefined,
       createdAt:    new Date().toISOString(),
     }
     save([entry, ...expenses])
-    setAmount(''); setDescription(''); setAdded(true)
+    setAmount(''); setDescription(''); setGallons(''); setAdded(true)
     setTimeout(() => setAdded(false), 2000)
     amountRef.current?.focus()
   }
@@ -290,6 +294,28 @@ export default function ExpensesPage() {
               )}
             </div>
 
+            {/* Gallons — fuel only */}
+            {selectedCat === 'fuel' && (
+              <div style={{ marginBottom: '.75rem' }}>
+                <label style={S.lbl}>Gallons pumped <span style={{ color: 'var(--primary)', fontWeight: 900 }}>⛽ MPG tracker</span></label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text" inputMode="decimal"
+                    value={gallons}
+                    onChange={e => setGallons(e.target.value)}
+                    placeholder="e.g. 87.4"
+                    style={{ ...S.inp, paddingRight: '2.6rem' }}
+                  />
+                  <span style={{ position: 'absolute', right: '.85rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', fontSize: 'var(--text-xs)', fontWeight: 700 }}>gal</span>
+                </div>
+                {gallons && parseFloat(gallons) > 0 && amount && parseFloat(amount) > 0 && (
+                  <div style={{ fontSize: '.65rem', color: 'var(--primary)', marginTop: 4, fontWeight: 700 }}>
+                    ⛽ ${(parseFloat(amount) / parseFloat(gallons)).toFixed(3)}/gal
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Description */}
             <div style={{ marginBottom: '.75rem' }}>
               <label style={S.lbl}>Description</label>
@@ -420,6 +446,7 @@ export default function ExpensesPage() {
                         <span>📅 {e.date}</span>
                         {e.location && <span>📍 {e.location}</span>}
                         {e.loadNumber && <span>📦 Load #{e.loadNumber}</span>}
+                        {e.gallons && <span style={{ color: 'var(--primary)', fontWeight: 700 }}>⛽ {e.gallons} gal · ${(e.amount / e.gallons).toFixed(3)}/gal</span>}
                       </div>
                     </div>
 

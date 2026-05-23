@@ -13,6 +13,8 @@ import TrailerHookSheet      from '@/components/trailer/TrailerHookSheet'
 import TrailerHistoryPanel   from '@/components/trailer/TrailerHistoryPanel'
 import type { MissionStop } from '@/lib/dashboard/types'
 import { useMission } from '@/hooks/useMission'
+import BreakSchedulePanel from '@/components/trips/BreakSchedulePanel'
+import LoadKpiCard        from '@/components/trips/LoadKpiCard'
 
 // Leaflet must be client-side only
 const RouteMap = dynamic(() => import('@/components/map/RouteMap'), { ssr: false })
@@ -2179,6 +2181,15 @@ export default function TripPlanner() {
                 )
               })()}
 
+              {/* Load KPI — targets vs actuals */}
+              <LoadKpiCard
+                loadNumber={plan.loadNum || undefined}
+                plannedMiles={plan.total_miles}
+                cpm={plan.cpm}
+                fuelPrice={truck?.fuelPrice}
+                mpgEstimate={truck?.mpgLoaded}
+              />
+
               {/* HOS warnings */}
               {plan.warnings.length > 0 && (
                 <div style={{ background:'rgba(221,105,116,.08)', border:'1px solid rgba(221,105,116,.2)', borderRadius:12, padding:'.9rem 1rem' }}>
@@ -2227,6 +2238,12 @@ export default function TripPlanner() {
                   </div>
                 ))}
               </div>
+
+              {/* Break Schedule */}
+              <BreakSchedulePanel
+                driveHours={plan.total_miles / 58}
+                loadNumber={plan.loadNum || undefined}
+              />
 
               {/* Trucker's Path / GPS plan */}
               {plan.gpsStops.length > 0 && (
