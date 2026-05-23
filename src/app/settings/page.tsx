@@ -4,6 +4,8 @@ import TopBar from '@/components/layout/TopBar'
 import { loadSettings, persistSettings, DEFAULT_SETTINGS, type AppSettings } from '@/lib/settings'
 import { createClient } from '@/lib/supabase-browser'
 import { logTimelineEvent } from '@/lib/timeline'
+import { readUserMode, MODE_CONFIG, type UserMode } from '@/lib/userMode'
+import UserModeSelectorSheet from '@/components/layout/UserModeSelectorSheet'
 
 // ── Compliance doc types ───────────────────────────────────────────────────────
 type LicenseScan = {
@@ -135,6 +137,8 @@ type Profile = { full_name: string; role: string; three_b_id: string; three_b_bi
 const EMPTY_PROFILE: Profile = { full_name: '', role: '', three_b_id: '', three_b_biz_id: '', cdl_number: '', cdl_state: '', phone: '' }
 
 export default function Settings() {
+  const [userMode,    setUserMode]    = useState<UserMode | null>(null)
+  const [showModeSelector, setShowModeSelector] = useState(false)
   const [tab,         setTab]         = useState<Tab>('personal')
   const [s,           setS]           = useState<AppSettings>(DEFAULT_SETTINGS)
   const [profile,     setProfile]     = useState<Profile>(EMPTY_PROFILE)
@@ -199,6 +203,7 @@ export default function Settings() {
 
   useEffect(() => {
     setS(loadSettings())
+    setUserMode(readUserMode())
     setSamsaraToken(localStorage.getItem('samsara-api-token') ?? '')
     // Load compliance: Supabase first (source of truth), localStorage as instant fallback
     try {
@@ -541,6 +546,42 @@ export default function Settings() {
             </button>
           ))}
         </div>
+
+        {/* ── Command Role card — always visible ── */}
+        {userMode && (() => {
+          const cfg = MODE_CONFIG[userMode]
+          return (
+            <div style={{
+              padding: '1rem 1.1rem', borderRadius: 14,
+              border: `1.5px solid color-mix(in srgb, ${cfg.color} 30%, var(--border))`,
+              background: `color-mix(in srgb, ${cfg.color} 6%, var(--surface))`,
+              display: 'flex', alignItems: 'center', gap: 12,
+            }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: 12,
+                background: `color-mix(in srgb, ${cfg.color} 18%, transparent)`,
+                border: `1.5px solid ${cfg.color}`,
+                display: 'grid', placeItems: 'center', fontSize: '1.4rem', flexShrink: 0,
+              }}>
+                {cfg.emoji}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 900, fontSize: '.9rem', color: cfg.color }}>{cfg.label}</div>
+                <div style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 1 }}>{cfg.tagline}</div>
+              </div>
+              <button
+                onClick={() => setShowModeSelector(true)}
+                style={{
+                  padding: '.35rem .8rem', borderRadius: 8, flexShrink: 0,
+                  border: `1px solid ${cfg.color}50`, background: `color-mix(in srgb, ${cfg.color} 12%, transparent)`,
+                  color: cfg.color, fontSize: '.76rem', fontWeight: 800, cursor: 'pointer',
+                }}
+              >
+                Switch
+              </button>
+            </div>
+          )
+        })()}
 
         {/* ══ PERSONAL TAB ════════════════════════════════════════════════════ */}
         {tab === 'personal' && (
@@ -1484,6 +1525,11 @@ export default function Settings() {
       <input ref={registrationInputRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={handleRegistrationScan} />
       <input ref={insuranceInputRef}    type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={handleInsuranceScan}    />
       <input ref={medicalInputRef}      type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={handleMedicalScan}      />
+
+      <UserModeSelectorSheet
+        open={showModeSelector}
+        onClose={() => { setShowModeSelector(false); setUserMode(readUserMode()) }}
+      />
     </>
   )
 }
