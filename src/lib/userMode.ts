@@ -73,16 +73,19 @@ const ALL_TABS: NavTab[] = [
   { href: '/trips',     label: 'Route',    emoji: '🗺️', command: 'Dispatch'  },
   { href: '/dispatch',  label: 'Dispatch', emoji: '📋', command: 'Dispatch'   },
   { href: '/loads',     label: 'Loads',    emoji: '📦', command: 'Dispatch'   },
-  { href: '/expenses',  label: 'Owner',    emoji: '💰', command: 'Owner'      },
-  { href: '/settings',  label: 'Settings', emoji: '⚙️', command: 'System'    },
+  { href: '/expenses',    label: 'Owner',      emoji: '💰', command: 'Owner'       },
+  { href: '/compliance',  label: 'Compliance', emoji: '⚖️', command: 'Compliance'  },
+  { href: '/settings',    label: 'Settings',   emoji: '⚙️', command: 'System'      },
 ]
 
 // Which tabs each mode sees (ordered for display)
+// Driver Only: lean — no compliance tab unless there's an active OOS/violation
+// Owner-Operator, Dispatcher, Fleet Admin: Compliance always visible
 const MODE_TAB_HREFS: Record<UserMode, string[]> = {
   driver:         ['/dashboard', '/trips', '/expenses'],
-  owner_operator: ['/dashboard', '/dispatch', '/trips', '/loads', '/expenses'],
-  dispatcher:     ['/dispatch', '/loads', '/trips', '/dashboard'],
-  fleet_admin:    ['/dashboard', '/dispatch', '/trips', '/loads', '/expenses'],
+  owner_operator: ['/dashboard', '/dispatch', '/trips', '/compliance', '/expenses'],
+  dispatcher:     ['/dispatch', '/loads', '/trips', '/compliance'],
+  fleet_admin:    ['/dashboard', '/dispatch', '/trips', '/loads', '/compliance', '/expenses'],
 }
 
 export function getTabsForMode(mode: UserMode): NavTab[] {

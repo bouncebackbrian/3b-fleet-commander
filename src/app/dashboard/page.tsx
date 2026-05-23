@@ -33,8 +33,9 @@ import BreakTimerModal   from '@/components/dashboard/overlays/BreakTimerModal'
 import DrivingModeOverlay from '@/components/dashboard/overlays/DrivingModeOverlay'
 import IncidentSheet        from '@/components/incidents/IncidentSheet'
 import ComplianceProofModal  from '@/components/incidents/ComplianceProofModal'
-import TrailerHookSheet      from '@/components/trailer/TrailerHookSheet'
-import TrailerHistoryPanel   from '@/components/trailer/TrailerHistoryPanel'
+import TrailerHookSheet       from '@/components/trailer/TrailerHookSheet'
+import TrailerHistoryPanel    from '@/components/trailer/TrailerHistoryPanel'
+import ComplianceEventSheet   from '@/components/compliance/ComplianceEventSheet'
 
 // ── Sheets
 import NewLoadSheet      from '@/components/dashboard/sheets/NewLoadSheet'
@@ -340,6 +341,7 @@ export default function Dashboard() {
   const [showTrailerHook,     setShowTrailerHook]     = useState(false)
   const [showTrailerHistory,  setShowTrailerHistory]  = useState(false)
   const [trailerHookType,     setTrailerHookType]     = useState<'empty_hook' | 'loaded_hook' | 'empty_drop' | 'loaded_drop'>('empty_hook')
+  const [showComplianceEvent, setShowComplianceEvent] = useState(false)
 
   // ── Movement detector — only active when driving mode is on
   const movement = useMovementDetector(drivingMode)
@@ -483,6 +485,13 @@ export default function Dashboard() {
       <ComplianceProofModal
         open={showComplianceProof}
         onClose={() => setShowComplianceProof(false)}
+        mission={mission}
+      />
+
+      {/* ── Compliance Event Sheet */}
+      <ComplianceEventSheet
+        open={showComplianceEvent}
+        onClose={() => setShowComplianceEvent(false)}
         mission={mission}
       />
 

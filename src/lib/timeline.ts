@@ -45,6 +45,17 @@ export type TimelineEventType =
   | 'weather_alert_shown'
   // Incidents / compliance
   | 'incident_logged'
+  // Compliance events
+  | 'warning_created'
+  | 'violation_created'
+  | 'repair_started'
+  | 'repair_completed'
+  | 'proof_uploaded'
+  | 'dot_packet_generated'
+  | 'inspection_verified'
+  | 'pretrip_completed'
+  | 'out_of_service_flagged'
+  | 'oos_cleared'
   // Trailer lifecycle
   | 'trailer_hook'
   | 'trailer_drop'
@@ -64,6 +75,7 @@ export type TimelineSource =
   | 'fuel_log'
   | 'expense_scanner'
   | 'compliance_scanner'
+  | 'compliance_command'
   | 'trailer_lifecycle'
   | 'dashboard'
   | 'settings'
@@ -101,6 +113,16 @@ export const EVENT_META: Record<TimelineEventType, { emoji: string; label: strin
   document_uploaded:                   { emoji: '📄', label: 'Document uploaded'       },
   weather_alert_shown:                 { emoji: '🌩', label: 'Weather alert'           },
   incident_logged:                     { emoji: '🚨', label: 'Incident logged'        },
+  warning_created:                     { emoji: '⚠️', label: 'Warning logged'         },
+  violation_created:                   { emoji: '🚨', label: 'Violation logged'        },
+  repair_started:                      { emoji: '🔧', label: 'Repair started'          },
+  repair_completed:                    { emoji: '✅', label: 'Repair completed'        },
+  proof_uploaded:                      { emoji: '📸', label: 'Repair proof uploaded'  },
+  dot_packet_generated:                { emoji: '📋', label: 'DOT packet generated'   },
+  inspection_verified:                 { emoji: '✅', label: 'Inspection verified'     },
+  pretrip_completed:                   { emoji: '🚛', label: 'Pre-trip completed'      },
+  out_of_service_flagged:              { emoji: '🛑', label: 'Out of service flagged'  },
+  oos_cleared:                         { emoji: '✅', label: 'OOS cleared'            },
   trailer_hook:                        { emoji: '🔗', label: 'Trailer hooked'         },
   trailer_drop:                        { emoji: '🅿️', label: 'Trailer dropped'        },
   trailer_inspection_verified:         { emoji: '✅', label: 'Inspection verified'    },
