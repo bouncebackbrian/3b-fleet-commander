@@ -1,6 +1,8 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import TopBar from '@/components/layout/TopBar'
+import DriverUpdateSheet from '@/components/dispatch/DriverUpdateSheet'
+import DispatchFeed      from '@/components/dispatch/DispatchFeed'
 
 type MsgCategory = 'load' | 'arrival' | 'issues' | 'hos' | 'family' | 'custom'
 
@@ -185,6 +187,7 @@ const CATS: { id: MsgCategory; label: string; icon: string }[] = [
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function DispatchMessages() {
+  const [showDriverUpdate, setShowDriverUpdate] = useState(false)
   const [cat,         setCat]         = useState<MsgCategory>('load')
   const [trip,        setTrip]        = useState<ActiveTrip | null>(null)
   const [vehicle,     setVehicle]     = useState<VehicleSetup | null>(null)
@@ -504,7 +507,45 @@ export default function DispatchMessages() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
-      <TopBar title="Dispatch Messages" module="ops" subtitle="Geo-tagged · weather · pre-built templates" />
+      <TopBar title="Dispatch Command" module="ops" subtitle="Control tower · live updates · escalation queue" />
+
+      {/* Driver Update Sheet */}
+      <DriverUpdateSheet
+        open={showDriverUpdate}
+        onClose={() => setShowDriverUpdate(false)}
+        loadNumber={trip?.loadNumber ?? undefined}
+        driverName={driverName || undefined}
+      />
+
+      {/* ── Dispatch Control Tower — full width ── */}
+      <section style={{ padding: '1rem 1.2rem 0' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.75rem' }}>
+          <div style={{ fontSize: '.62rem', fontWeight: 900, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.1em' }}>
+            📡 Control Tower
+          </div>
+          <button
+            onClick={() => setShowDriverUpdate(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '.5rem 1rem', borderRadius: 10,
+              border: '1px solid rgba(0,232,176,.35)', background: 'rgba(0,232,176,.08)',
+              color: 'var(--primary)', fontWeight: 800, fontSize: '.78rem', cursor: 'pointer',
+            }}
+          >
+            📡 Send Update
+          </button>
+        </div>
+        <DispatchFeed
+          loadNumber={trip?.loadNumber ?? undefined}
+          driverName={driverName || 'Driver'}
+          origin={trip?.origin?.query || ''}
+          destination={trip?.destination?.query || ''}
+          totalMiles={trip?.totalMiles || 0}
+          estArrival={trip?.estArrival || ''}
+        />
+      </section>
+
+      <div style={{ margin: '1.2rem 1.2rem 0', borderBottom: '1px solid var(--border)' }} />
 
       <main style={{ display: 'grid', gridTemplateColumns: 'minmax(0,310px) 1fr', gap: '1.2rem', padding: '1.2rem', alignItems: 'start' }}>
 
