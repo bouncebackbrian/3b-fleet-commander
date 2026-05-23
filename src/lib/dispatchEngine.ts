@@ -264,6 +264,15 @@ export function postDriverUpdate(
     saveEscalation(escalation)
   }
 
+  // ── Supabase persistence (fire-and-forget) ────────────────────────────────
+  // Import dynamically to avoid circular deps / SSR issues
+  if (typeof window !== 'undefined') {
+    import('@/lib/supabaseFleetStore').then(({ persistDriverUpdate, persistAlert }) => {
+      persistDriverUpdate(update).catch(() => { /* silent fail — localStorage is source of truth */ })
+      persistAlert(alert).catch(() => { /* silent fail */ })
+    }).catch(() => { /* module load failed */ })
+  }
+
   return update
 }
 
