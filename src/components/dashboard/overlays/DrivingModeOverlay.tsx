@@ -1,11 +1,14 @@
 'use client'
 import { useState, useRef } from 'react'
 import { fmtTime } from '@/lib/dashboard/helpers'
-import type { HOSDisplay, WeatherInfo, LoadMission, ActiveTrip } from '@/lib/dashboard/types'
+import type { HOSDisplay, WeatherInfo, WeatherData, LoadMission, ActiveTrip, VehicleSetup } from '@/lib/dashboard/types'
 import type { FuelIntelResult } from '@/lib/scoreLoad'
 import SpotifyWidget from '@/components/spotify/SpotifyWidget'
 import type { SpotifyTrack, SpotifyStatus } from '@/hooks/useSpotify'
 import { logTimelineEvent } from '@/lib/timeline'
+import MissionHeader    from '@/components/dashboard/overlays/MissionHeader'
+import DriveStatusBanner from '@/components/dashboard/overlays/DriveStatusBanner'
+import DriveWeatherCard  from '@/components/dashboard/overlays/DriveWeatherCard'
 
 // ── Nav app descriptors ───────────────────────────────────────────────────────
 const NAV_APPS = [
@@ -82,7 +85,7 @@ function fmtHrs(h: number): string {
  */
 function deriveDrivingAlerts(
   hosDisplay:  HOSDisplay | null,
-  weather:     { temp: number; windSpeed: number } | null,
+  weather:     WeatherData | null,
   wx:          WeatherInfo | null,
   missionFuel: FuelIntelResult | null,
   mission:     LoadMission | null,
@@ -134,12 +137,16 @@ function deriveDrivingAlerts(
       text: `Hazardous: ${wx.label}`,
       actionLabel: 'OK', actionKey: 'dismiss',
     })
-  } else if (weather && weather.windSpeed >= 40) {
-    alerts.push({
-      id: 'weather_wind', emoji: '🌬', severity: 'warn',
-      text: `High winds ${Math.round(weather.windSpeed)} mph`,
-      actionLabel: 'OK', actionKey: 'dismiss',
-    })
+  } else {
+    // Use gusts (preferred) or sustained wind speed for alert threshold
+    const effectiveWind = weather?.windGusts ?? weather?.windSpeed ?? 0
+    if (effectiveWind >= 40) {
+      alerts.push({
+        id: 'weather_wind', emoji: '🌬', severity: 'warn',
+        text: `${weather?.windGusts ? `Gusts ${Math.round(weather.windGusts)} mph` : `Wind ${Math.round(weather?.windSpeed ?? 0)} mph`} — reduce speed`,
+        actionLabel: 'OK', actionKey: 'dismiss',
+      })
+    }
   }
 
   // 3. No fuel plan when mission is active
@@ -171,12 +178,14 @@ function fmtEta(etaStr: string): string {
 interface Props {
   liveClock:   string
   mission:     LoadMission | null
+  vehicle:     VehicleSetup | null
   nextStop:    ActiveTrip['stops'][number] | undefined
   hosDisplay:  HOSDisplay | null
   driveColor:  string
   missionFuel: FuelIntelResult | null
-  weather:     { temp: number; windSpeed: number } | null
+  weather:     WeatherData | null
   wx:          WeatherInfo | null
+  weatherLastUpdated?: Date | null
   // Spotify
   spotifyTrack?:      SpotifyTrack | null
   spotifyStatus?:     SpotifyStatus
@@ -198,8 +207,8 @@ interface Props {
 }
 
 export default function DrivingModeOverlay({
-  liveClock, mission, nextStop, hosDisplay, driveColor,
-  missionFuel, weather, wx,
+  liveClock, mission, vehicle, nextStop, hosDisplay, driveColor,
+  missionFuel, weather, wx, weatherLastUpdated,
   spotifyTrack, spotifyStatus, spotifyTrackSaved,
   onSpotifyToggle, onSpotifyNext, onSpotifyPrev, onSpotifyLike,
   onEmergency, onExit, onStartBreak, onShowFuel,
@@ -292,6 +301,15 @@ export default function DrivingModeOverlay({
         </div>
       )}
 
+      {/* ── ZONE 1b: Mission anchor bar — Load#, Tractor#, Trailer#, ETA, HOS, Fuel ── */}
+      <MissionHeader
+        mission={mission}
+        vehicle={vehicle}
+        hosDisplay={hosDisplay}
+        missionFuel={missionFuel}
+        nextStop={nextStop}
+      />
+
       {/* ── ZONE 2: Critical alert strip — only renders when alerts exist ── */}
       {alerts.length > 0 && (
         <div className="cc-driving-alerts">
@@ -332,6 +350,9 @@ export default function DrivingModeOverlay({
 
       {/* ── ZONE 3: Scrollable center content ── */}
       <div className="cc-driving-content">
+
+        {/* Dynamic status banner — On Schedule / HOS Risk / Weather Risk / Delay */}
+        <DriveStatusBanner hosDisplay={hosDisplay} wx={wx} weather={weather} />
 
         {/* Clock */}
         <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 900, fontSize: 'clamp(2.6rem,9vw,5rem)', color: 'var(--text)', letterSpacing: '-.02em', lineHeight: 1 }}>
@@ -387,12 +408,8 @@ export default function DrivingModeOverlay({
             ⛽ ~{missionFuel.gallonsNeeded} gal · ${Math.round(missionFuel.fuelCostTotal)} est. fuel
           </div>
         )}
-        {weather && wx && (
-          <div style={{ fontSize: '1.1rem', fontWeight: 800, color: wx.color }}>
-            {wx.emoji} {weather.temp}°F · {wx.label}
-            {wx.severe && <span style={{ color: 'var(--error)' }}> — ⚠️ HAZARDOUS</span>}
-          </div>
-        )}
+        {/* Drive weather card — wind, gusts, visibility, crosswind risk, rain timing */}
+        <DriveWeatherCard weather={weather} wx={wx} lastUpdated={weatherLastUpdated ?? null} />
 
         {/* Return-to-app banner */}
         {returnApp && (

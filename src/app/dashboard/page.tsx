@@ -449,12 +449,14 @@ export default function Dashboard() {
         <DrivingModeOverlay
           liveClock={liveClock}
           mission={mission}
+          vehicle={vehicle}
           nextStop={nextStop}
           hosDisplay={hosDisplay}
           driveColor={driveColor}
           missionFuel={missionFuel}
           weather={weather}
           wx={wx}
+          weatherLastUpdated={weatherUpdated}
           spotifyTrack={spotify.track}
           spotifyStatus={spotify.status}
           spotifyTrackSaved={spotify.trackSaved}

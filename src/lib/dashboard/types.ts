@@ -165,6 +165,7 @@ export type Expense = {
   id: string; date: string; category: string; amount: number
   description: string; location: string; loadNumber: string
   deductPct: number; isDeductible: boolean; createdAt: string
+  fuelType?:     'diesel' | 'def' | 'reefer' | 'other'  // ← DEF support
   // Order-centered attachment (Phase 5C) — all optional for backward compat
   missionId?:    string
   orderNumber?:  string
@@ -186,6 +187,7 @@ export type FuelEntry = {
   gallons:      number
   pricePerGal:  number
   totalCost:    number
+  fuelType?:    'diesel' | 'def' | 'reefer' | 'other'  // ← DEF + fuel type
   movementMode: MovementMode    // loaded | empty | bobtail | personal | yard
   occurredAt:   string          // ISO — actual pump time
   loggedAt:     string          // ISO — when entered in app
@@ -216,6 +218,9 @@ export type DocRecord = {
 
 export type WeatherData = {
   temp: number; windSpeed: number; code: number; precip: number; lat: number; lng: number
+  windGusts?:        number   // mph — from open-meteo wind_gusts_10m
+  visibility?:       number   // miles — converted from meters
+  precipProbNext2h?: number   // 0-100 — max hourly precip probability over next ~2 hours
 }
 
 // ── Mission lifecycle status ──────────────────────────────────────────────────

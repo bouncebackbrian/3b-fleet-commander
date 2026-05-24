@@ -10,6 +10,7 @@ export default function ExpensesCard() {
   const [showQuickAdd,  setShowQuickAdd]  = useState(false)
   const [showScan,      setShowScan]      = useState(false)
   const [qaCategory,    setQaCategory]    = useState('fuel')
+  const [qaFuelType,    setQaFuelType]    = useState<'diesel' | 'def' | 'reefer' | 'other'>('diesel')
   const [qaAmount,      setQaAmount]      = useState('')
   const [qaDesc,        setQaDesc]        = useState('')
   const [qaAdding,      setQaAdding]      = useState(false)
@@ -35,12 +36,13 @@ export default function ExpensesCard() {
       date: todayISO(),
       category: cat.id,
       amount: amt,
-      description: qaDesc.trim(),
+      description: qaDesc.trim() || (cat.id === 'fuel' ? qaFuelType.toUpperCase() : ''),
       location: '',
       loadNumber: '',
       deductPct: cat.deductPct,
       isDeductible: true,
       createdAt: new Date().toISOString(),
+      ...(cat.id === 'fuel' ? { fuelType: qaFuelType } : {}),
     }
     try {
       const raw = localStorage.getItem('3b-expenses')
@@ -88,6 +90,7 @@ export default function ExpensesCard() {
 
       {showQuickAdd && (
         <div style={{ marginTop: '.65rem', display: 'grid', gap: 8 }}>
+          {/* Category picker */}
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             {QUICK_CATS.map(c => (
               <button key={c.id} onClick={() => setQaCategory(c.id)}
@@ -98,6 +101,25 @@ export default function ExpensesCard() {
                 }}>{c.emoji} {c.label}</button>
             ))}
           </div>
+
+          {/* Fuel type sub-picker — shown only when Fuel is selected */}
+          {qaCategory === 'fuel' && (
+            <div style={{ display: 'flex', gap: 4 }}>
+              {([
+                { id: 'diesel' as const, label: '⛽ Diesel' },
+                { id: 'def'    as const, label: '🔵 DEF'    },
+                { id: 'reefer' as const, label: '❄️ Reefer' },
+                { id: 'other'  as const, label: '📄 Other'  },
+              ]).map(ft => (
+                <button key={ft.id} onClick={() => setQaFuelType(ft.id)}
+                  style={{ fontSize: '.62rem', fontWeight: 700, padding: '.2rem .45rem', borderRadius: 6, border: '1px solid', cursor: 'pointer',
+                    background:  qaFuelType === ft.id ? 'rgba(74,196,255,.12)' : 'transparent',
+                    borderColor: qaFuelType === ft.id ? 'rgba(74,196,255,.4)'  : 'var(--border)',
+                    color:       qaFuelType === ft.id ? 'var(--blue)'          : 'var(--muted)',
+                  }}>{ft.label}</button>
+              ))}
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 6 }}>
             <input type="text" inputMode="decimal" placeholder="0.00"
               value={qaAmount} onChange={e => setQaAmount(e.target.value)}
