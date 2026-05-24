@@ -18,6 +18,7 @@ import {
   getLastPreTrip,
   getLastTireLog,
   getExpiryAlerts,
+  getTireMonitorEntries,
   saveProfile,
   analyzeTires,
   getActiveContext,
@@ -25,12 +26,16 @@ import {
   type TrailerEvent,
   type PreTripRecord,
   type TireLog,
+  type TireMonitorEntry,
+  type TireReinspection,
   type InspectionExpiryAlert,
   type TrailerEventType,
 } from '@/lib/trailerIntelligence'
-import PreTripSheet          from '@/components/trailer/PreTripSheet'
-import TireLogSheet          from '@/components/trailer/TireLogSheet'
-import TrailerInspectionSheet from '@/components/trailer/TrailerInspectionSheet'
+import PreTripSheet            from '@/components/trailer/PreTripSheet'
+import TireLogSheet            from '@/components/trailer/TireLogSheet'
+import TireReinspectionSheet   from '@/components/trailer/TireReinspectionSheet'
+import TireMonitorBanner       from '@/components/trailer/TireMonitorBanner'
+import TrailerInspectionSheet  from '@/components/trailer/TrailerInspectionSheet'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -344,8 +349,11 @@ export default function TrailerPage() {
   const [activeTrailer,   setActiveTrailer]   = useState('')
   const [activeProfile,   setActiveProfile]   = useState<TrailerProfile | undefined>()
 
+  const [monitorEntries,   setMonitorEntries]   = useState<TireMonitorEntry[]>([])
+
   const [showPreTrip,      setShowPreTrip]      = useState(false)
   const [showTireLog,      setShowTireLog]      = useState(false)
+  const [showReinspection, setShowReinspection] = useState(false)
   const [showInspection,   setShowInspection]   = useState(false)
   const [showProfile,      setShowProfile]      = useState(false)
   const [inspEventType,    setInspEventType]    = useState<TrailerEventType>('pickup')
@@ -366,6 +374,7 @@ export default function TrailerPage() {
     if (active) {
       setLastPreTrip(getLastPreTrip(active))
       setLastTireLog(getLastTireLog(active))
+      setMonitorEntries(getTireMonitorEntries(active))
     }
   }, [])
 
@@ -373,9 +382,15 @@ export default function TrailerPage() {
     load()
   }, [load])
 
+  function handleReinspectionSaved(_r: TireReinspection) {
+    // Refresh monitor entries after a recheck is saved
+    if (activeTrailer) setMonitorEntries(getTireMonitorEntries(activeTrailer))
+  }
+
   function handleSheetClose() {
     setShowPreTrip(false)
     setShowTireLog(false)
+    setShowReinspection(false)
     setShowInspection(false)
     setShowProfile(false)
     load()
@@ -492,11 +507,20 @@ export default function TrailerPage() {
           </div>
         )}
 
+        {/* Tire Monitor Banner — active monitoring feed */}
+        {monitorEntries.length > 0 && (
+          <TireMonitorBanner
+            entries={monitorEntries}
+            onRecheck={() => setShowReinspection(true)}
+          />
+        )}
+
         {/* Action pills — compact horizontal row */}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {[
             { label: 'Pre-Trip',   emoji: '🚛', status: lastPreTrip ? fmtTime(lastPreTrip.createdAt) : null,  action: () => setShowPreTrip(true)               },
             { label: 'Tire Log',   emoji: '🔵', status: lastTireLog ? fmtTime(lastTireLog.createdAt) : null,  action: () => setShowTireLog(true)                },
+            { label: 'Recheck',    emoji: '🔁', status: null, action: () => setShowReinspection(true), hidden: monitorEntries.filter(e => e.status !== 'resolved').length === 0 },
             { label: 'Pickup',     emoji: '🔗', status: null,                                                   action: () => openInspection('pickup')           },
             { label: 'Drop',       emoji: '📍', status: null,                                                   action: () => openInspection('drop')             },
             { label: 'Inspect',    emoji: '🔍', status: null,                                                   action: () => openInspection('inspection')       },
@@ -505,8 +529,10 @@ export default function TrailerPage() {
             <button key={a.label} onClick={a.action} style={{
               display: 'flex', alignItems: 'center', gap: 6,
               padding: '.45rem .8rem', borderRadius: 20, cursor: 'pointer',
-              border: '1px solid var(--border)', background: 'var(--surface-2)',
-              color: 'var(--text)', fontWeight: 700, fontSize: '.8rem',
+              border: `1px solid ${a.label === 'Recheck' ? 'rgba(245,194,0,.4)' : 'var(--border)'}`,
+              background: a.label === 'Recheck' ? 'rgba(245,194,0,.08)' : 'var(--surface-2)',
+              color: a.label === 'Recheck' ? 'var(--warn)' : 'var(--text)',
+              fontWeight: 700, fontSize: '.8rem',
             }}>
               <span style={{ fontSize: '.95rem' }}>{a.emoji}</span>
               <span>{a.label}</span>
@@ -590,6 +616,7 @@ export default function TrailerPage() {
                     setEvents(getTrailerEvents(p.trailerNumber, 20))
                     setLastPreTrip(getLastPreTrip(p.trailerNumber))
                     setLastTireLog(getLastTireLog(p.trailerNumber))
+                    setMonitorEntries(getTireMonitorEntries(p.trailerNumber))
                   }}
                 />
               ))}
@@ -626,6 +653,12 @@ export default function TrailerPage() {
       <TireLogSheet
         open={showTireLog}
         onClose={handleSheetClose}
+        trailerNumber={activeTrailer}
+      />
+      <TireReinspectionSheet
+        open={showReinspection}
+        onClose={() => setShowReinspection(false)}
+        onSaved={handleReinspectionSaved}
         trailerNumber={activeTrailer}
       />
       <TrailerInspectionSheet

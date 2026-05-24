@@ -3,19 +3,21 @@
  * trailerIntelligence.ts — Trailer + Inspection Intelligence data layer
  *
  * Wraps four existing Supabase tables:
- *   fleet_trailer_profiles  — persistent per-trailer memory
- *   fleet_pretrip_records   — pre-trip checklists tied to loads
- *   fleet_tire_logs         — PSI + tread depth readings per position
- *   fleet_trailer_events    — pickup / drop / hook / damage events
- *   fleet_inspections       — DOT/annual inspection records (from violationVault)
+ *   fleet_trailer_profiles    — persistent per-trailer memory
+ *   fleet_pretrip_records     — pre-trip checklists tied to loads
+ *   fleet_tire_logs           — PSI + tread depth readings per position
+ *   fleet_tire_reinspections  — roadside comparison rechecks (better/same/worse)
+ *   fleet_trailer_events      — pickup / drop / hook / damage events
+ *   fleet_inspections         — DOT/annual inspection records (from violationVault)
  *
  * Write-through: localStorage first (instant UI) → Supabase async.
  *
  * LS keys:
- *   3b-trailer-profiles  — TrailerProfile[]  (max 50)
- *   3b-pretrip-records   — PreTripRecord[]   (max 200)
- *   3b-tire-logs         — TireLog[]         (max 500)
- *   3b-trailer-events    — TrailerEvent[]    (max 300)
+ *   3b-trailer-profiles     — TrailerProfile[]     (max 50)
+ *   3b-pretrip-records      — PreTripRecord[]      (max 200)
+ *   3b-tire-logs            — TireLog[]            (max 500)
+ *   3b-tire-reinspections   — TireReinspection[]   (max 300)
+ *   3b-trailer-events       — TrailerEvent[]       (max 300)
  */
 
 import { createClient } from '@/lib/supabase-browser'
@@ -128,6 +130,99 @@ export interface TireLog {
   gpsLng?:       number
   supabaseId?:   string
   createdAt:     string
+}
+
+// ── Tire reinspection (roadside comparison) ───────────────────────────────────
+
+/** Driver tap: is this tire better, same, or worse than last check? */
+export type TireComparison = 'better' | 'same' | 'worse'
+
+/**
+ * Computed monitoring status for a flagged tire position.
+ *   stable_monitoring — same readings, watch at next stop
+ *   worsening         — degrading trend, plan service soon
+ *   service_needed    — urgent / critical, needs repair now
+ *   resolved          — condition improved, no longer a concern
+ */
+export type TireMonitorStatus = 'stable_monitoring' | 'worsening' | 'service_needed' | 'resolved'
+
+export interface TireReinspectionReading {
+  position:   TirePosition
+  comparison: TireComparison
+  photoId?:   string   // proofVault doc id
+  note?:      string
+}
+
+/** One roadside recheck event against a base TireLog */
+export interface TireReinspection {
+  id:            string
+  truckNumber:   string
+  trailerNumber: string
+  loadId?:       string
+  baseTireLogId: string   // id of the TireLog this compares against
+  readings:      TireReinspectionReading[]
+  overallStatus: TireMonitorStatus
+  notes:         string
+  gpsLat?:       number
+  gpsLng?:       number
+  supabaseId?:   string
+  createdAt:     string
+}
+
+/** Aggregated per-position monitoring entry for the dispatch feed / banner */
+export interface TireMonitorEntry {
+  position:    TirePosition
+  label:       string
+  baseReading: TireReading
+  history:     TireComparison[]   // oldest → newest
+  status:      TireMonitorStatus
+  tier:        'preventative' | 'warning' | 'urgent' | 'critical'
+  lastChecked: string
+}
+
+// ── Alert engine ──────────────────────────────────────────────────────────────
+
+/**
+ * Derives the current monitor status + alert tier for one tire position.
+ *
+ * Rules (same → worse → resolved → critical logic):
+ *   below legal threshold (DOT min / flat / bulge)  → critical  / service_needed
+ *   worse + worse                                   → urgent    / service_needed
+ *   same  + worse  OR  first-check worse            → warning   / worsening
+ *   same  + same   OR  first-check same             → preventative / stable_monitoring
+ *   any   + better                                  → preventative / resolved
+ */
+export function computeMonitorStatus(
+  baseReading: TireReading,
+  history: TireComparison[],
+): { status: TireMonitorStatus; tier: 'preventative' | 'warning' | 'urgent' | 'critical' } {
+  const meta = TIRE_POSITION_META[baseReading.position]
+
+  // Always critical if below legal DOT threshold in base reading
+  const isLegal =
+    baseReading.condition !== 'replace' &&
+    baseReading.condition !== 'flat'    &&
+    baseReading.condition !== 'bulge'   &&
+    (baseReading.treadDepth === undefined || baseReading.treadDepth > meta.minTread)
+  if (!isLegal) return { status: 'service_needed', tier: 'critical' }
+
+  if (history.length === 0) {
+    return { status: 'stable_monitoring', tier: 'preventative' }
+  }
+
+  const last = history[history.length - 1]
+  const prev = history.length >= 2 ? history[history.length - 2] : null
+
+  if (last === 'better') return { status: 'resolved', tier: 'preventative' }
+
+  // worse + worse → urgent escalation
+  if (last === 'worse' && prev === 'worse') return { status: 'service_needed', tier: 'urgent' }
+
+  // same + worse, or first recheck is worse → warning
+  if (last === 'worse') return { status: 'worsening', tier: 'warning' }
+
+  // same + same → preventative reminder
+  return { status: 'stable_monitoring', tier: 'preventative' }
 }
 
 // ── Trailer events ────────────────────────────────────────────────────────────
@@ -284,10 +379,11 @@ export function makeDefaultChecklist(isReefer = false): CheckCategory[] {
 // ── Storage helpers ───────────────────────────────────────────────────────────
 
 const LS = {
-  profiles: '3b-trailer-profiles',
-  pretrip:  '3b-pretrip-records',
-  tireLogs: '3b-tire-logs',
-  events:   '3b-trailer-events',
+  profiles:      '3b-trailer-profiles',
+  pretrip:       '3b-pretrip-records',
+  tireLogs:      '3b-tire-logs',
+  reinspections: '3b-tire-reinspections',
+  events:        '3b-trailer-events',
 }
 
 function lsRead<T>(key: string): T[] {
@@ -448,6 +544,95 @@ export async function saveTireLog(record: Omit<TireLog, 'id' | 'createdAt'>): Pr
   }
 
   return saved
+}
+
+// ── Tire reinspections ────────────────────────────────────────────────────────
+
+export function getReinspections(trailerNumber?: string, limit = 50): TireReinspection[] {
+  const all = lsRead<TireReinspection>(LS.reinspections)
+  return (trailerNumber ? all.filter(r => r.trailerNumber === trailerNumber) : all).slice(0, limit)
+}
+
+export async function saveReinspection(
+  record: Omit<TireReinspection, 'id' | 'createdAt'>,
+): Promise<TireReinspection> {
+  const now   = new Date().toISOString()
+  const saved: TireReinspection = { ...record, id: uid(), createdAt: now }
+
+  const all = lsRead<TireReinspection>(LS.reinspections)
+  all.unshift(saved)
+  lsSave(LS.reinspections, all, 300)
+
+  const client = sb()
+  if (client) {
+    sbFire(client.from('fleet_tire_reinspections').insert({
+      id:              saved.id,
+      truck_number:    saved.truckNumber,
+      trailer_number:  saved.trailerNumber,
+      load_id:         saved.loadId         ?? null,
+      base_tire_log_id: saved.baseTireLogId,
+      readings:        saved.readings,
+      overall_status:  saved.overallStatus,
+      notes:           saved.notes,
+      gps_lat:         saved.gpsLat         ?? null,
+      gps_lng:         saved.gpsLng         ?? null,
+    }))
+  }
+
+  return saved
+}
+
+/**
+ * Build per-position monitoring entries from the most recent TireLog
+ * and all subsequent reinspections for a given trailer.
+ * Only returns positions that were flagged (non-good) in the base log
+ * or have been reinspected at least once.
+ */
+export function getTireMonitorEntries(trailerNumber: string): TireMonitorEntry[] {
+  const baseLog = getLastTireLog(trailerNumber)
+  if (!baseLog) return []
+
+  // All reinspections for this base log, oldest first
+  const reinspections = lsRead<TireReinspection>(LS.reinspections)
+    .filter(r => r.trailerNumber === trailerNumber && r.baseTireLogId === baseLog.id)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+
+  const entries: TireMonitorEntry[] = []
+
+  for (const reading of baseLog.readings) {
+    const hasIssue   = reading.condition !== 'good'
+    const hasHistory = reinspections.some(r =>
+      r.readings.some(rr => rr.position === reading.position),
+    )
+    if (!hasIssue && !hasHistory) continue
+
+    // Collect comparison history oldest → newest
+    const history: TireComparison[] = reinspections.flatMap(r => {
+      const match = r.readings.find(rr => rr.position === reading.position)
+      return match ? [match.comparison] : []
+    })
+
+    const lastReinspect = [...reinspections]
+      .reverse()
+      .find(r => r.readings.some(rr => rr.position === reading.position))
+
+    const { status, tier } = computeMonitorStatus(reading, history)
+    const meta             = TIRE_POSITION_META[reading.position]
+
+    entries.push({
+      position:    reading.position,
+      label:       meta.label,
+      baseReading: reading,
+      history,
+      status,
+      tier,
+      lastChecked: lastReinspect?.createdAt ?? baseLog.createdAt,
+    })
+  }
+
+  // Sort by severity
+  const ORDER = { critical: 0, urgent: 1, warning: 2, preventative: 3 }
+  return entries.sort((a, b) => ORDER[a.tier] - ORDER[b.tier])
 }
 
 // ── Trailer events ────────────────────────────────────────────────────────────
