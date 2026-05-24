@@ -794,8 +794,9 @@ export default function Dashboard() {
 
                 {/* ── Tier 2: secondary navigation ── */}
                 {([
-                  { href: '/vault',    label: 'Vault',   emoji: '🗄️' },
-                  { href: '/trailer',  label: 'Trailer', emoji: '🚚' },
+                  { href: '/vault',       label: 'Vault',       emoji: '🗄️' },
+                  { href: '/compliance',  label: 'Compliance',  emoji: '⚖️' },
+                  { href: '/trailer',     label: 'Trailer',     emoji: '🚚' },
                 ] as const).map((item, i, arr) => (
                   <span key={item.href} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                     <a href={item.href} style={{

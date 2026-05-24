@@ -84,10 +84,10 @@ const ALL_TABS: NavTab[] = [
 // Vault is the proof/document layer. Trailer is the operational inspection layer.
 // driver mode swaps Owner (expenses) for Trailer Intel — more relevant on the road.
 const MODE_TAB_HREFS: Record<UserMode, string[]> = {
-  driver:         ['/dashboard', '/trips', '/trailer', '/vault'],
-  owner_operator: ['/dashboard', '/dispatch', '/trips', '/trailer', '/vault'],
-  dispatcher:     ['/dispatch', '/loads', '/trips', '/vault'],
-  fleet_admin:    ['/dashboard', '/dispatch', '/trips', '/loads', '/trailer', '/vault'],
+  driver:         ['/dashboard', '/trips', '/trailer', '/compliance', '/vault'],
+  owner_operator: ['/dashboard', '/dispatch', '/trips', '/trailer', '/compliance', '/vault'],
+  dispatcher:     ['/dispatch', '/loads', '/trips', '/compliance', '/vault'],
+  fleet_admin:    ['/dashboard', '/dispatch', '/trips', '/compliance', '/trailer', '/vault'],
 }
 
 export function getTabsForMode(mode: UserMode): NavTab[] {
