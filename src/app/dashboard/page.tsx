@@ -61,6 +61,18 @@ import ToastContainer      from '@/components/shared/ToastContainer'
 import OfflineBanner       from '@/components/shared/OfflineBanner'
 import DebugPanel          from '@/components/debug/DebugPanel'
 
+// ── Maintenance
+import PMStatusCard from '@/components/maintenance/PMStatusCard'
+import PMSchedulerSheet from '@/components/maintenance/PMSchedulerSheet'
+import {
+  PM_CONFIG,
+  getActivePMTasks,
+  getNearestServiceLocation,
+  getMaintenanceContext,
+  type PMTask,
+  type PMSchedule,
+} from '@/lib/maintenanceEngine'
+
 // ── Cards
 import ActiveMissionCard from '@/components/dashboard/cards/ActiveMissionCard'
 import ActiveTripCard    from '@/components/dashboard/cards/ActiveTripCard'
@@ -314,6 +326,23 @@ export default function Dashboard() {
     prevOnline.current = isOnline
   }, [isOnline])
 
+  // ── PM task loader
+  useEffect(() => {
+    const ctx   = getMaintenanceContext()
+    const tasks = getActivePMTasks(ctx.truckNumber || undefined)
+    setPmTasks(tasks)
+    if (tasks.length > 0) {
+      setPmNearestLoc(getNearestServiceLocation(40.0, -112.0))
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+          setPmGpsLat(pos.coords.latitude)
+          setPmGpsLng(pos.coords.longitude)
+          setPmNearestLoc(getNearestServiceLocation(pos.coords.latitude, pos.coords.longitude))
+        }, () => { /* no gps */ })
+      }
+    }
+  }, [])
+
   // ── Panel toggles
   const [drivingMode,       setDrivingMode]       = useState(false)
   // ── Spotify — active polling (5s) during driving mode, background (30s) otherwise
@@ -345,7 +374,15 @@ export default function Dashboard() {
   const [showComplianceEvent,  setShowComplianceEvent]  = useState(false)
   const [showDriverUpdate,     setShowDriverUpdate]     = useState(false)
 
-  // ── Movement detector — only active when driving mode is on
+  // ── PM state
+  const [pmTasks,       setPmTasks]       = useState<PMTask[]>([])
+  const [pmNearestLoc,  setPmNearestLoc]  = useState<ReturnType<typeof getNearestServiceLocation>>(null)
+  const [showPMSheet,   setShowPMSheet]   = useState(false)
+  const [pmSheetTask,   setPmSheetTask]   = useState<PMTask | null>(null)
+  const [pmGpsLat,      setPmGpsLat]      = useState<number | undefined>()
+  const [pmGpsLng,      setPmGpsLng]      = useState<number | undefined>()
+
+  // Movement detector — only active when driving mode is on
   const movement = useMovementDetector(drivingMode)
 
   // ── Derived HOS display
@@ -478,6 +515,12 @@ export default function Dashboard() {
           onTrailerHook={() => { setTrailerHookType('empty_hook'); setShowTrailerHook(true) }}
           onTrailerDrop={() => { setTrailerHookType('empty_drop'); setShowTrailerHook(true) }}
           onSendUpdate={() => setShowDriverUpdate(true)}
+          onShowPM={() => { if (pmTasks[0]) { setPmSheetTask(pmTasks[0]); setShowPMSheet(true) } }}
+          pmAlert={pmTasks.length > 0 ? {
+            label:      PM_CONFIG[pmTasks[0].pmType]?.label ?? 'PM',
+            milesUntil: Math.abs(pmTasks[0].milesUntilDue),
+            isOverdue:  pmTasks[0].status === 'overdue',
+          } : null}
         />
       )}
 
@@ -505,6 +548,16 @@ export default function Dashboard() {
         open={showDriverUpdate}
         onClose={() => setShowDriverUpdate(false)}
         loadNumber={mission?.loadNumber ?? activeTrip?.loadNumber ?? undefined}
+      />
+
+      {/* ── PM Scheduler */}
+      <PMSchedulerSheet
+        open={showPMSheet}
+        onClose={() => setShowPMSheet(false)}
+        onSaved={(_s: PMSchedule) => { setShowPMSheet(false) }}
+        task={pmSheetTask}
+        currentLat={pmGpsLat}
+        currentLng={pmGpsLng}
       />
 
       {/* ── Trailer Lifecycle */}
@@ -794,9 +847,10 @@ export default function Dashboard() {
 
                 {/* ── Tier 2: secondary navigation ── */}
                 {([
-                  { href: '/vault',       label: 'Vault',       emoji: '🗄️' },
-                  { href: '/compliance',  label: 'Compliance',  emoji: '⚖️' },
-                  { href: '/trailer',     label: 'Trailer',     emoji: '🚚' },
+                  { href: '/vault',        label: 'Vault',        emoji: '🗄️' },
+                  { href: '/compliance',  label: 'Compliance',   emoji: '⚖️' },
+                  { href: '/trailer',     label: 'Trailer',      emoji: '🚚' },
+                  { href: '/maintenance', label: 'Maintenance',  emoji: '🔧' },
                 ] as const).map((item, i, arr) => (
                   <span key={item.href} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                     <a href={item.href} style={{
@@ -866,6 +920,16 @@ export default function Dashboard() {
               />
               <FuelWeatherRow missionFuel={missionFuel} weather={weather} wx={wx} weatherLoading={weatherLoading} lastUpdated={weatherUpdated} onRefresh={refreshWeather} />
               {!driverMode && <ExpensesCard />}
+
+              {/* PM Due Soon alert — shown in all modes when tasks exist */}
+              {pmTasks.length > 0 && (
+                <PMStatusCard
+                  tasks={pmTasks}
+                  nearestLocation={pmNearestLoc}
+                  onSchedule={(task) => { setPmSheetTask(task); setShowPMSheet(true) }}
+                  compact
+                />
+              )}
 
               {/* MIS footer — owner-operator only */}
               {!driverMode && (

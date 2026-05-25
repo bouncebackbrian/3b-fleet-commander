@@ -60,6 +60,7 @@ type AlertId =
   | 'weather_severe'
   | 'weather_wind'
   | 'fuel_needed'
+  | 'pm_due'
 
 export interface DrivingAlert {
   id:          AlertId
@@ -67,7 +68,7 @@ export interface DrivingAlert {
   text:        string
   severity:    AlertSeverity
   actionLabel: string       // visible label after the text
-  actionKey:   'break' | 'fuel' | 'dismiss'
+  actionKey:   'break' | 'fuel' | 'dismiss' | 'pm'
 }
 
 /** Format fractional hours → "22m" / "1h 8m" */
@@ -89,6 +90,7 @@ function deriveDrivingAlerts(
   wx:          WeatherInfo | null,
   missionFuel: FuelIntelResult | null,
   mission:     LoadMission | null,
+  pmAlert?:    { label: string; milesUntil: number; isOverdue: boolean } | null,
 ): DrivingAlert[] {
   const alerts: DrivingAlert[] = []
 
@@ -158,6 +160,17 @@ function deriveDrivingAlerts(
     })
   }
 
+  // 4. PM due soon / overdue
+  if (pmAlert) {
+    alerts.push({
+      id: 'pm_due', emoji: '🔧', severity: pmAlert.isOverdue ? 'critical' : 'warn',
+      text: pmAlert.isOverdue
+        ? `${pmAlert.label} overdue — schedule service`
+        : `${pmAlert.label} due in ${pmAlert.milesUntil.toLocaleString()} mi`,
+      actionLabel: 'Schedule →', actionKey: 'pm',
+    })
+  }
+
   // Critical-first, then warn. Cap at 3 so the strip stays compact.
   return alerts
     .sort((a, b) => (a.severity === 'critical' ? -1 : 1) - (b.severity === 'critical' ? -1 : 1))
@@ -204,6 +217,8 @@ interface Props {
   onTrailerHook?:     () => void
   onTrailerDrop?:     () => void
   onSendUpdate?:      () => void
+  onShowPM?:          () => void
+  pmAlert?:           { label: string; milesUntil: number; isOverdue: boolean } | null
 }
 
 export default function DrivingModeOverlay({
@@ -214,6 +229,7 @@ export default function DrivingModeOverlay({
   onEmergency, onExit, onStartBreak, onShowFuel,
   onDocumentEvent, onComplianceProof,
   onTrailerHook, onTrailerDrop, onSendUpdate,
+  onShowPM, pmAlert,
 }: Props) {
   const showSpotify  = spotifyStatus && spotifyStatus !== 'disconnected'
   const [mapOpen,    setMapOpen]    = useState(false)
@@ -222,7 +238,7 @@ export default function DrivingModeOverlay({
   const loggedAlerts = useRef<Set<AlertId>>(new Set())
 
   // Derive alerts — re-runs every second via liveClock re-render
-  const allAlerts = deriveDrivingAlerts(hosDisplay, weather, wx, missionFuel, mission)
+  const allAlerts = deriveDrivingAlerts(hosDisplay, weather, wx, missionFuel, mission, pmAlert)
   const alerts    = allAlerts.filter(a => !dismissed.has(a.id))
 
   // Log each unique alert exactly once (not every re-render second)
@@ -248,6 +264,8 @@ export default function DrivingModeOverlay({
       onStartBreak ? onStartBreak() : onEmergency()
     } else if (alert.actionKey === 'fuel') {
       onShowFuel?.()
+    } else if (alert.actionKey === 'pm') {
+      onShowPM?.()
     }
   }
 

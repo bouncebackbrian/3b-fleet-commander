@@ -69,25 +69,26 @@ export interface NavTab {
 
 // Tab pool — all possible tabs
 const ALL_TABS: NavTab[] = [
-  { href: '/dashboard',  label: 'Cab',        emoji: '🚛', command: 'Mobile'      },
-  { href: '/trips',      label: 'Route',      emoji: '🗺️', command: 'Dispatch'   },
-  { href: '/dispatch',   label: 'Dispatch',   emoji: '📋', command: 'Dispatch'    },
-  { href: '/loads',      label: 'Loads',      emoji: '📦', command: 'Dispatch'    },
-  { href: '/vault',      label: 'Vault',      emoji: '🗄️', command: 'Compliance'  },
-  { href: '/trailer',    label: 'Trailer',    emoji: '🚚', command: 'Inspection'  },
-  { href: '/expenses',   label: 'Owner',      emoji: '💰', command: 'Owner'       },
-  { href: '/compliance', label: 'Compliance', emoji: '⚖️', command: 'Compliance'  },
-  { href: '/settings',   label: 'Settings',   emoji: '⚙️', command: 'System'      },
+  { href: '/dashboard',   label: 'Cab',         emoji: '🚛', command: 'Mobile'      },
+  { href: '/trips',       label: 'Route',       emoji: '🗺️', command: 'Dispatch'   },
+  { href: '/dispatch',    label: 'Dispatch',    emoji: '📋', command: 'Dispatch'    },
+  { href: '/loads',       label: 'Loads',       emoji: '📦', command: 'Dispatch'    },
+  { href: '/vault',       label: 'Vault',       emoji: '🗄️', command: 'Compliance'  },
+  { href: '/trailer',     label: 'Trailer',     emoji: '🚚', command: 'Inspection'  },
+  { href: '/expenses',    label: 'Owner',       emoji: '💰', command: 'Owner'       },
+  { href: '/compliance',  label: 'Compliance',  emoji: '⚖️', command: 'Compliance'  },
+  { href: '/maintenance', label: 'Maintenance', emoji: '🔧', command: 'Maintenance' },
+  { href: '/settings',    label: 'Settings',    emoji: '⚙️', command: 'System'      },
 ]
 
 // Which tabs each mode sees (ordered for display)
 // Vault is the proof/document layer. Trailer is the operational inspection layer.
 // driver mode swaps Owner (expenses) for Trailer Intel — more relevant on the road.
 const MODE_TAB_HREFS: Record<UserMode, string[]> = {
-  driver:         ['/dashboard', '/trips', '/trailer', '/compliance', '/vault'],
-  owner_operator: ['/dashboard', '/dispatch', '/trips', '/trailer', '/compliance', '/vault'],
-  dispatcher:     ['/dispatch', '/loads', '/trips', '/compliance', '/vault'],
-  fleet_admin:    ['/dashboard', '/dispatch', '/trips', '/compliance', '/trailer', '/vault'],
+  driver:         ['/dashboard', '/trips', '/trailer', '/maintenance', '/compliance', '/vault'],
+  owner_operator: ['/dashboard', '/dispatch', '/trips', '/maintenance', '/compliance', '/vault'],
+  dispatcher:     ['/dispatch', '/loads', '/trips', '/maintenance', '/compliance', '/vault'],
+  fleet_admin:    ['/dashboard', '/dispatch', '/trips', '/maintenance', '/compliance', '/trailer', '/vault'],
 }
 
 export function getTabsForMode(mode: UserMode): NavTab[] {
