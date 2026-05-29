@@ -14,8 +14,11 @@
  */
 
 import { createClient } from '@supabase/supabase-js'
-import { datAdapter }       from './loadBoards/datAdapter'
-import { truckstopAdapter } from './loadBoards/truckstopAdapter'
+import { datAdapter }             from './loadBoards/datAdapter'
+import { truckstopAdapter }       from './loadBoards/truckstopAdapter'
+import { loadsmartAdapter }       from './loadBoards/loadsmartAdapter'
+import { uberFreightAdapter }     from './loadBoards/uberFreightAdapter'
+import { oneTwentyThreeAdapter }  from './loadBoards/oneTwentyThreeAdapter'
 import type {
   LoadBoardId, LoadBoardAdapter, LoadBoardCredentials,
   LoadSearchParams, NormalizedLoad, TruckPosting,
@@ -25,9 +28,11 @@ import type {
 // ── Registry of adapters ──────────────────────────────────────────────────────
 
 const ADAPTERS: Partial<Record<LoadBoardId, LoadBoardAdapter>> = {
-  dat:       datAdapter,
-  truckstop: truckstopAdapter,
-  // 123loadboard, loadsmart, uber_freight — added as adapters are built
+  dat:           datAdapter,
+  truckstop:     truckstopAdapter,
+  loadsmart:     loadsmartAdapter,
+  uber_freight:  uberFreightAdapter,
+  '123loadboard': oneTwentyThreeAdapter,
 }
 
 // ── Supabase admin client (server-side only) ──────────────────────────────────

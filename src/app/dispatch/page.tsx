@@ -5,6 +5,7 @@ import DriverUpdateSheet  from '@/components/dispatch/DriverUpdateSheet'
 import DispatchFeed       from '@/components/dispatch/DispatchFeed'
 import DispatchOpsPanel   from '@/components/dispatch/DispatchOpsPanel'
 import HOSPlannerSheet    from '@/components/planning/HOSPlannerSheet'
+import LoadBoardPanel     from '@/components/dispatch/LoadBoardPanel'
 
 type MsgCategory = 'load' | 'arrival' | 'issues' | 'hos' | 'family' | 'custom'
 
@@ -761,6 +762,21 @@ export default function DispatchMessages() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Load Board */}
+          <div style={card}>
+            <div style={secLabel}>📦 Load Board Search</div>
+            <LoadBoardPanel
+              businessId={(() => { try { return JSON.parse(localStorage.getItem('3b-active-trip') ?? '{}')?.businessId ?? '' } catch { return '' } })()}
+              onLoadBooked={(fleetLoadId, load) => {
+                // Pre-fill the load number field when a board load is booked
+                try {
+                  const existing = JSON.parse(localStorage.getItem('3b-active-trip') ?? '{}')
+                  localStorage.setItem('3b-active-trip', JSON.stringify({ ...existing, loadNumber: fleetLoadId, origin: { query: `${load.origin.city}, ${load.origin.state}` }, destination: { query: `${load.destination.city}, ${load.destination.state}` }, totalMiles: load.tripMiles }))
+                } catch { /* ignore */ }
+              }}
+            />
           </div>
 
           {/* HOS Planner */}
