@@ -17,8 +17,9 @@
  *   - Calls deriveLoadHealth() → updates every 60 s via card-level timers
  */
 import { useState, useEffect } from 'react'
-import LoadHealthCard   from '@/components/dispatch/LoadHealthCard'
-import ExceptionTimeline from '@/components/dispatch/ExceptionTimeline'
+import LoadHealthCard    from '@/components/dispatch/LoadHealthCard'
+import ExceptionTimeline  from '@/components/dispatch/ExceptionTimeline'
+import EscalationPanel    from '@/components/dispatch/EscalationPanel'
 import {
   deriveLoadHealth,
   buildFleetHealthSummary,
@@ -138,7 +139,7 @@ export default function DispatchOpsPanel({ dispatcherName = 'Dispatcher', weathe
   const [loads,   setLoads]   = useState<Array<{ loadNumber: string; driverName: string; opts: DeriveHealthOpts }>>([])
   const [scores,  setScores]  = useState<LoadHealthScore[]>([])
   const [summary, setSummary] = useState<FleetHealthSummary>({ totalLoads: 0, healthy: 0, monitor: 0, atRisk: 0, critical: 0, activeStalls: 0, avgScore: 0, topFlag: null })
-  const [tab,     setTab]     = useState<'loads' | 'exceptions'>('loads')
+  const [tab,     setTab]     = useState<'loads' | 'exceptions' | 'escalations'>('loads')
   const [actionFeedback, setActionFeedback] = useState<string | null>(null)
 
   useEffect(() => {
@@ -213,8 +214,8 @@ export default function DispatchOpsPanel({ dispatcherName = 'Dispatcher', weathe
 
       {/* Tab bar */}
       {loads.length > 0 && (
-        <div style={{ display: 'flex', gap: '.35rem' }}>
-          {(['loads', 'exceptions'] as const).map(t => (
+        <div style={{ display: 'flex', gap: '.35rem', flexWrap: 'wrap' }}>
+          {(['loads', 'exceptions', 'escalations'] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -226,7 +227,7 @@ export default function DispatchOpsPanel({ dispatcherName = 'Dispatcher', weathe
                 cursor: 'pointer',
               }}
             >
-              {t === 'loads' ? '🚛 Load Health' : '📋 Exceptions'}
+              {t === 'loads' ? '🚛 Load Health' : t === 'exceptions' ? '📋 Exceptions' : '⚡ Escalations'}
               {t === 'exceptions' && summary.critical + summary.atRisk > 0 && (
                 <span style={{
                   marginLeft: 6, fontSize: '.55rem', fontWeight: 900,
@@ -255,6 +256,11 @@ export default function DispatchOpsPanel({ dispatcherName = 'Dispatcher', weathe
       {/* Exception timeline */}
       {tab === 'exceptions' && (
         <ExceptionTimeline maxItems={25} />
+      )}
+
+      {/* Escalation Engine */}
+      {tab === 'escalations' && (
+        <EscalationPanel dispatcherName={dispatcherName} />
       )}
     </div>
   )
