@@ -177,6 +177,26 @@ See → [`docs/ecosystem-bridge/CUSTOMER_PACK_STATUS.md`](docs/ecosystem-bridge/
 
 ---
 
+## 💰 Revenue Model
+
+See full design → [`docs/ecosystem-bridge/BILLING_MODEL.md`](docs/ecosystem-bridge/BILLING_MODEL.md)
+
+| Stream | How | Status |
+|---|---|---|
+| **Module subscriptions** | Per section (Dispatch / Driver / HOS / Maintenance / Broker / Reports) with bundle discount | Schema ✅ Engine ✅ Pricing TBD |
+| **Platform transaction fee** | % of rate confirmation when broker routes a load through FC | Schema ✅ Engine ✅ % TBD |
+
+**The system does the work:** load closes → `onLoadClose()` fires → fee auto-calculated → queued for invoice. No manual billing.
+
+### Open Pricing Decisions
+- [ ] Set platform fee % (suggested: 0.75–1%)
+- [ ] Set per-module prices (starting point in `billingEngine.ts`: $29–$49/module)
+- [ ] Set owner-op flat rate (starting point: $79/mo)
+- [ ] Confirm: broker pays the transaction fee (recommended)
+- [ ] Confirm: business-billed for carriers, user-billed for solo owner-ops
+
+---
+
 ## 🚨 Active Blockers (Nothing Can Move Until These Are Done)
 
 1. **Formal intake approval** — the seed pack has never been formally approved. No nav, no entitlements, no monorepo migration until this is signed off.
