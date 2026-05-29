@@ -1,8 +1,9 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import TopBar from '@/components/layout/TopBar'
-import DriverUpdateSheet from '@/components/dispatch/DriverUpdateSheet'
-import DispatchFeed      from '@/components/dispatch/DispatchFeed'
+import DriverUpdateSheet  from '@/components/dispatch/DriverUpdateSheet'
+import DispatchFeed       from '@/components/dispatch/DispatchFeed'
+import DispatchOpsPanel   from '@/components/dispatch/DispatchOpsPanel'
 
 type MsgCategory = 'load' | 'arrival' | 'issues' | 'hos' | 'family' | 'custom'
 
@@ -516,6 +517,26 @@ export default function DispatchMessages() {
         loadNumber={trip?.loadNumber ?? undefined}
         driverName={driverName || undefined}
       />
+
+      {/* ── DispatchOps AI v2 — predictive health & stall detection ── */}
+      <section style={{ padding: '1rem 1.2rem 0' }}>
+        <div style={{ fontSize: '.62rem', fontWeight: 900, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.6rem' }}>
+          🛰 DispatchOps AI
+        </div>
+        <DispatchOpsPanel
+          dispatcherName={driverName || 'Dispatcher'}
+          weather={{
+            severe:  weather.alerts.length > 0 || (weather.current?.code ?? 0) >= 48,
+            windMph: Math.max(
+              weather.current?.wind ?? 0,
+              weather.midRoute?.wind ?? 0,
+              weather.destination?.wind ?? 0,
+            ),
+          }}
+        />
+      </section>
+
+      <div style={{ margin: '.75rem 1.2rem 0', borderBottom: '1px solid var(--border)' }} />
 
       {/* ── Dispatch Control Tower — full width ── */}
       <section style={{ padding: '1rem 1.2rem 0' }}>
