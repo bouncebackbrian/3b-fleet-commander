@@ -4,6 +4,7 @@ import TopBar from '@/components/layout/TopBar'
 import DriverUpdateSheet  from '@/components/dispatch/DriverUpdateSheet'
 import DispatchFeed       from '@/components/dispatch/DispatchFeed'
 import DispatchOpsPanel   from '@/components/dispatch/DispatchOpsPanel'
+import HOSPlannerSheet    from '@/components/planning/HOSPlannerSheet'
 
 type MsgCategory = 'load' | 'arrival' | 'issues' | 'hos' | 'family' | 'custom'
 
@@ -760,6 +761,12 @@ export default function DispatchMessages() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* HOS Planner */}
+          <div style={card}>
+            <div style={secLabel}>⏱ HOS Load Planner</div>
+            <HOSPlannerSheet loadNumber={trip?.loadNumber ?? undefined} initialMiles={trip?.totalMiles ? Math.round(trip.totalMiles) : undefined} />
           </div>
 
           {/* Issue details */}
