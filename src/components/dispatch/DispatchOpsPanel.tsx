@@ -20,6 +20,7 @@ import { useState, useEffect } from 'react'
 import LoadHealthCard    from '@/components/dispatch/LoadHealthCard'
 import ExceptionTimeline  from '@/components/dispatch/ExceptionTimeline'
 import EscalationPanel    from '@/components/dispatch/EscalationPanel'
+import OpsEventFeed       from '@/components/ops/OpsEventFeed'
 import {
   deriveLoadHealth,
   buildFleetHealthSummary,
@@ -31,6 +32,7 @@ import {
   logException,
 } from '@/lib/loadHealthEngine'
 import { logHumanAction } from '@/lib/dispatchEngine'
+import { syncOpsEventsToSupabase } from '@/lib/opsEventLog'
 
 // ── Fleet health bar ──────────────────────────────────────────────────────────
 
@@ -139,7 +141,7 @@ export default function DispatchOpsPanel({ dispatcherName = 'Dispatcher', weathe
   const [loads,   setLoads]   = useState<Array<{ loadNumber: string; driverName: string; opts: DeriveHealthOpts }>>([])
   const [scores,  setScores]  = useState<LoadHealthScore[]>([])
   const [summary, setSummary] = useState<FleetHealthSummary>({ totalLoads: 0, healthy: 0, monitor: 0, atRisk: 0, critical: 0, activeStalls: 0, avgScore: 0, topFlag: null })
-  const [tab,     setTab]     = useState<'loads' | 'exceptions' | 'escalations'>('loads')
+  const [tab,     setTab]     = useState<'loads' | 'exceptions' | 'escalations' | 'ops_log'>('loads')
   const [actionFeedback, setActionFeedback] = useState<string | null>(null)
 
   useEffect(() => {
@@ -171,6 +173,8 @@ export default function DispatchOpsPanel({ dispatcherName = 'Dispatcher', weathe
       setScores(derivedScores)
       setSummary(buildFleetHealthSummary(derivedScores))
     } catch { /* ignore */ }
+    // Background sync any unsynced events to Supabase
+    syncOpsEventsToSupabase().catch(() => {})
   }, [weather.severe, weather.windMph])
 
   const handleActionLog = (w: RecoveryWindow, loadNumber: string) => {
@@ -215,7 +219,7 @@ export default function DispatchOpsPanel({ dispatcherName = 'Dispatcher', weathe
       {/* Tab bar */}
       {loads.length > 0 && (
         <div style={{ display: 'flex', gap: '.35rem', flexWrap: 'wrap' }}>
-          {(['loads', 'exceptions', 'escalations'] as const).map(t => (
+          {(['loads', 'exceptions', 'escalations', 'ops_log'] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -227,7 +231,10 @@ export default function DispatchOpsPanel({ dispatcherName = 'Dispatcher', weathe
                 cursor: 'pointer',
               }}
             >
-              {t === 'loads' ? '🚛 Load Health' : t === 'exceptions' ? '📋 Exceptions' : '⚡ Escalations'}
+              {t === 'loads'       ? '🚛 Load Health'
+               : t === 'exceptions'  ? '📋 Exceptions'
+               : t === 'escalations' ? '⚡ Escalations'
+               : '🗂 Ops Log'}
               {t === 'exceptions' && summary.critical + summary.atRisk > 0 && (
                 <span style={{
                   marginLeft: 6, fontSize: '.55rem', fontWeight: 900,
@@ -261,6 +268,11 @@ export default function DispatchOpsPanel({ dispatcherName = 'Dispatcher', weathe
       {/* Escalation Engine */}
       {tab === 'escalations' && (
         <EscalationPanel dispatcherName={dispatcherName} />
+      )}
+
+      {/* Ops Event Log */}
+      {tab === 'ops_log' && (
+        <OpsEventFeed maxItems={50} />
       )}
     </div>
   )

@@ -25,6 +25,7 @@ import {
   readEscalations,
   type Severity,
 } from '@/lib/dispatchEngine'
+import { logLoadHealthEvent, logOpsEvent } from '@/lib/opsEventLog'
 
 // ── Health status tiers ───────────────────────────────────────────────────────
 
@@ -583,6 +584,33 @@ export function deriveLoadHealth(
 
   // Persist snapshot
   saveHealthSnapshot(score)
+
+  // Log critical transitions to unified ops event log
+  const prev = getLastHealthSnapshot(loadNumber)
+  if (status === 'critical' && prev?.status !== 'critical') {
+    logLoadHealthEvent({
+      eventType:  'load_health_critical',
+      loadNumber,
+      title:      `Load #${loadNumber} entered CRITICAL health — score ${overall}`,
+      body:       riskFlags.filter(f => f.severity === 'critical').map(f => f.label).join(', ') || undefined,
+      score:      overall,
+    })
+  } else if (status === 'healthy' && (prev?.status === 'critical' || prev?.status === 'at_risk')) {
+    logLoadHealthEvent({
+      eventType:  'load_health_recovered',
+      loadNumber,
+      title:      `Load #${loadNumber} recovered — score ${overall}`,
+      score:      overall,
+    })
+  } else if (stallRisk !== 'green' && prev?.stallRisk === 'green') {
+    logOpsEvent({
+      eventType:    'exception_logged',
+      severity:     stallRisk === 'red' || stallRisk === 'orange' ? 'critical' : 'warning',
+      loadNumber,
+      sourceEngine: 'load_health_engine',
+      title:        `Stall risk elevated to ${stallRisk.toUpperCase()} — ${stallMinutes}m`,
+    })
+  }
 
   return score
 }

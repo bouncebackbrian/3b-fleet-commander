@@ -22,6 +22,7 @@
  */
 
 import { readDriverUpdates, type UpdateType } from '@/lib/dispatchEngine'
+import { logModeChangeEvent, logDetentionEvent } from '@/lib/opsEventLog'
 
 // ── Operational modes ─────────────────────────────────────────────────────────
 
@@ -242,7 +243,16 @@ export function setOperationalMode(
 ): ActiveModeSession {
   // Archive the current session before switching
   const current = readActiveMode()
-  if (current && current.mode !== mode) archiveModeSession(current)
+  if (current && current.mode !== mode) {
+    archiveModeSession(current)
+    // Log mode transition to ops event log
+    logModeChangeEvent({
+      loadNumber: opts.loadNumber ?? current.loadNumber,
+      actor:      opts.source ?? 'manual',
+      title:      `Mode changed: ${MODE_META[current.mode].label} → ${MODE_META[mode].label}`,
+      payload:    { fromMode: current.mode, toMode: mode, location: opts.location },
+    })
+  }
 
   const session: ActiveModeSession = {
     mode,
@@ -304,6 +314,13 @@ export function startDetentionClock(loadNumber: string, freeTimeMins = 120): Det
   }
   try { localStorage.setItem(LS_DETENTION, JSON.stringify(clock)) }
   catch { /* ignore */ }
+  // Log to ops event log
+  logDetentionEvent({
+    eventType: 'detention_started',
+    loadNumber,
+    title: `Detention clock started — ${freeTimeMins}min free time`,
+    payload: { freeTimeMins },
+  })
   return clock
 }
 
@@ -315,6 +332,13 @@ export function endDetentionClock(): DetentionClock | null {
     const totalMins = Math.round((Date.now() - new Date(clock.startedAt).getTime()) / 60000)
     const updated: DetentionClock = { ...clock, endedAt, totalMins }
     localStorage.setItem(LS_DETENTION, JSON.stringify(updated))
+    // Log to ops event log
+    logDetentionEvent({
+      eventType: 'detention_ended',
+      loadNumber: clock.loadNumber,
+      title: `Detention ended — ${totalMins}min total (${Math.max(0, totalMins - clock.freeTimeMins)}min billed)`,
+      payload: { freeTimeMins: clock.freeTimeMins, billedMins: Math.max(0, totalMins - clock.freeTimeMins) },
+    })
     return updated
   } catch { return null }
 }

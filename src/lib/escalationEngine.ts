@@ -24,6 +24,7 @@
  */
 
 import type { StallRiskLevel } from '@/lib/loadHealthEngine'
+import { logEscalationEvent, logStallEvent } from '@/lib/opsEventLog'
 
 // ── Escalation tiers ──────────────────────────────────────────────────────────
 
@@ -240,6 +241,16 @@ export function openEscalation(opts: {
   // Send (fire-and-forget to notify endpoint)
   dispatchNotifications(notifications)
 
+  // Log to unified ops event log
+  logEscalationEvent({
+    eventType:    'escalation_opened',
+    loadNumber:   opts.loadNumber,
+    actor:        opts.ownedBy,
+    title:        `Escalation opened at ${opts.tier} — ${TIER_META[opts.tier].label}`,
+    body:         opts.triggerDetail ?? opts.triggerType,
+    payload:      { tier: opts.tier, triggerType: opts.triggerType, triggerDetail: opts.triggerDetail, ownedBy: opts.ownedBy },
+  })
+
   return rec
 }
 
@@ -280,6 +291,16 @@ export function escalateTier(
   for (const n of notifications) saveNotification(n)
   dispatchNotifications(notifications)
 
+  // Log to unified ops event log
+  logEscalationEvent({
+    eventType:    'escalation_escalated',
+    loadNumber:   updated.loadNumber,
+    actor,
+    title:        `Escalation promoted to ${updated.tier} — ${TIER_META[updated.tier].label}`,
+    body:         reason,
+    payload:      { tier: updated.tier, triggerType: updated.triggerType, ownedBy: updated.ownedBy },
+  })
+
   return updated
 }
 
@@ -297,14 +318,25 @@ export function resolveEscalation(
     id: crypto.randomUUID(), actor, role: 'dispatcher',
     action: 'resolved', note: resolution, timestamp: new Date().toISOString(),
   }
-  all[idx] = {
+  const resolved = {
     ...all[idx],
-    status:     'resolved',
+    status:     'resolved' as const,
     resolvedAt: new Date().toISOString(),
     resolution,
     actions:    [...all[idx].actions, action],
   }
+  all[idx] = resolved
   localStorage.setItem(LS_TIER_RECORDS, JSON.stringify(all.slice(0, MAX_TIER_RECORDS)))
+
+  // Log to unified ops event log
+  logEscalationEvent({
+    eventType:    'escalation_resolved',
+    loadNumber:   resolved.loadNumber,
+    actor,
+    title:        `Escalation resolved at ${resolved.tier}`,
+    body:         resolution,
+    payload:      { tier: resolved.tier, triggerType: resolved.triggerType, ownedBy: resolved.ownedBy },
+  })
 }
 
 // ── Log action on escalation ──────────────────────────────────────────────────
@@ -394,6 +426,16 @@ export function updateStallEscalation(
     saveStallEscalation(s)
     // Open a tier record if L1+
     if (tier !== 'L0') openEscalation({ loadNumber, tier, triggerType: 'stall_detection', triggerDetail: `${stallMinutes}m without update` })
+    // Log stall detection to ops event log
+    if (tier !== 'L0') {
+      logStallEvent({
+        eventType: 'stall_detected',
+        loadNumber,
+        driverName,
+        title: `Stall detected at ${tier} — ${stallMinutes}m without update`,
+        payload: { stallMinutes, stallRisk: tier },
+      })
+    }
     return s
   }
 
@@ -430,6 +472,15 @@ export function resolveStallEscalation(loadNumber: string, resolution: string): 
   // Also resolve any active tier record
   const rec = getActiveTierRecord(loadNumber)
   if (rec) resolveEscalation(rec.id, 'system', resolution)
+  // Log to ops event log
+  logStallEvent({
+    eventType: 'stall_resolved',
+    loadNumber,
+    driverName: s.driverName,
+    title: `Stall resolved — ${s.stallMinutes}m`,
+    body: resolution,
+    payload: { stallMinutes: s.stallMinutes, stallRisk: s.currentTier },
+  })
 }
 
 // ── Notification CRUD ─────────────────────────────────────────────────────────

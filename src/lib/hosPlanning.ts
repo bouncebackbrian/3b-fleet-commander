@@ -27,6 +27,8 @@
  *   3b-availability-pref — AvailabilityPrefs  (single object)
  */
 
+import { logHOSPlanEvent } from '@/lib/opsEventLog'
+
 // ── HOS constants (FMCSA Part 395) ───────────────────────────────────────────
 
 export const HOS = {
@@ -283,6 +285,19 @@ export function saveHOSPlanResult(result: Omit<HOSPlanResult, 'id' | 'createdAt'
     all.unshift(full)
     localStorage.setItem(LS_PLAN_RESULTS, JSON.stringify(all.slice(0, 50)))
   } catch { /* storage full */ }
+  // Log to unified ops event log
+  const sim = result.simulation
+  logHOSPlanEvent({
+    loadNumber: result.loadNumber,
+    title:      `HOS plan created — ${sim.feasibility.status} — ${result.miles}mi`,
+    payload: {
+      miles:       result.miles,
+      feasibility: sim.feasibility.status,
+      legalETA:    sim.arrivalAt?.toISOString(),
+      restStops:   sim.restStops.length,
+      drivingHrs:  sim.drivingHrs,
+    },
+  })
   return full
 }
 
