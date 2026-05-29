@@ -10,6 +10,7 @@ import MissionHeader    from '@/components/dashboard/overlays/MissionHeader'
 import DriveStatusBanner from '@/components/dashboard/overlays/DriveStatusBanner'
 import DriveWeatherCard  from '@/components/dashboard/overlays/DriveWeatherCard'
 import RecoveryAdvisor   from '@/components/dashboard/overlays/RecoveryAdvisor'
+import DriverOpsCockpit  from '@/components/dashboard/overlays/DriverOpsCockpit'
 import {
   getOrCreateSession,
   deriveRecoveryStatus,
@@ -446,6 +447,12 @@ export default function DrivingModeOverlay({
 
         {/* Recovery Advisor — Partial Recovery Credit & Adaptive Cadence (preference layer) */}
         <RecoveryAdvisor />
+
+        {/* DriverOps Cockpit — movement-aware mode tracker & detention/break timers */}
+        <DriverOpsCockpit
+          loadNumber={mission?.loadNumber ?? undefined}
+          location={nextStop?.city ?? undefined}
+        />
 
         {/* Return-to-app banner */}
         {returnApp && (
