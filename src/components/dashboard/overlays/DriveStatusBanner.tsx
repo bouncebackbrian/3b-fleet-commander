@@ -2,10 +2,17 @@
 /**
  * DriveStatusBanner — dynamic single-line operational status
  *
- * Priority: HOS critical → severe weather → high crosswinds → HOS warn → wind advisory → On Schedule
+ * Priority: HOS critical → severe weather → high crosswinds → HOS warn
+ *           → high fatigue (preference layer only) → wind advisory → On Schedule
+ *
+ * IMPORTANT: Fatigue tier is PREFERENCE LAYER only.
+ *   It shows "Suggested adjustment" language, never "violation" or "required".
+ *   DOT compliance rules (HOS critical, HOS risk) are always checked first.
+ *
  * Lives at the top of the Drive Mode scrollable content zone.
  */
 import type { HOSDisplay, WeatherInfo, WeatherData } from '@/lib/dashboard/types'
+import type { FatigueLevel } from '@/lib/recoveryEngine'
 
 type BannerConfig = {
   emoji:  string
@@ -16,13 +23,14 @@ type BannerConfig = {
 }
 
 function deriveBanner(
-  hosDisplay: HOSDisplay | null,
-  wx:         WeatherInfo | null,
-  weather:    WeatherData | null,
+  hosDisplay:    HOSDisplay | null,
+  wx:            WeatherInfo | null,
+  weather:       WeatherData | null,
+  fatigueLevel?: FatigueLevel | null,
 ): BannerConfig {
   const gusts = weather?.windGusts ?? weather?.windSpeed ?? 0
 
-  // 1. HOS stop now (≤ 1.5 h drive remaining)
+  // 1. HOS stop now (≤ 1.5 h drive remaining) — COMPLIANCE
   if (hosDisplay && hosDisplay.driveRem <= 1.5) {
     const mins = Math.round(hosDisplay.driveRem * 60)
     return {
@@ -31,7 +39,7 @@ function deriveBanner(
     }
   }
 
-  // 2. Severe weather
+  // 2. Severe weather — SAFETY
   if (wx?.severe) {
     return {
       emoji: '🌩', text: `${wx.label} — Hazardous driving conditions`,
@@ -39,7 +47,7 @@ function deriveBanner(
     }
   }
 
-  // 3. Extreme crosswind risk (gusts ≥ 45 mph)
+  // 3. Extreme crosswind risk (gusts ≥ 45 mph) — SAFETY
   if (gusts >= 45) {
     return {
       emoji: '💨', text: `High Crosswinds — Gusts ${gusts} mph · Reduce speed`,
@@ -47,7 +55,7 @@ function deriveBanner(
     }
   }
 
-  // 4. HOS risk (≤ 4 h drive remaining)
+  // 4. HOS risk (≤ 4 h drive remaining) — COMPLIANCE
   if (hosDisplay && hosDisplay.driveRem <= 4) {
     return {
       emoji: '⏳', text: `HOS Risk — ${hosDisplay.driveRem.toFixed(1)}h drive remaining`,
@@ -55,7 +63,21 @@ function deriveBanner(
     }
   }
 
-  // 5. Wind advisory (gusts 30–44 mph)
+  // 5. High fatigue — PREFERENCE LAYER (explicit "suggested" language)
+  if (fatigueLevel === 'critical') {
+    return {
+      emoji: '⚠️', text: 'Recovery Stop Suggested — Operational cadence adjustment recommended',
+      bg: 'rgba(245,194,0,.08)', border: 'rgba(245,194,0,.25)', color: 'var(--warn)',
+    }
+  }
+  if (fatigueLevel === 'high') {
+    return {
+      emoji: '🟡', text: 'Recovery Recommended — Suggested stop approaching (not compliance)',
+      bg: 'rgba(245,194,0,.06)', border: 'rgba(245,194,0,.2)', color: 'var(--warn)',
+    }
+  }
+
+  // 6. Wind advisory (gusts 30–44 mph) — SAFETY
   if (gusts >= 30) {
     return {
       emoji: '🌬', text: `Wind Advisory — Gusts ${gusts} mph · Monitor conditions`,
@@ -63,7 +85,7 @@ function deriveBanner(
     }
   }
 
-  // 6. On schedule — clear skies
+  // 7. On schedule — operational rhythm stable
   return {
     emoji: '✅', text: 'On Schedule',
     bg: 'rgba(0,232,176,.07)', border: 'rgba(0,232,176,.2)', color: 'var(--primary)',
@@ -71,13 +93,14 @@ function deriveBanner(
 }
 
 interface Props {
-  hosDisplay: HOSDisplay | null
-  wx:         WeatherInfo | null
-  weather:    WeatherData | null
+  hosDisplay:     HOSDisplay | null
+  wx:             WeatherInfo | null
+  weather:        WeatherData | null
+  fatigueLevel?:  FatigueLevel | null   // from recoveryEngine — preference layer only
 }
 
-export default function DriveStatusBanner({ hosDisplay, wx, weather }: Props) {
-  const b = deriveBanner(hosDisplay, wx, weather)
+export default function DriveStatusBanner({ hosDisplay, wx, weather, fatigueLevel }: Props) {
+  const b = deriveBanner(hosDisplay, wx, weather, fatigueLevel)
 
   return (
     <div style={{

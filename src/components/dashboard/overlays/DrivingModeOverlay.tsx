@@ -9,6 +9,12 @@ import { logTimelineEvent } from '@/lib/timeline'
 import MissionHeader    from '@/components/dashboard/overlays/MissionHeader'
 import DriveStatusBanner from '@/components/dashboard/overlays/DriveStatusBanner'
 import DriveWeatherCard  from '@/components/dashboard/overlays/DriveWeatherCard'
+import RecoveryAdvisor   from '@/components/dashboard/overlays/RecoveryAdvisor'
+import {
+  getOrCreateSession,
+  deriveRecoveryStatus,
+  type FatigueLevel,
+} from '@/lib/recoveryEngine'
 
 // ── Nav app descriptors ───────────────────────────────────────────────────────
 const NAV_APPS = [
@@ -241,6 +247,15 @@ export default function DrivingModeOverlay({
   const allAlerts = deriveDrivingAlerts(hosDisplay, weather, wx, missionFuel, mission, pmAlert)
   const alerts    = allAlerts.filter(a => !dismissed.has(a.id))
 
+  // Recovery Engine — fatigue level for banner and advisor (preference layer only)
+  const fatigueLevel: FatigueLevel | null = (() => {
+    try {
+      const session = getOrCreateSession()
+      const status  = deriveRecoveryStatus(session)
+      return status.fatigueLevel
+    } catch { return null }
+  })()
+
   // Log each unique alert exactly once (not every re-render second)
   alerts.forEach(alert => {
     if (!loggedAlerts.current.has(alert.id)) {
@@ -369,8 +384,8 @@ export default function DrivingModeOverlay({
       {/* ── ZONE 3: Scrollable center content ── */}
       <div className="cc-driving-content">
 
-        {/* Dynamic status banner — On Schedule / HOS Risk / Weather Risk / Delay */}
-        <DriveStatusBanner hosDisplay={hosDisplay} wx={wx} weather={weather} />
+        {/* Dynamic status banner — On Schedule / HOS Risk / Weather Risk / Fatigue Advisory */}
+        <DriveStatusBanner hosDisplay={hosDisplay} wx={wx} weather={weather} fatigueLevel={fatigueLevel} />
 
         {/* Clock */}
         <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 900, fontSize: 'clamp(2.6rem,9vw,5rem)', color: 'var(--text)', letterSpacing: '-.02em', lineHeight: 1 }}>
@@ -428,6 +443,9 @@ export default function DrivingModeOverlay({
         )}
         {/* Drive weather card — wind, gusts, visibility, crosswind risk, rain timing */}
         <DriveWeatherCard weather={weather} wx={wx} lastUpdated={weatherLastUpdated ?? null} />
+
+        {/* Recovery Advisor — Partial Recovery Credit & Adaptive Cadence (preference layer) */}
+        <RecoveryAdvisor />
 
         {/* Return-to-app banner */}
         {returnApp && (
