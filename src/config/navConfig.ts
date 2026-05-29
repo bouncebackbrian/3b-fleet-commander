@@ -4,13 +4,18 @@
  * STANDALONE MODE (current): defines nav locally.
  * ECOSYSTEM MODE (future):   reads from hub-portal/config/hubNav.ts.
  *
- * Replace userMode.ts route constants with entries from this file.
- * When the ecosystem nav is ready, swap the source — no UI changes needed.
- *
- * Mirrors the hubNav.ts shape exactly so the swap is mechanical.
+ * Roles:
+ *   driver        — drives, sees their loads + HOS
+ *   dispatcher    — manages loads, escalations, dispatch feed
+ *   owner_op      — merged driver + dispatcher (single-seat operation)
+ *   fleet_owner   — owner of a carrier business, sees performance/reports
+ *   broker        — books loads, sees rate confirmation, load board
+ *   fleet_manager — manages multiple businesses
+ *   admin         — account management only
  */
 
-export type FleetRole = 'driver' | 'dispatcher' | 'owner_operator'
+import type { DisplayMode } from '@/lib/auth-adapter'
+
 export type FleetTier = 'starter' | 'pro' | 'enterprise'
 
 export interface NavEntry {
@@ -19,94 +24,109 @@ export interface NavEntry {
   href:     string
   icon:     string
   family:   string
-  enabled:  boolean    // false = hidden (set to false until rollout in ecosystem)
-  roles:    FleetRole[]
+  enabled:  boolean
+  modes:    DisplayMode[]   // which display modes see this tab
   tier:     FleetTier[]
 }
 
-// ── Fleet Commander nav entries ───────────────────────────────────────────────
-// This is the source of truth for standalone mode.
-// In ecosystem mode, this would come from hubNav.ts.
+// ── Nav entries ───────────────────────────────────────────────────────────────
 
 export const FLEET_NAV: NavEntry[] = [
+  // ── Dashboard — everyone ──────────────────────────────────────────────────
   {
-    id:      'fleet-dashboard',
-    label:   'Dashboard',
-    href:    '/dashboard',
-    icon:    '🏠',
-    family:  'fleet',
-    enabled: true,
-    roles:   ['driver', 'dispatcher', 'owner_operator'],
-    tier:    ['starter', 'pro', 'enterprise'],
+    id: 'fleet-dashboard', label: 'Dashboard', href: '/dashboard', icon: '🏠',
+    family: 'fleet', enabled: true,
+    modes: ['driver', 'dispatcher', 'owner_op', 'fleet_owner', 'fleet_manager', 'admin'],
+    tier:  ['starter', 'pro', 'enterprise'],
   },
+
+  // ── Dispatch — dispatchers, owner-ops, fleet owners, fleet managers ───────
   {
-    id:      'fleet-dispatch',
-    label:   'Dispatch',
-    href:    '/dispatch',
-    icon:    '📡',
-    family:  'fleet',
-    enabled: true,
-    roles:   ['dispatcher', 'owner_operator'],
-    tier:    ['starter', 'pro', 'enterprise'],
+    id: 'fleet-dispatch', label: 'Dispatch', href: '/dispatch', icon: '📡',
+    family: 'fleet', enabled: true,
+    modes: ['dispatcher', 'owner_op', 'fleet_owner', 'fleet_manager'],
+    tier:  ['starter', 'pro', 'enterprise'],
   },
+
+  // ── Driver view — drivers + owner-ops ────────────────────────────────────
   {
-    id:      'fleet-trips',
-    label:   'Trips',
-    href:    '/trips',
-    icon:    '🗺',
-    family:  'fleet',
-    enabled: true,
-    roles:   ['driver', 'dispatcher', 'owner_operator'],
-    tier:    ['starter', 'pro', 'enterprise'],
+    id: 'fleet-driver', label: 'My Load', href: '/driver', icon: '🚛',
+    family: 'fleet', enabled: true,
+    modes: ['driver', 'owner_op'],
+    tier:  ['starter', 'pro', 'enterprise'],
   },
+
+  // ── Trips ─────────────────────────────────────────────────────────────────
   {
-    id:      'fleet-hos',
-    label:   'HOS',
-    href:    '/hos',
-    icon:    '⏱',
-    family:  'fleet',
-    enabled: true,
-    roles:   ['driver'],
-    tier:    ['starter', 'pro', 'enterprise'],
+    id: 'fleet-trips', label: 'Trips', href: '/trips', icon: '🗺',
+    family: 'fleet', enabled: true,
+    modes: ['driver', 'dispatcher', 'owner_op', 'fleet_owner', 'fleet_manager'],
+    tier:  ['starter', 'pro', 'enterprise'],
   },
+
+  // ── HOS — drivers + owner-ops ────────────────────────────────────────────
   {
-    id:      'fleet-maintenance',
-    label:   'Maintenance',
-    href:    '/maintenance',
-    icon:    '🔧',
-    family:  'fleet',
-    enabled: true,
-    roles:   ['dispatcher', 'owner_operator'],
-    tier:    ['starter', 'pro', 'enterprise'],
+    id: 'fleet-hos', label: 'HOS', href: '/hos', icon: '⏱',
+    family: 'fleet', enabled: true,
+    modes: ['driver', 'owner_op'],
+    tier:  ['starter', 'pro', 'enterprise'],
   },
+
+  // ── Planning — dispatchers, owner-ops, fleet owners ───────────────────────
   {
-    id:      'fleet-planning',
-    label:   'Planning',
-    href:    '/planning',
-    icon:    '📋',
-    family:  'fleet',
-    enabled: true,
-    roles:   ['dispatcher', 'owner_operator'],
-    tier:    ['pro', 'enterprise'],
+    id: 'fleet-planning', label: 'Planning', href: '/planning', icon: '📋',
+    family: 'fleet', enabled: true,
+    modes: ['dispatcher', 'owner_op', 'fleet_owner', 'fleet_manager'],
+    tier:  ['pro', 'enterprise'],
   },
+
+  // ── Maintenance — dispatchers, owners ────────────────────────────────────
   {
-    id:      'fleet-reports',
-    label:   'Reports',
-    href:    '/reports',
-    icon:    '📊',
-    family:  'fleet',
-    enabled: true,
-    roles:   ['owner_operator'],
-    tier:    ['pro', 'enterprise'],
+    id: 'fleet-maintenance', label: 'Maintenance', href: '/maintenance', icon: '🔧',
+    family: 'fleet', enabled: true,
+    modes: ['dispatcher', 'owner_op', 'fleet_owner', 'fleet_manager'],
+    tier:  ['starter', 'pro', 'enterprise'],
+  },
+
+  // ── Load board — brokers + dispatchers ───────────────────────────────────
+  {
+    id: 'fleet-loads', label: 'Load Board', href: '/loads', icon: '📦',
+    family: 'fleet', enabled: true,
+    modes: ['broker', 'dispatcher', 'owner_op'],
+    tier:  ['pro', 'enterprise'],
+  },
+
+  // ── Reports — fleet owners, fleet managers ────────────────────────────────
+  {
+    id: 'fleet-reports', label: 'Reports', href: '/reports', icon: '📊',
+    family: 'fleet', enabled: true,
+    modes: ['fleet_owner', 'fleet_manager', 'owner_op'],
+    tier:  ['pro', 'enterprise'],
+  },
+
+  // ── Ops log — dispatchers + owners (Phase 5) ─────────────────────────────
+  {
+    id: 'fleet-ops-log', label: 'Ops Log', href: '/ops', icon: '🗂',
+    family: 'fleet', enabled: true,
+    modes: ['dispatcher', 'owner_op', 'fleet_owner', 'fleet_manager'],
+    tier:  ['pro', 'enterprise'],
+  },
+
+  // ── Account / admin ───────────────────────────────────────────────────────
+  {
+    id: 'fleet-account', label: 'Account', href: '/account', icon: '⚙️',
+    family: 'fleet', enabled: true,
+    modes: ['fleet_owner', 'owner_op', 'admin', 'fleet_manager'],
+    tier:  ['starter', 'pro', 'enterprise'],
   },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-export function getNavForRole(role: FleetRole, tier: FleetTier = 'enterprise'): NavEntry[] {
+export function getNavForMode(mode: DisplayMode, tier: FleetTier = 'enterprise'): NavEntry[] {
   return FLEET_NAV.filter(n =>
     n.enabled &&
-    n.roles.includes(role) &&
+    n.modes.includes(mode) &&
     n.tier.includes(tier)
   )
 }
@@ -115,15 +135,27 @@ export function getNavEntry(id: string): NavEntry | undefined {
   return FLEET_NAV.find(n => n.id === id)
 }
 
-// ── hubNav.ts registration block (copy this when registering in the ecosystem)
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Mode display metadata ─────────────────────────────────────────────────────
+
+export const MODE_META: Record<DisplayMode, { label: string; emoji: string; description: string }> = {
+  driver:        { label: 'Driver',        emoji: '🚛', description: 'Driving view — loads, HOS, check-ins' },
+  dispatcher:    { label: 'Dispatcher',    emoji: '📡', description: 'Dispatch ops — load health, escalations, fleet feed' },
+  owner_op:      { label: 'Owner-Operator',emoji: '🔑', description: 'Combined driver + dispatch — you run the whole operation' },
+  fleet_owner:   { label: 'Fleet Owner',   emoji: '🏢', description: 'Fleet management — performance, reports, team' },
+  broker:        { label: 'Broker',        emoji: '📦', description: 'Load management — board, assignments, rate confirmation' },
+  fleet_manager: { label: 'Fleet Manager', emoji: '🗂', description: 'Multi-fleet view — managing multiple carrier accounts' },
+  admin:         { label: 'Admin',         emoji: '⚙️', description: 'Account management — users, settings, billing' },
+  unknown:       { label: 'Unknown',       emoji: '❓', description: 'Role not assigned — contact your administrator' },
+}
+
+// ── hubNav.ts registration block (copy when registering in the ecosystem) ─────
 // {
 //   id:      'fleet-commander',
 //   label:   'Fleet Commander',
 //   href:    '/fleet',
 //   icon:    '🚛',
 //   family:  'fleet',
-//   enabled: false,    ← flip to true at rollout
-//   roles:   ['driver', 'dispatcher', 'owner_operator'],
+//   enabled: false,   // ← flip to true at rollout
+//   roles:   ['driver','dispatcher','owner_op','fleet_owner','broker','fleet_manager'],
 //   tier:    ['pro', 'enterprise'],
 // }

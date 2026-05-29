@@ -50,7 +50,7 @@ import {
 
 // ── Role types ────────────────────────────────────────────────────────────────
 
-export type OpsRole = 'driver' | 'dispatcher' | 'owner_operator'
+export type OpsRole = 'driver' | 'dispatcher' | 'owner_operator' | 'owner_op' | 'fleet_owner' | 'broker' | 'fleet_manager'
 
 // ── Shared mini-components ────────────────────────────────────────────────────
 
@@ -411,6 +411,45 @@ function OwnerView() {
   )
 }
 
+// ── Broker view (stub — load board coming) ───────────────────────────────────
+
+function BrokerView({ loadNumber }: { loadNumber?: string }) {
+  return (
+    <div style={{ display: 'grid', gap: '.65rem' }}>
+      <div style={{
+        padding: '.75rem', borderRadius: 10,
+        background: 'rgba(56,189,248,.06)', border: '1px solid rgba(56,189,248,.2)',
+        fontSize: '.65rem', color: 'var(--muted)',
+      }}>
+        <div style={{ fontWeight: 800, color: '#38bdf8', marginBottom: 4 }}>📦 Broker View</div>
+        Load board, rate confirmation, and assignment tools coming next.
+        {loadNumber && <div style={{ marginTop: 4 }}>Filtering to Load #{loadNumber}</div>}
+      </div>
+      {/* Broker sees dispatcher feed in the meantime */}
+      <DispatcherView loadNumber={loadNumber} />
+    </div>
+  )
+}
+
+// ── Fleet manager view (stub — multi-business coming) ────────────────────────
+
+function FleetManagerView() {
+  return (
+    <div style={{ display: 'grid', gap: '.65rem' }}>
+      <div style={{
+        padding: '.75rem', borderRadius: 10,
+        background: 'rgba(168,85,247,.06)', border: '1px solid rgba(168,85,247,.2)',
+        fontSize: '.65rem', color: 'var(--muted)',
+      }}>
+        <div style={{ fontWeight: 800, color: '#a855f7', marginBottom: 4 }}>🗂 Fleet Manager View</div>
+        Multi-carrier dashboard coming next. You&apos;ll see all managed businesses in one view.
+      </div>
+      {/* Fleet manager sees owner view per business in the meantime */}
+      <OwnerView />
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface Props {
@@ -418,12 +457,19 @@ interface Props {
   loadNumber?:  string
 }
 
+const ROLE_LABEL: Record<OpsRole, string> = {
+  driver:         '🚛 Driver',
+  dispatcher:     '📡 Dispatcher',
+  owner_operator: '🔑 Owner-Operator',  // legacy alias
+  owner_op:       '🔑 Owner-Operator',
+  fleet_owner:    '🏢 Fleet Owner',
+  broker:         '📦 Broker',
+  fleet_manager:  '🗂 Fleet Manager',
+}
+
 export default function RoleOpsView({ role, loadNumber }: Props) {
-  const roleLabel: Record<OpsRole, string> = {
-    driver:         '🚛 Driver View',
-    dispatcher:     '📡 Dispatcher View',
-    owner_operator: '🏢 Owner/Operator View',
-  }
+  // Normalize legacy alias
+  const normalizedRole: OpsRole = role === 'owner_operator' ? 'owner_op' : role
 
   return (
     <div style={{ display: 'grid', gap: '.75rem' }}>
@@ -435,12 +481,21 @@ export default function RoleOpsView({ role, loadNumber }: Props) {
         background: 'var(--surface)', border: '1px solid var(--border)',
         display: 'inline-flex', alignSelf: 'start',
       }}>
-        {roleLabel[role]}
+        {ROLE_LABEL[normalizedRole] ?? normalizedRole}
       </div>
 
-      {role === 'driver'         && <DriverView     loadNumber={loadNumber} />}
-      {role === 'dispatcher'     && <DispatcherView  loadNumber={loadNumber} />}
-      {role === 'owner_operator' && <OwnerView />}
+      {normalizedRole === 'driver'        && <DriverView      loadNumber={loadNumber} />}
+      {normalizedRole === 'dispatcher'    && <DispatcherView  loadNumber={loadNumber} />}
+      {/* owner_op = merged driver + dispatcher — single-seat operation */}
+      {normalizedRole === 'owner_op'      && (
+        <div style={{ display: 'grid', gap: '.75rem' }}>
+          <DriverView     loadNumber={loadNumber} />
+          <DispatcherView loadNumber={loadNumber} />
+        </div>
+      )}
+      {normalizedRole === 'fleet_owner'   && <OwnerView />}
+      {normalizedRole === 'broker'        && <BrokerView      loadNumber={loadNumber} />}
+      {normalizedRole === 'fleet_manager' && <FleetManagerView />}
     </div>
   )
 }
