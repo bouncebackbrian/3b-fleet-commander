@@ -14,7 +14,7 @@
  * Block:           canceled, unpaid, incomplete_expired
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase-browser'
@@ -80,9 +80,9 @@ const PLANS = [
   },
 ]
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// ── Inner page (needs Suspense for useSearchParams) ───────────────────────────
 
-export default function BillingPage() {
+function BillingPageInner() {
   const searchParams   = useSearchParams()
   const checkoutResult = searchParams.get('checkout')
 
@@ -363,5 +363,19 @@ export default function BillingPage() {
         </div>
       </div>
     </>
+  )
+}
+
+// ── Default export wrapped in Suspense (required for useSearchParams in Next.js 15) ──
+
+export default function BillingPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ padding: '2rem', textAlign: 'center', fontSize: '.7rem', color: 'var(--muted)' }}>
+        Loading billing…
+      </div>
+    }>
+      <BillingPageInner />
+    </Suspense>
   )
 }
