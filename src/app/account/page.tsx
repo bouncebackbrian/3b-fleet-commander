@@ -9,7 +9,7 @@
  *   4. Team Members — business membership management
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { BOARD_META, type LoadBoardId } from '@/lib/loadBoards/types'
 
@@ -243,6 +243,240 @@ function NotificationSettings() {
   )
 }
 
+// ── Team tab ──────────────────────────────────────────────────────────────────
+
+const ROLE_OPTIONS = ['driver', 'dispatcher', 'admin', 'broker', 'fleet_manager'] as const
+type InviteRole    = typeof ROLE_OPTIONS[number]
+
+const ROLE_LABEL: Record<InviteRole, string> = {
+  driver:        '🚛 Driver',
+  dispatcher:    '📡 Dispatcher',
+  admin:         '⚙️ Admin',
+  broker:        '📦 Broker',
+  fleet_manager: '🗂 Fleet Manager',
+}
+
+interface TeamMember {
+  id:      string
+  user_id: string
+  email:   string | null
+  role:    string
+  isSelf:  boolean
+}
+
+interface PendingInvite {
+  id:         string
+  email:      string
+  role:       string
+  expires_at: string
+}
+
+function TeamTab({ businessId }: { businessId: string | null }) {
+  const [members,    setMembers]    = useState<TeamMember[]>([])
+  const [invites,    setInvites]    = useState<PendingInvite[]>([])
+  const [callerRole, setCallerRole] = useState<string | null>(null)
+  const [loading,    setLoading]    = useState(true)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole,  setInviteRole]  = useState<InviteRole>('driver')
+  const [inviting,    setInviting]    = useState(false)
+  const [inviteResult, setInviteResult] = useState<{ url?: string; error?: string } | null>(null)
+  const [msg,         setMsg]          = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    if (!businessId) { setLoading(false); return }
+    setLoading(true)
+    try {
+      const res  = await fetch(`/api/team/members?businessId=${businessId}`)
+      const data = await res.json()
+      if (res.ok) {
+        setMembers(data.members ?? [])
+        setInvites(data.invites  ?? [])
+        setCallerRole(data.callerRole ?? null)
+      }
+    } catch { /* ignore */ }
+    finally { setLoading(false) }
+  }, [businessId])
+
+  useEffect(() => { load() }, [load])
+
+  async function handleInvite() {
+    if (!businessId || !inviteEmail) return
+    setInviting(true); setInviteResult(null)
+    try {
+      const res  = await fetch('/api/team/invite', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessId, email: inviteEmail, role: inviteRole }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setInviteResult({ url: data.inviteUrl })
+        setInviteEmail('')
+        load()
+      } else {
+        setInviteResult({ error: data.error ?? 'Failed to send invite' })
+      }
+    } catch {
+      setInviteResult({ error: 'Network error' })
+    } finally { setInviting(false) }
+  }
+
+  async function handleRoleChange(memberId: string, role: string) {
+    if (!businessId) return
+    await fetch('/api/team/members', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ businessId, memberId, role }),
+    })
+    setMsg('Role updated'); setTimeout(() => setMsg(null), 3000)
+    load()
+  }
+
+  async function handleRemove(memberId: string) {
+    if (!businessId || !confirm('Remove this member?')) return
+    await fetch('/api/team/members', {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ businessId, memberId }),
+    })
+    load()
+  }
+
+  async function handleRevokeInvite(inviteId: string) {
+    if (!businessId) return
+    await fetch('/api/team/members', {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ businessId, inviteId }),
+    })
+    load()
+  }
+
+  const isAdmin = callerRole === 'owner' || callerRole === 'admin'
+  const inp: React.CSSProperties = { fontSize: '.67rem', padding: '.37rem .5rem', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--fg)' }
+
+  if (!businessId) {
+    return (
+      <div style={{ padding: '.75rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: '.65rem', color: 'var(--muted)', textAlign: 'center' }}>
+        No business account found. Set up your business profile to manage team members.
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: '.65rem' }}>
+      <div style={{ fontSize: '.58rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.1em' }}>👥 Team Members</div>
+
+      {msg && <div style={{ fontSize: '.63rem', color: 'var(--primary)', fontWeight: 700 }}>{msg}</div>}
+
+      {/* Member list */}
+      {loading ? (
+        <div style={{ fontSize: '.65rem', color: 'var(--muted)', textAlign: 'center', padding: '.75rem' }}>Loading…</div>
+      ) : (
+        <div style={{ display: 'grid', gap: '.35rem' }}>
+          {members.map(m => (
+            <div key={m.id} style={{ padding: '.5rem .7rem', borderRadius: 9, background: m.isSelf ? 'rgba(0,232,176,.04)' : 'var(--surface-2)', border: `1px solid ${m.isSelf ? 'rgba(0,232,176,.2)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 140 }}>
+                <div style={{ fontSize: '.65rem', fontWeight: 800, color: 'var(--fg)' }}>
+                  {m.email ?? m.user_id.slice(0, 12) + '…'}
+                  {m.isSelf && <span style={{ marginLeft: 6, fontSize: '.55rem', color: 'var(--primary)' }}>you</span>}
+                </div>
+              </div>
+              {isAdmin && !m.isSelf ? (
+                <select
+                  value={m.role}
+                  onChange={e => handleRoleChange(m.id, e.target.value)}
+                  style={{ ...inp, fontSize: '.62rem', padding: '.25rem .4rem' }}
+                >
+                  {ROLE_OPTIONS.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                </select>
+              ) : (
+                <span style={{ fontSize: '.62rem', fontWeight: 700, color: 'var(--muted)', padding: '.2rem .45rem', borderRadius: 6, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                  {ROLE_LABEL[m.role as InviteRole] ?? m.role}
+                </span>
+              )}
+              {isAdmin && !m.isSelf && (
+                <button onClick={() => handleRemove(m.id)} style={{ fontSize: '.6rem', color: 'var(--error)', background: 'none', border: 'none', cursor: 'pointer', padding: '.2rem .35rem', borderRadius: 5 }}>
+                  Remove
+                </button>
+              )}
+            </div>
+          ))}
+          {members.length === 0 && <div style={{ fontSize: '.63rem', color: 'var(--muted)', textAlign: 'center', padding: '.5rem' }}>No members yet.</div>}
+        </div>
+      )}
+
+      {/* Pending invites */}
+      {invites.length > 0 && (
+        <div style={{ display: 'grid', gap: '.3rem' }}>
+          <div style={{ fontSize: '.56rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.08em' }}>Pending Invites</div>
+          {invites.map(inv => (
+            <div key={inv.id} style={{ padding: '.45rem .7rem', borderRadius: 8, background: 'rgba(245,194,0,.05)', border: '1px solid rgba(245,194,0,.2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <span style={{ fontSize: '.63rem', color: 'var(--fg)' }}>{inv.email}</span>
+                <span style={{ marginLeft: 8, fontSize: '.57rem', color: 'var(--muted)' }}>
+                  {ROLE_LABEL[inv.role as InviteRole] ?? inv.role} · expires {new Date(inv.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                </span>
+              </div>
+              <button onClick={() => handleRevokeInvite(inv.id)} style={{ fontSize: '.58rem', color: 'var(--error)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                Revoke
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Invite form */}
+      {isAdmin && (
+        <div style={{ padding: '.75rem', borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--border)', display: 'grid', gap: '.5rem' }}>
+          <div style={{ fontSize: '.58rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.08em' }}>Invite a team member</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '.4rem' }}>
+            <input
+              value={inviteEmail}
+              onChange={e => setInviteEmail(e.target.value)}
+              placeholder="Email address"
+              type="email"
+              style={{ ...inp, width: '100%', boxSizing: 'border-box' }}
+            />
+            <select value={inviteRole} onChange={e => setInviteRole(e.target.value as InviteRole)} style={{ ...inp }}>
+              {ROLE_OPTIONS.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+            </select>
+          </div>
+          <button
+            onClick={handleInvite}
+            disabled={inviting || !inviteEmail}
+            style={{ padding: '.4rem', borderRadius: 8, fontSize: '.66rem', fontWeight: 800, background: 'var(--primary)', color: 'var(--surface)', border: 'none', cursor: inviting ? 'wait' : 'pointer', opacity: !inviteEmail ? 0.5 : 1 }}
+          >
+            {inviting ? 'Sending…' : 'Send Invite'}
+          </button>
+
+          {/* Invite result */}
+          {inviteResult?.error && (
+            <div style={{ fontSize: '.62rem', color: 'var(--error)' }}>{inviteResult.error}</div>
+          )}
+          {inviteResult?.url && (
+            <div style={{ padding: '.5rem .65rem', borderRadius: 8, background: 'rgba(0,232,176,.06)', border: '1px solid rgba(0,232,176,.2)', display: 'grid', gap: '.3rem' }}>
+              <div style={{ fontSize: '.6rem', fontWeight: 800, color: 'var(--primary)' }}>✅ Invite created</div>
+              {process.env.NEXT_PUBLIC_EMAIL_ENDPOINT ? (
+                <div style={{ fontSize: '.6rem', color: 'var(--muted)' }}>Email sent to {inviteEmail}</div>
+              ) : (
+                <>
+                  <div style={{ fontSize: '.6rem', color: 'var(--muted)' }}>No email endpoint configured — share this link manually:</div>
+                  <div style={{ fontSize: '.6rem', fontFamily: 'monospace', padding: '.3rem .45rem', borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--border)', wordBreak: 'break-all', color: 'var(--fg)', userSelect: 'all' }}>
+                    {inviteResult.url}
+                  </div>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(inviteResult.url!); setMsg('Link copied!') }}
+                    style={{ fontSize: '.6rem', fontWeight: 700, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0 }}
+                  >
+                    📋 Copy link
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function AccountPage() {
@@ -412,16 +646,7 @@ export default function AccountPage() {
 
         {/* ── Team ─────────────────────────────────────────────────────────── */}
         {activeTab === 'team' && (
-          <div style={card}>
-            <div style={sectionLabel}>👥 Team Members</div>
-            <div style={{
-              padding: '.75rem', borderRadius: 10, textAlign: 'center',
-              background: 'var(--surface-2)', border: '1px solid var(--border)',
-              fontSize: '.65rem', color: 'var(--muted)',
-            }}>
-              Team management coming soon. Invite drivers, dispatchers, and admins to your business account here.
-            </div>
-          </div>
+          <TeamTab businessId={businessId} />
         )}
       </div>
     </>
