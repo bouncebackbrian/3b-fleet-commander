@@ -2,36 +2,80 @@
 // ── Fleet Commander Identity Adapter ─────────────────────────────────────────
 //
 // Fleet Commander consumes identity — it does NOT own it.
-// Source of truth: 3B ID project (separate Supabase instance, TBD).
+// Source of truth: @3b/identity-sor (identity-sor service).
 //
-// This adapter reads identity from the current auth session JWT.
-// Works whether auth is:
-//   A. Local (this Supabase project owns auth)
-//   B. External (3B ID project issues the token, Fleet Commander validates it)
+// Resolution order:
+//   1. JWT user_metadata claims (set by identity-sor after first link — fast, no round trip)
+//   2. Direct identity-sor API call (first-time users or stale tokens)
+//   3. NULL_IDENTITY (identity-sor unreachable or user not signed in)
 //
-// When 3B ID finalizes JWT custom claims, extend the mapping below —
-// no other files need to change.
+// This means once a user is linked, every subsequent call is a single JWT read.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createClient } from '@/lib/supabase-browser'
 
 export type FleetIdentity = {
-  userId:     string | null  // auth.users UUID (JWT sub) — safe foreign key for fleet_missions
+  userId:     string | null  // auth.users UUID (JWT sub)
   email:      string | null
-  threebId:   string | null  // 3B Driver ID — from JWT claim user_metadata.three_b_id
-  businessId: string | null  // 3B Business ID — from JWT claim user_metadata.business_id
+  threebId:   string | null  // 3B-DRV-XXXXXXXX — from identity-sor
+  businessId: string | null  // business_profiles UUID — from identity-sor
 }
 
 const NULL_IDENTITY: FleetIdentity = {
   userId: null, email: null, threebId: null, businessId: null,
 }
 
+const IDENTITY_SOR_URL =
+  typeof process !== 'undefined'
+    ? (process.env.NEXT_PUBLIC_IDENTITY_SOR_URL ?? 'http://localhost:3103')
+    : 'http://localhost:3103'
+
+const IDENTITY_INTERNAL_KEY =
+  typeof process !== 'undefined'
+    ? (process.env.NEXT_PUBLIC_IDENTITY_INTERNAL_KEY ?? '')
+    : ''
+
 /**
- * Resolves the current user's operational identity from the active auth session.
+ * Fetch the full identity from identity-sor.
+ * Called only when JWT claims are missing (first visit or stale token).
+ */
+async function fetchFromIdentitySor(userId: string): Promise<{
+  threebId: string | null
+  businessId: string | null
+} | null> {
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (IDENTITY_INTERNAL_KEY) {
+      headers['Authorization'] = `Bearer ${IDENTITY_INTERNAL_KEY}`
+    }
+
+    const res = await fetch(`${IDENTITY_SOR_URL}/identity/${userId}`, { headers })
+    if (!res.ok) return null
+
+    const body = (await res.json()) as {
+      ok: boolean
+      identity?: { threebId?: string | null; defaultBusinessId?: string | null }
+    }
+    if (!body.ok || !body.identity) return null
+
+    return {
+      threebId:   body.identity.threebId   ?? null,
+      businessId: body.identity.defaultBusinessId ?? null,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Resolves the current user's operational identity.
+ *
+ * Fast path: reads JWT user_metadata claims written by identity-sor.
+ * Slow path: calls identity-sor directly if claims are missing.
  *
  * Returns NULL_IDENTITY (all nulls) when:
- *   - Not signed in (alpha / offline mode)
- *   - Supabase is unavailable
+ *   - Not signed in
+ *   - identity-sor is unreachable and JWT claims are absent
  *   - Any error occurs
  *
  * Never throws — safe to call anywhere in the app.
@@ -42,12 +86,27 @@ export async function getFleetIdentity(): Promise<FleetIdentity> {
     const { data: { user }, error } = await supabase.auth.getUser()
     if (error || !user) return NULL_IDENTITY
 
+    // Fast path — JWT claims already written by identity-sor
+    const jwtThreebId   = (user.user_metadata?.three_b_id   as string | undefined) ?? null
+    const jwtBusinessId = (user.user_metadata?.business_id  as string | undefined) ?? null
+
+    if (jwtThreebId) {
+      return {
+        userId:     user.id,
+        email:      user.email ?? null,
+        threebId:   jwtThreebId,
+        businessId: jwtBusinessId,
+      }
+    }
+
+    // Slow path — first visit or token predates identity-sor claim writes
+    const sorIdentity = await fetchFromIdentitySor(user.id)
+
     return {
       userId:     user.id,
-      email:      user.email   ?? null,
-      // Custom JWT claims set by 3B ID project via auth hook — null until wired
-      threebId:   (user.user_metadata?.three_b_id   as string | undefined) ?? null,
-      businessId: (user.user_metadata?.business_id  as string | undefined) ?? null,
+      email:      user.email ?? null,
+      threebId:   sorIdentity?.threebId   ?? null,
+      businessId: sorIdentity?.businessId ?? null,
     }
   } catch {
     return NULL_IDENTITY
