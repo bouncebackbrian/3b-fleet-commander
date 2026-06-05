@@ -265,6 +265,7 @@ Steps 1.1–1.4 run in parallel with Phase 0 (no approval needed)
 
 | Date | Decision | Owner |
 |---|---|---|
+| 2026-06-05 | Stripe custom domain `pay.bouncebackbrian.com` confirmed active (Checkout, Payment Links, Portal). Payment routing made config-driven via `NEXT_PUBLIC_STRIPE_PAYMENT_DOMAIN` + `NEXT_PUBLIC_CREDIT_URL`. Trace_ID: 3B-20260604-0001. Next: live validation on custom domain. | S2 |
 | 2026-05-29 | Standalone build designated runtime canonical root | TBD (formalize) |
 | 2026-05-29 | Phase 1 pre-work authorized without waiting for Phase 0 | Founder |
 | — | Formal intake approval | PENDING |

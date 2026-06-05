@@ -38,7 +38,7 @@ type Config = {
 }
 
 function getConfig(props: Props): Config {
-  const base = 'https://credit.bouncebackbrian.com'
+  const base = process.env.NEXT_PUBLIC_CREDIT_URL ?? 'https://credit.bouncebackbrian.com'
 
   switch (props.billingState) {
     case 'past_due':
