@@ -85,6 +85,32 @@ export async function createFuelEntry(
   return entry
 }
 
+export interface UpdateFuelInput {
+  receiptSaved?: boolean
+}
+
+export async function updateFuelEntry(
+  id: string,
+  input: UpdateFuelInput,
+  userId: string,
+  email: string | null,
+): Promise<FuelEntry> {
+  const { data: beforeRow } = await fleetServiceClient.from('fuel_entries').select('*').eq('id', id).eq('user_id', userId).maybeSingle()
+  const updates: Record<string, unknown> = {}
+  if (input.receiptSaved !== undefined) updates.receipt_saved = input.receiptSaved
+  const { data, error } = await fleetServiceClient
+    .from('fuel_entries')
+    .update(updates)
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select('*')
+    .single()
+  if (error) throw error
+  const entry = fromRow(data)
+  audit.log({ userId, email, action: 'fuel.update', resource: 'fuel_entries', resourceId: id, before: beforeRow ? fromRow(beforeRow) : null, after: entry })
+  return entry
+}
+
 export async function deleteFuelEntry(id: string, userId: string, email: string | null): Promise<void> {
   const { data: before } = await fleetServiceClient.from('fuel_entries').select('*').eq('id', id).eq('user_id', userId).maybeSingle()
   const { error } = await fleetServiceClient.from('fuel_entries').delete().eq('id', id).eq('user_id', userId)

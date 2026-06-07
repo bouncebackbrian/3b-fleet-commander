@@ -2,10 +2,9 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import TopBar from '@/components/layout/TopBar'
-import { supabase } from '@/lib/supabase'
 import { SAMPLE_LOADS, SAMPLE_FUEL, calcMetrics } from '@/lib/store'
 import { loadSettings, DEFAULT_SETTINGS, type AppSettings } from '@/lib/settings'
-import type { Load, MoveType, LoadStatus, FuelEntry } from '@/types'
+import type { Load, LoadStatus, FuelEntry } from '@/types'
 
 type Period = 'week' | 'month' | 'all'
 
@@ -15,32 +14,6 @@ const fmtM  = (n: number) => '$' + Math.abs(n).toLocaleString('en-US', { minimum
 const fmtH  = (h: number) => h < 1 ? `${Math.round(h * 60)}m` : `${h.toFixed(1)}h`
 const pct   = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const loadFromDB = (r: any): Load => ({
-  id: r.id, date: r.date, loadNumber: r.load_number, bolRef: r.bol_ref ?? undefined,
-  dispatcher: r.dispatcher, broker: r.broker ?? undefined, trailer: r.trailer ?? undefined,
-  moveType: r.move_type as MoveType, origin: r.origin, destination: r.destination,
-  status: 'Complete' as LoadStatus,
-  dispatchMiles: Number(r.dispatch_miles) || 0, actualMiles: Number(r.actual_miles) || 0,
-  deadheadMiles: Number(r.deadhead_miles) || 0, paidMiles: Number(r.paid_miles) || 0,
-  cpmRate: Number(r.cpm_rate) || 0.55, fuelCost: Number(r.fuel_cost) || 0,
-  waitHours: Number(r.wait_hours) || 0, detentionHours: Number(r.detention_hours) || 0,
-  detentionPay: Number(r.detention_pay) || 0, settlementPay: Number(r.settlement_pay) || 0,
-  notes: r.notes ?? undefined, proofSaved: Boolean(r.proof_saved),
-  settlementVerified: Boolean(r.settlement_verified),
-  createdAt: r.created_at, updatedAt: r.updated_at,
-})
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const fuelFromDB = (r: any): FuelEntry => ({
-  id: r.id, date: r.date, location: r.location,
-  fuelType: r.fuel_type as FuelEntry['fuelType'],
-  gallons: Number(r.gallons) || 0,
-  pricePerGal: r.price_per_gal ? Number(r.price_per_gal) : undefined,
-  totalCost: Number(r.total_cost) || 0,
-  loadNumber: r.load_number ?? undefined,
-  receiptSaved: Boolean(r.receipt_saved),
-  notes: r.notes ?? undefined, createdAt: r.created_at,
-})
 
 function filterPeriod<T extends { date?: string; createdAt?: string }>(items: T[], p: Period): T[] {
   if (p === 'all') return items
@@ -130,17 +103,15 @@ export default function MIS() {
   useEffect(() => { setCfg(loadSettings()) }, [])
 
   useEffect(() => {
-    if (!supabase) {
-      setLoads(SAMPLE_LOADS); setFuel(SAMPLE_FUEL); setLoading(false); return
-    }
     Promise.all([
-      supabase.from('loads').select('*').order('date', { ascending: false }),
-      supabase.from('fuel_entries').select('*').order('date', { ascending: false }),
+      fetch('/api/fleet/loads').then(r => r.ok ? r.json() : null),
+      fetch('/api/fleet/fuel').then(r => r.ok ? r.json() : null),
     ]).then(([l, f]) => {
-      if (!l.error && l.data) setLoads(l.data.map(loadFromDB))
-      if (!f.error && f.data) setFuel(f.data.map(fuelFromDB))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setLoads((l?.loads ?? SAMPLE_LOADS).map((x: any) => ({ ...x, status: (x.status ?? 'Complete') as LoadStatus })))
+      setFuel(f?.entries ?? SAMPLE_FUEL)
       setLoading(false)
-    })
+    }).catch(() => { setLoads(SAMPLE_LOADS); setFuel(SAMPLE_FUEL); setLoading(false) })
   }, [])
 
   const fLoads = filterPeriod(loads, period)

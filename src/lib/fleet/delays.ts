@@ -96,6 +96,34 @@ export async function createDelay(
   return delay
 }
 
+export interface UpdateDelayInput {
+  dispatcherNotified?: boolean
+  proofSaved?: boolean
+}
+
+export async function updateDelay(
+  id: string,
+  input: UpdateDelayInput,
+  userId: string,
+  email: string | null,
+): Promise<DelayEntry> {
+  const { data: beforeRow } = await fleetServiceClient.from('delays').select('*').eq('id', id).eq('user_id', userId).maybeSingle()
+  const updates: Record<string, unknown> = {}
+  if (input.dispatcherNotified !== undefined) updates.dispatcher_notified = input.dispatcherNotified
+  if (input.proofSaved         !== undefined) updates.proof_saved         = input.proofSaved
+  const { data, error } = await fleetServiceClient
+    .from('delays')
+    .update(updates)
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select('*')
+    .single()
+  if (error) throw error
+  const delay = fromRow(data)
+  audit.log({ userId, email, action: 'delay.update', resource: 'delays', resourceId: id, before: beforeRow ? fromRow(beforeRow) : null, after: delay })
+  return delay
+}
+
 export async function deleteDelay(id: string, userId: string, email: string | null): Promise<void> {
   const { data: before } = await fleetServiceClient.from('delays').select('*').eq('id', id).eq('user_id', userId).maybeSingle()
   const { error } = await fleetServiceClient.from('delays').delete().eq('id', id).eq('user_id', userId)
