@@ -6,27 +6,24 @@
  * ECOSYSTEM MODE (future):   wraps services/auth-3boost + services/identity-sor.
  *
  * All engines, pages, and components that need the current user import from here.
- * Never import supabase-browser auth calls directly outside this file.
- *
- * Swap trigger: NEXT_PUBLIC_AUTH_MODE=ecosystem → routes to auth-3boost.
+ * Never import auth calls directly outside this file.
  *
  * ── Two-layer identity model ──────────────────────────────────────────────────
  *
- * Layer 1 — 3B Ecosystem (business_members table):
- *   Governance roles: owner | partner | manager | employee | advisor
- *   Scopes which businesses a 3B ID can access across ALL products.
+ * Layer 1 — 3B Ecosystem (Core_Eco):
+ *   auth, session, profiles, 3B Account ID, entitlements.
+ *   Client: auth-client.ts → Core_Eco Supabase (rkwdryneutgyqrnbuwaz)
  *
- * Layer 2 — Fleet Commander (fleet_business_members table):
- *   Operational roles: owner | driver | dispatcher | admin | broker | fleet_manager
- *   Determines what a user sees INSIDE Fleet Commander.
+ * Layer 2 — Fleet Commander (Fleet DB):
+ *   fleet_business_members, businesses, loads, trips, etc.
+ *   Client: fleet-db-client.ts → Fleet Supabase (goqzhdrmrdlkchmwfiur)
  *
- * A user can be a 'partner' in business_members AND a 'dispatcher' in
- * fleet_business_members simultaneously — the two roles are independent.
- *
- * Business types: owner_op | carrier | brokerage | fleet_management | service | other
+ * Business types: owner_op | carrier | brokerage | fleet_management
+ * Member roles:   owner | driver | dispatcher | admin | broker | fleet_manager
  */
 
-import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient }  from '@/lib/auth-client'       // Core_Eco — identity/session
+import { createFleetClient } from '@/lib/fleet-db-client'   // Fleet DB — membership/fleet data
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -72,11 +69,11 @@ function deriveDisplayMode(role: MemberRole | null, businessType: BusinessType |
   if (role === 'owner') {
     return businessType === 'owner_op' ? 'owner_op' : 'fleet_owner'
   }
-  if (role === 'driver')       return 'driver'
-  if (role === 'dispatcher')   return 'dispatcher'
-  if (role === 'broker')       return 'broker'
-  if (role === 'fleet_manager')return 'fleet_manager'
-  if (role === 'admin')        return 'admin'
+  if (role === 'driver')        return 'driver'
+  if (role === 'dispatcher')    return 'dispatcher'
+  if (role === 'broker')        return 'broker'
+  if (role === 'fleet_manager') return 'fleet_manager'
+  if (role === 'admin')         return 'admin'
   return 'unknown'
 }
 
@@ -84,17 +81,16 @@ function deriveDisplayMode(role: MemberRole | null, businessType: BusinessType |
 
 export async function getCurrentUser(): Promise<FleetUser | null> {
   if (process.env.NEXT_PUBLIC_AUTH_MODE === 'ecosystem') {
-    // TODO: swap to auth-3boost token validation + identity-sor resolution
     throw new Error('auth-3boost not yet wired — set NEXT_PUBLIC_AUTH_MODE=standalone')
   }
 
   try {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    // Auth check → Core_Eco
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return null
 
-    // Resolve business membership
-    const { data: membership } = await supabase
+    // Fleet membership → Fleet DB
+    const { data: membership } = await createFleetClient()
       .from('fleet_business_members')
       .select(`
         role,
@@ -109,7 +105,7 @@ export async function getCurrentUser(): Promise<FleetUser | null> {
       .limit(1)
       .maybeSingle()
 
-    const role         = (membership?.role        ?? null) as MemberRole | null
+    const role         = (membership?.role ?? null) as MemberRole | null
     const biz          = membership?.businesses as unknown as { type?: string; slug?: string } | null
     const businessType = (biz?.type ?? null) as BusinessType | null
     const businessSlug = biz?.slug ?? null
@@ -128,7 +124,6 @@ export async function getCurrentUser(): Promise<FleetUser | null> {
 }
 
 // ── Get all businesses a user belongs to ─────────────────────────────────────
-// Useful for fleet managers who span multiple businesses.
 
 export async function getUserBusinesses(): Promise<Array<{
   businessId:   string
@@ -137,11 +132,10 @@ export async function getUserBusinesses(): Promise<Array<{
   role:         MemberRole
 }>> {
   try {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return []
 
-    const { data } = await supabase
+    const { data } = await createFleetClient()
       .from('fleet_business_members')
       .select(`
         role,
@@ -173,8 +167,7 @@ export async function getSession() {
     throw new Error('auth-3boost not yet wired')
   }
   try {
-    const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession()
+    const { data: { session } } = await createAuthClient().auth.getSession()
     return session
   } catch { return null }
 }
@@ -189,25 +182,23 @@ export async function signOut(): Promise<void> {
     return // TODO: auth-3boost sign out
   }
   try {
-    const supabase = createClient()
-    await supabase.auth.signOut()
+    await createAuthClient().auth.signOut()
   } catch { /* ignore */ }
 }
 
 // ── Display mode → userMode.ts compatibility shim ────────────────────────────
-// Maps new DisplayMode to the existing UserMode string used in userMode.ts.
-// Remove this once userMode.ts is fully replaced by navConfig.ts.
+// Remove once userMode.ts is fully replaced by navConfig.ts.
 
 export function displayModeToUserMode(mode: DisplayMode): string {
   const map: Record<DisplayMode, string> = {
     driver:        'driver',
     dispatcher:    'dispatcher',
-    owner_op:      'owner_operator',  // merged view
+    owner_op:      'owner_operator',
     fleet_owner:   'owner_operator',
-    broker:        'dispatcher',      // broker sees dispatch view until broker view built
-    fleet_manager: 'owner_operator',  // fleet manager sees owner view until built
+    broker:        'dispatcher',
+    fleet_manager: 'owner_operator',
     admin:         'owner_operator',
-    unknown:       'driver',          // safe fallback
+    unknown:       'driver',
   }
   return map[mode]
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient } from '@/lib/auth-client'
 
 const ALLOWED_HOSTS = ['bouncebackbrian.com']
 
@@ -43,7 +43,7 @@ function LoginForm() {
   const [checking, setChecking] = useState(true)
 
   useEffect(() => {
-    const supabase = createClient()
+    const supabase = createAuthClient()
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
         router.replace(returnTo)
@@ -57,7 +57,7 @@ function LoginForm() {
     e.preventDefault()
     setError(null)
     setLoading(true)
-    const supabase = createClient()
+    const supabase = createAuthClient()
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
     if (authError) {
       setError(authError.message)
