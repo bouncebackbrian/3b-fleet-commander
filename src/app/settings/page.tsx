@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { loadSettings, persistSettings, DEFAULT_SETTINGS, type AppSettings } from '@/lib/settings'
 import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient } from '@/lib/auth-client'
 import { logTimelineEvent } from '@/lib/timeline'
 import { readUserMode, MODE_CONFIG, type UserMode } from '@/lib/userMode'
 import UserModeSelectorSheet from '@/components/layout/UserModeSelectorSheet'
@@ -182,7 +183,7 @@ export default function Settings() {
     try { localStorage.setItem('3b-compliance-docs', JSON.stringify(docs)) } catch { /* storage full */ }
     // Supabase async — non-blocking, silently absorbed
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await createAuthClient().auth.getUser()
       if (!user) return
       let businessId: string | null = null
       try {
@@ -210,7 +211,7 @@ export default function Settings() {
       const raw = localStorage.getItem('3b-compliance-docs')
       if (raw) setCompliance(JSON.parse(raw))
     } catch { /* ignore */ }
-    supabase.auth.getUser().then(async ({ data }) => {
+    createAuthClient().auth.getUser().then(async ({ data }) => {
       if (!data.user) return
       try {
         const { data: row } = await supabase
@@ -238,7 +239,7 @@ export default function Settings() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
+    createAuthClient().auth.getUser().then(async ({ data }) => {
       if (!data.user) return
       const { data: prof } = await supabase
         .from('profiles').select('full_name,role,three_b_id,business_id,cdl_number,cdl_state,phone')
@@ -400,7 +401,7 @@ export default function Settings() {
   async function handleProfileSave(e: React.FormEvent) {
     e.preventDefault()
     setProfLoading(true); setProfErr('')
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) { setProfErr('Not signed in.'); setProfLoading(false); return }
     const { error } = await supabase.from('profiles').upsert({
       id:          user.id,

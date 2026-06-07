@@ -13,6 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient } from '@/lib/auth-client'
 
 export type FleetIdentity = {
   userId:     string | null  // auth.users UUID (JWT sub)
@@ -83,7 +84,7 @@ async function fetchFromIdentitySor(userId: string): Promise<{
 export async function getFleetIdentity(): Promise<FleetIdentity> {
   try {
     const supabase = createClient()
-    const { data: { user }, error } = await supabase.auth.getUser()
+    const { data: { user }, error } = await createAuthClient().auth.getUser()
     if (error || !user) return NULL_IDENTITY
 
     // Fast path — JWT claims already written by identity-sor

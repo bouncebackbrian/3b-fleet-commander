@@ -10,6 +10,7 @@
  * Local: localStorage '3b-timeline-events' (newest-first, capped at 200)
  */
 import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient } from '@/lib/auth-client'
 
 // ── Event catalogue ───────────────────────────────────────────────────────────
 export type TimelineEventType =
@@ -179,7 +180,7 @@ export async function logTimelineEvent(
   // 2. Supabase — async, non-blocking
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return
 
     let businessId: string | null = null

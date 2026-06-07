@@ -11,25 +11,19 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { postTruck } from '@/lib/loadBoardConnector'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getApiUser } from '@/lib/api-auth'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import type { LoadBoardId, TruckPosting } from '@/lib/loadBoards/types'
 
 export async function POST(req: NextRequest) {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  )
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getApiUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let body: { businessId: string; boards: LoadBoardId[]; truck: TruckPosting }
   try { body = await req.json() }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
 
-  const { data: membership } = await supabase
+  const { data: membership } = await supabaseAdmin
     .from('fleet_business_members')
     .select('role')
     .eq('business_id', body.businessId)

@@ -12,6 +12,7 @@
  * Local: localStorage '3b-trailer-events' (newest-first, max 200)
  */
 import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient } from '@/lib/auth-client'
 
 // ── Event types ───────────────────────────────────────────────────────────────
 
@@ -226,7 +227,7 @@ export async function saveTrailerEvent(event: TrailerEvent): Promise<void> {
   // 2. Supabase async
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return
 
     let businessId: string | null = null

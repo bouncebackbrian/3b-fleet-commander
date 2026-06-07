@@ -13,19 +13,11 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { searchLoads } from '@/lib/loadBoardConnector'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getApiUser } from '@/lib/api-auth'
 import type { LoadSearchParams, LoadBoardId } from '@/lib/loadBoards/types'
 
 export async function POST(req: NextRequest) {
-  // Verify auth
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  )
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getApiUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   let body: { businessId: string; boards?: LoadBoardId[]; params: LoadSearchParams }

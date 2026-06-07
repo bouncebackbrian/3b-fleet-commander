@@ -6,11 +6,10 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getApiUser } from '@/lib/api-auth'
 
-async function getCallerMembership(supabase: ReturnType<typeof createServerClient>, businessId: string, userId: string) {
-  const { data } = await supabase
+async function getCallerMembership(businessId: string, userId: string) {
+  const { data } = await supabaseAdmin
     .from('fleet_business_members')
     .select('role')
     .eq('business_id', businessId)
@@ -23,19 +22,13 @@ async function getCallerMembership(supabase: ReturnType<typeof createServerClien
 // ── GET — list members + invites ──────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
-  const cookieStore = await cookies()
-  const supabase    = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  )
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getApiUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const businessId = req.nextUrl.searchParams.get('businessId')
   if (!businessId) return NextResponse.json({ error: 'businessId required' }, { status: 400 })
 
-  const caller = await getCallerMembership(supabase, businessId, user.id)
+  const caller = await getCallerMembership(businessId, user.id)
   if (!caller) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   // Active members
@@ -77,17 +70,11 @@ export async function GET(req: NextRequest) {
 // ── PATCH — update role ───────────────────────────────────────────────────────
 
 export async function PATCH(req: NextRequest) {
-  const cookieStore = await cookies()
-  const supabase    = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  )
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getApiUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { businessId, memberId, role } = await req.json()
-  const caller = await getCallerMembership(supabase, businessId, user.id)
+  const caller = await getCallerMembership(businessId, user.id)
   if (!caller || !['owner', 'admin'].includes(caller.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
@@ -105,17 +92,11 @@ export async function PATCH(req: NextRequest) {
 // ── DELETE — remove member or revoke invite ───────────────────────────────────
 
 export async function DELETE(req: NextRequest) {
-  const cookieStore = await cookies()
-  const supabase    = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  )
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getApiUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { businessId, memberId, inviteId } = await req.json()
-  const caller = await getCallerMembership(supabase, businessId, user.id)
+  const caller = await getCallerMembership(businessId, user.id)
   if (!caller || !['owner', 'admin'].includes(caller.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }

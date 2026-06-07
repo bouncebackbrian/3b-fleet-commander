@@ -1,5 +1,6 @@
 'use client'
 import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient } from '@/lib/auth-client'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -100,7 +101,7 @@ export type BusinessProfile = {
 export async function getCurrentProfile(): Promise<UserProfile | null> {
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return null
 
     const { data, error } = await supabase
@@ -126,7 +127,7 @@ export const getProfile = getCurrentProfile
 export async function getCurrentBusiness(businessId?: string | null): Promise<BusinessProfile | null> {
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return null
 
     if (businessId) {
@@ -160,7 +161,7 @@ export async function getCurrentBusiness(businessId?: string | null): Promise<Bu
 export async function updateProfile(patch: Partial<UserProfile>): Promise<void> {
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return
 
     await supabase.from('profiles').upsert({
@@ -179,7 +180,7 @@ export async function updateProfile(patch: Partial<UserProfile>): Promise<void> 
 export async function getAuthUserId(): Promise<string | null> {
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     return user?.id ?? null
   } catch {
     return null

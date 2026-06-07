@@ -11,18 +11,11 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getApiUser } from '@/lib/api-auth'
 import type { MemberRole } from '@/lib/auth-adapter'
 
 export async function POST(req: NextRequest) {
-  const cookieStore = await cookies()
-  const supabase    = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  )
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getApiUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { businessId, email, role } = await req.json()
@@ -31,7 +24,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Verify caller is owner or admin
-  const { data: membership } = await supabase
+  const { data: membership } = await supabaseAdmin
     .from('fleet_business_members')
     .select('role')
     .eq('business_id', businessId)

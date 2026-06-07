@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase as legacySupabase } from '@/lib/supabase'
 import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient } from '@/lib/auth-client'
 import { scoreLoad, getMpgDefault, fuelIntel } from '@/lib/scoreLoad'
 import type { LoadMission, SyncState, MissionStop, TripReview } from '@/lib/dashboard/types'
 import { parseMission, parseFleetMission, missionToRow, insertStop } from '@/lib/dashboard/helpers'
@@ -21,7 +22,7 @@ const db = createClient()
 async function fetchActiveMission(): Promise<{ mission: LoadMission | null; tier: string }> {
   // Tier 0 — fleet_active_missions (auth-aware, one row per user)
   try {
-    const { data: { user } } = await db.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (user) {
       const { data: row, error } = await db
         .from('fleet_active_missions')
@@ -182,7 +183,7 @@ export function useMission() {
 
       // 3a. fleet_active_missions — single JSONB row, always up to date
       try {
-        const { data: { user } } = await db.auth.getUser()
+        const { data: { user } } = await createAuthClient().auth.getUser()
         if (user) {
           const { error: amErr } = await db
             .from('fleet_active_missions')
@@ -352,7 +353,7 @@ export function useMission() {
 
       // 4a. fleet_active_missions — mark completed so it won't restore on reload
       try {
-        const { data: { user } } = await db.auth.getUser()
+        const { data: { user } } = await createAuthClient().auth.getUser()
         if (user) {
           await db
             .from('fleet_active_missions')

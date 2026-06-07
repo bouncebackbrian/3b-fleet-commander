@@ -19,6 +19,7 @@
  */
 
 import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient } from '@/lib/auth-client'
 
 // ── Event types ───────────────────────────────────────────────────────────────
 
@@ -156,7 +157,7 @@ function writeAll(events: OpsEvent[]): void {
 async function pushToSupabase(event: OpsEvent): Promise<void> {
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
 
     const row = {
       id:            event.id,

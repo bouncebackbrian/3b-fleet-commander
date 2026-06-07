@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient } from '@/lib/auth-client'
 
 const TOOLS = [
   { icon: '🚛', label: 'Command Center',      sub: 'Live HOS, mission timeline, weather, ELD alerts',  href: '/dashboard', live: true  },
@@ -45,7 +45,7 @@ export default function HomePage() {
   const [authed, setAuthed] = useState<boolean | null>(null)
 
   useEffect(() => {
-    createClient().auth.getSession().then(({ data }) => {
+    createAuthClient().auth.getSession().then(({ data }) => {
       setAuthed(!!data.session)
     })
   }, [])

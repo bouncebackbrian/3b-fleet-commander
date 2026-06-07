@@ -11,6 +11,7 @@
  */
 
 import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient } from '@/lib/auth-client'
 
 export type AccessStatus =
   | 'active'
@@ -37,7 +38,7 @@ const ACTIVE_STATUSES = ['trialing', 'active', 'past_due']
 export async function checkAccess(): Promise<AccessResult> {
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return { hasAccess: false, status: 'none', periodEnd: null, cancelAt: false, trialEnd: null }
 
     const { data: sub } = await supabase

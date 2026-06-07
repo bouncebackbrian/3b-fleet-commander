@@ -17,7 +17,7 @@
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import TopBar from '@/components/layout/TopBar'
-import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient } from '@/lib/auth-client'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -95,7 +95,7 @@ function BillingPageInner() {
 
   const loadSubscription = useCallback(async () => {
     try {
-      const supabase = createClient()
+      const supabase = createAuthClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setBillingState('no_subscription'); return }
 
@@ -129,7 +129,7 @@ function BillingPageInner() {
     setLoading(true)
     setError(null)
     try {
-      const supabase = createClient()
+      const supabase = createAuthClient()
       const { data: { session } } = await supabase.auth.getSession()
 
       const res  = await fetch('/api/billing/checkout', {
@@ -153,7 +153,7 @@ function BillingPageInner() {
     setLoading(true)
     setError(null)
     try {
-      const supabase = createClient()
+      const supabase = createAuthClient()
       const { data: { session } } = await supabase.auth.getSession()
 
       const res  = await fetch('/api/billing/portal', {

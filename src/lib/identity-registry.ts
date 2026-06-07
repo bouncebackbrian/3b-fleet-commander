@@ -14,6 +14,7 @@
  */
 
 import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient } from '@/lib/auth-client'
 
 // ── 3B ID types ────────────────────────────────────────────────────────────────
 
@@ -200,7 +201,7 @@ export interface BusinessRegistryRow {
 export async function getThreeBProfile(): Promise<ThreeBProfile | null> {
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return null
 
     const { data, error } = await supabase
@@ -223,7 +224,7 @@ export async function getThreeBProfile(): Promise<ThreeBProfile | null> {
 export async function getBusinessRegistry(): Promise<BusinessRegistryRow[]> {
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return []
 
     const { data, error } = await supabase
@@ -283,7 +284,7 @@ export async function createBusiness(input: {
 }): Promise<ThreeBBusiness | null> {
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return null
 
     // Create the business

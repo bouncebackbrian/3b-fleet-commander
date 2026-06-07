@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Gauge, BarChart2, Truck, FileCheck, Clock, Fuel, Settings, ChevronLeft, ChevronRight, MapPin, MessageSquare, LogOut, Receipt } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient } from '@/lib/auth-client'
 
 const MODULES = [
   {
@@ -52,14 +53,13 @@ export default function Sidebar() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const path    = usePathname()
   const router  = useRouter()
-  const supabase = createClient()
+  const fleetDb = createClient()
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
+    createAuthClient().auth.getUser().then(async ({ data }) => {
       if (!data.user) return
-      // Try to load full profile — falls back to just email if table not yet created
       try {
-        const { data: prof } = await supabase
+        const { data: prof } = await fleetDb
           .from('profiles')
           .select('email,full_name,role,three_b_id,three_b_biz_id,three_b_linked')
           .eq('id', data.user.id)
@@ -72,7 +72,7 @@ export default function Sidebar() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    await createAuthClient().auth.signOut()
     router.replace('/login')
   }
 

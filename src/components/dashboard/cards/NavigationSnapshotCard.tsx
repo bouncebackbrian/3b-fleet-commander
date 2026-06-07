@@ -18,6 +18,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { LoadMission, NavSnapshot, RouteSourceType } from '@/lib/dashboard/types'
 import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient } from '@/lib/auth-client'
 import { logTimelineEvent } from '@/lib/timeline'
 
 const LS_KEY      = '3b-nav-snapshot'
@@ -102,7 +103,7 @@ type SyncStatus = 'idle' | 'syncing' | 'synced' | 'local_only'
 async function syncToSupabase(snap: NavSnapshot): Promise<SyncStatus> {
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return 'local_only'
 
     // Fetch business_id from profile

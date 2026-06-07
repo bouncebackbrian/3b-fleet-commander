@@ -13,6 +13,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient } from '@/lib/auth-client'
 
 const ROLE_LABELS: Record<string, string> = {
   owner:         'Owner',
@@ -57,8 +58,8 @@ export default function JoinPage() {
     async function load() {
       const supabase = createClient()
 
-      // Get current user (may be null)
-      const { data: { user: u } } = await supabase.auth.getUser()
+      // Get current user (may be null) — auth check uses Core_Eco
+      const { data: { user: u } } = await createAuthClient().auth.getUser()
       if (u) setUser({ id: u.id, email: u.email ?? null })
 
       // Load invite by token (public read policy)

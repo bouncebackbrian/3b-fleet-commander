@@ -12,24 +12,12 @@
 import { NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { createClient } from '@supabase/supabase-js'
-
-function getAuthedSupabase(req: Request) {
-  const authHeader = req.headers.get('authorization') ?? ''
-  const token      = authHeader.replace('Bearer ', '')
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: `Bearer ${token}` } } }
-  )
-}
+import { getApiBearerUser } from '@/lib/api-auth'
 
 export async function POST(req: Request) {
   try {
-    const supabase = getAuthedSupabase(req)
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-
-    if (userError || !user) {
+    const user = await getApiBearerUser(req)
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

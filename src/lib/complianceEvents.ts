@@ -15,6 +15,7 @@
  *         '3b-tire-logs'         (max 500)
  */
 import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient } from '@/lib/auth-client'
 
 // ── Event type catalogue ──────────────────────────────────────────────────────
 
@@ -347,7 +348,7 @@ export async function saveComplianceEvent(event: ComplianceEvent): Promise<void>
 
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return
 
     let businessId: string | null = null
@@ -402,7 +403,7 @@ export async function savePreTripRecord(record: PreTripRecord): Promise<void> {
   // Supabase sync via fleet_compliance_events as pretrip_pass/fail event (lightweight)
   try {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return
 
     let businessId: string | null = null

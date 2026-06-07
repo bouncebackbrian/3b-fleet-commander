@@ -13,18 +13,12 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getMarketRates } from '@/lib/loadBoardConnector'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getApiUser } from '@/lib/api-auth'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import type { LoadBoardId, EquipmentType } from '@/lib/loadBoards/types'
 
 export async function GET(req: NextRequest) {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  )
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getApiUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
@@ -38,7 +32,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'businessId, board, origin, dest required' }, { status: 400 })
   }
 
-  const { data: membership } = await supabase
+  const { data: membership } = await supabaseAdmin
     .from('fleet_business_members')
     .select('role')
     .eq('business_id', businessId)
