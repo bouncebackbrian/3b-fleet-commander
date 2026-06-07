@@ -25,15 +25,15 @@ export const audit = {
     fleetServiceClient
       .from('fleet_audit_logs')
       .insert({
-        user_id:     entry.userId,
-        user_email:  entry.email ?? null,
-        action:      entry.action,
-        resource:    entry.resource,
-        resource_id: entry.resourceId ?? null,
-        before:      entry.before ?? null,
-        after:       entry.after ?? null,
-        metadata:    entry.metadata ?? null,
-        source:      entry.source ?? 'api',
+        actor_user_id: entry.userId,
+        actor_email:   entry.email ?? null,
+        action:        entry.action,
+        resource_type: entry.resource,
+        resource_id:   entry.resourceId ?? null,
+        before_state:  entry.before ?? null,
+        after_state:   entry.after ?? null,
+        metadata:      entry.metadata ?? {},
+        source:        entry.source ?? 'api',
       })
       .then(({ error }) => {
         // Silently fail — audit log failure must never break the operation
