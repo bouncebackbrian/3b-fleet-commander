@@ -36,8 +36,11 @@ export async function middleware(request: NextRequest) {
   const isProtected = PROTECTED.some(p => pathname.startsWith(p))
 
   if (isProtected && !user) {
-    const returnTo = encodeURIComponent(`https://fleet.bouncebackbrian.com${pathname}`)
-    return NextResponse.redirect(`https://3boost.bouncebackbrian.com/login?returnTo=${returnTo}`)
+    // NEXT_PUBLIC_LOGIN_URL overrides to external IdP (e.g. 3Boost) when set.
+    // Default: Fleet's own /login so auth works standalone.
+    const loginBase = process.env.NEXT_PUBLIC_LOGIN_URL ?? `${request.nextUrl.origin}/login`
+    const returnTo = encodeURIComponent(request.nextUrl.href)
+    return NextResponse.redirect(`${loginBase}?returnTo=${returnTo}`)
   }
 
   return supabaseResponse
