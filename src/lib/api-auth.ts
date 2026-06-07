@@ -5,7 +5,10 @@
  * Validates against Core_Eco (rkwdryneutgyqrnbuwaz) — the auth SOR.
  *
  * Falls back to Fleet DB credentials during env var rollout.
- * Remove fallback once NEXT_PUBLIC_CORE_ECO_* are confirmed in all envs.
+ *
+ * TODO: Remove Fleet DB auth fallback once Core_Eco auth is verified stable in
+ * production (confirm login, checkout, team routes all green across all envs).
+ * Fallback lines: coreEcoCreds() ?? chains on url and key.
  */
 
 import { createServerClient } from '@supabase/ssr'
