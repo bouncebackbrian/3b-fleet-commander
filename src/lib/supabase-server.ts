@@ -1,20 +1,8 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-
-export async function createClient() {
-  const cookieStore = await cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '',
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(toSet) {
-          try { toSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options)) }
-          catch { /* server component — cookies set in middleware */ }
-        },
-      },
-    }
-  )
-}
+/**
+ * supabase-server.ts
+ *
+ * Re-exports the Core_Eco auth server client as the default `createClient`.
+ * All auth checks (getUser, session) go through Core_Eco.
+ * Fleet data queries → import createFleetServerClient from fleet-db-client.ts
+ */
+export { createCoreAuthServerClient as createClient } from './core-auth-client'

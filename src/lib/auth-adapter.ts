@@ -22,7 +22,8 @@
  * Member roles:   owner | driver | dispatcher | admin | broker | fleet_manager
  */
 
-import { createClient } from '@/lib/supabase-browser'
+import { createCoreAuthBrowserClient } from '@/lib/core-auth-client'
+import { createFleetBrowserClient } from '@/lib/fleet-db-client'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -79,18 +80,15 @@ function deriveDisplayMode(role: MemberRole | null, businessType: BusinessType |
 // ── Core: get current user ────────────────────────────────────────────────────
 
 export async function getCurrentUser(): Promise<FleetUser | null> {
-  if (process.env.NEXT_PUBLIC_AUTH_MODE === 'ecosystem') {
-    // TODO: swap to auth-3boost token validation + identity-sor resolution
-    throw new Error('auth-3boost not yet wired — set NEXT_PUBLIC_AUTH_MODE=standalone')
-  }
-
   try {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    // Auth check → Core_Eco
+    const coreAuth = createCoreAuthBrowserClient()
+    const { data: { user } } = await coreAuth.auth.getUser()
     if (!user) return null
 
-    // Resolve business membership
-    const { data: membership } = await supabase
+    // Fleet data → Fleet DB
+    const fleetDb = createFleetBrowserClient()
+    const { data: membership } = await fleetDb
       .from('fleet_business_members')
       .select(`
         role,
@@ -133,11 +131,12 @@ export async function getUserBusinesses(): Promise<Array<{
   role:         MemberRole
 }>> {
   try {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const coreAuth = createCoreAuthBrowserClient()
+    const { data: { user } } = await coreAuth.auth.getUser()
     if (!user) return []
 
-    const { data } = await supabase
+    const fleetDb = createFleetBrowserClient()
+    const { data } = await fleetDb
       .from('fleet_business_members')
       .select(`
         role,
@@ -165,12 +164,9 @@ export async function getUserBusinesses(): Promise<Array<{
 // ── Session helpers ───────────────────────────────────────────────────────────
 
 export async function getSession() {
-  if (process.env.NEXT_PUBLIC_AUTH_MODE === 'ecosystem') {
-    throw new Error('auth-3boost not yet wired')
-  }
   try {
-    const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession()
+    const coreAuth = createCoreAuthBrowserClient()
+    const { data: { session } } = await coreAuth.auth.getSession()
     return session
   } catch { return null }
 }
@@ -181,12 +177,9 @@ export async function isAuthenticated(): Promise<boolean> {
 }
 
 export async function signOut(): Promise<void> {
-  if (process.env.NEXT_PUBLIC_AUTH_MODE === 'ecosystem') {
-    return // TODO: auth-3boost sign out
-  }
   try {
-    const supabase = createClient()
-    await supabase.auth.signOut()
+    const coreAuth = createCoreAuthBrowserClient()
+    await coreAuth.auth.signOut()
   } catch { /* ignore */ }
 }
 

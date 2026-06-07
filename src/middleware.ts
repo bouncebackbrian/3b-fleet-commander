@@ -10,20 +10,22 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/login') ||
     pathname.startsWith('/api/')
 
-  // If Supabase isn't configured, pass everything through (dev/misconfigured env)
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || ''
+  // Auth session → Core_Eco (rkwdryneutgyqrnbuwaz)
+  const coreUrl = process.env.NEXT_PUBLIC_CORE_SUPABASE_URL
+  const coreKey = process.env.NEXT_PUBLIC_CORE_SUPABASE_ANON_KEY
 
-  if (!supabaseUrl || !supabaseKey) {
+  // Fallback: support NEXT_PUBLIC_LOGIN_URL for cross-domain redirects
+  const loginUrl = process.env.NEXT_PUBLIC_LOGIN_URL
+
+  if (!coreUrl || !coreKey) {
+    // Core auth not configured — pass through (dev safety net)
     return NextResponse.next()
   }
 
   let supabaseResponse = NextResponse.next({ request })
 
   try {
-    const supabase = createServerClient(supabaseUrl, supabaseKey, {
+    const supabase = createServerClient(coreUrl, coreKey, {
       cookies: {
         getAll() { return request.cookies.getAll() },
         setAll(toSet) {
@@ -37,8 +39,15 @@ export async function middleware(request: NextRequest) {
 
     const { data: { user } } = await supabase.auth.getUser()
 
-    // Not logged in → send to login (except public paths)
+    // Not logged in → redirect to login
     if (!user && !isPublic) {
+      if (loginUrl) {
+        // Cross-domain login (ecosystem mode)
+        const redirect = new URL(loginUrl)
+        redirect.searchParams.set('returnTo', request.url)
+        return NextResponse.redirect(redirect)
+      }
+      // Local login (standalone mode)
       const url = request.nextUrl.clone()
       url.pathname = '/login'
       url.searchParams.set('next', pathname)
@@ -56,8 +65,6 @@ export async function middleware(request: NextRequest) {
 
     return supabaseResponse
   } catch {
-    // If Supabase call fails for any reason, don't block the request
-    // Public paths continue, protected paths get redirected to login
     if (!isPublic) {
       const url = request.nextUrl.clone()
       url.pathname = '/login'
