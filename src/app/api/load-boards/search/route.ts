@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { searchLoads } from '@/lib/loadBoardConnector'
 import { getApiUser } from '@/lib/api-auth'
+import { fleetServiceClient } from '@/lib/fleet-service-client'
 import type { LoadSearchParams, LoadBoardId } from '@/lib/loadBoards/types'
 
 export async function POST(req: NextRequest) {
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Verify the user belongs to this business
-  const { data: membership } = await supabase
+  const { data: membership } = await fleetServiceClient
     .from('fleet_business_members')
     .select('role')
     .eq('business_id', body.businessId)
