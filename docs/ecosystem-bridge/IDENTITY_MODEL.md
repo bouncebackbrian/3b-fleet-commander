@@ -1,201 +1,216 @@
-# Fleet Commander — Identity & Membership Model
+# 3B Identity & Business Architecture v2.0
 
-> Resolves the T2 escalation item: Business ID membership + user roles.  
-> Designed to handle all real-world Fleet Commander user types.  
-> Last updated: 2026-05-29
-
----
-
-## The Three Operating Contexts
-
-Fleet Commander users don't fit a single "business employee" pattern.
-There are three distinct operating contexts, each with different role relationships.
+> **Status:** Locked — implement before any product database migration.  
+> This is the canonical architecture for all 3B Ecosystem products.  
+> Last updated: 2026-06-06
 
 ---
 
-### Context A — Owner-Operator (Single-Seat Business)
+## The Architecture
+
+Most systems think: `User → Business`
+
+The 3B Ecosystem works: `3B ID → Identity Verification → 3B Business ID → Products`
 
 ```
-Owner-Op LLC (business)
-  └── 1 person = owner + driver + dispatcher (all the same user)
-  └── May use an external broker for loads
-  └── May use a fleet management service
+Create 3B ID
+       ↓
+Identity Verification
+       ↓
+Create 3B Business ID
+       ↓
+Business Formation → EIN → Virtual Address → Domain → Website
+       ↓
+Business Banking
+       ↓
+Funding Readiness → Funding Machine
+       ↓
+Business Credit Builder
+       ↓
+Growth Capital
 ```
-
-**Identity shape:**
-- Business type: `owner_op`
-- One user with role `owner` — inherits driver + dispatcher rights automatically
-- No separate dispatcher account needed
-- Broker = external entity with load visibility (not a member)
-
-**Real example:** Independent trucker with their own authority, dispatches themselves.
 
 ---
 
-### Context B — Small Fleet / Carrier
+## 3B User Identity (3B-U-XXXXXXXX)
 
-```
-Carrier Business (e.g. Star Freight Services)
-  └── Owner (billing anchor, may or may not drive)
-  └── Drivers (employees or contractors)
-  └── Dispatcher (could be the owner, a dedicated employee, or outsourced)
-  └── Broker (could be in-house or external)
-```
+One person. One identity. One 3B ID.
 
-**Identity shape:**
-- Business type: `carrier`
-- Owner has role `owner` — billing anchor, full access
-- Drivers have role `driver` — see their loads, HOS, their own ops
-- Dispatcher has role `dispatcher` — sees all loads, dispatch ops, escalations
-- Broker (if in-house) has role `broker` — sees loads, can assign/book
+**ID Format:** `3B-U-00000001` (sequential, zero-padded, 8 digits)
 
-**Real example:** Star Freight Services — one owner, several company drivers, dedicated dispatcher.
+**Table:** `public.profiles`
 
----
+| Field | Type | Notes |
+|-------|------|-------|
+| `three_b_id` | text unique | `3B-U-00000001` — auto-generated on signup |
+| `first_name` | text | |
+| `last_name` | text | |
+| `email` | text unique | Supabase auth email |
+| `phone` | text | |
+| `address_line1/2, city, state, zip` | text | For identity verification |
+| `verification_status` | enum | `unverified` → `pending` → `verified` |
+| `has_fleet, has_credit, has_funding…` | boolean | Product entitlements per identity |
+| `default_business_id` | uuid → businesses | Active business context |
 
-### Context C — Fleet Management Company
-
-```
-Fleet Mgmt Co (separate business entity)
-  └── Manages multiple owner-ops or small carriers on their behalf
-  └── Provides dispatch services as a product
-  └── May also have broker relationships
-```
-
-**Identity shape:**
-- Fleet Mgmt Co has its own business record (`fleet_management`)
-- Each owner-op they manage is a SEPARATE business record (`owner_op`)
-- A cross-business relationship links Fleet Mgmt → Owner-Op
-- Fleet manager role (`fleet_manager`) spans multiple businesses
-
-**Real example:** A dispatch service that works for 10 independent owner-ops.
+**Auto-creation:** A profile row (and 3B-U ID) is created automatically when a user signs up via Supabase auth.
 
 ---
 
-## Role Matrix
+## 3B Business Registry (3B-B-XXXXXXXX)
 
-| Role | Who They Are | What They See | Billing Anchor? |
-|---|---|---|---|
-| `owner` | Business owner (owner-op or fleet owner) | Everything | ✅ Yes |
-| `driver` | Drives trucks, always a user | Their loads, their HOS, their mode | ❌ No |
-| `dispatcher` | Manages loads (employee or owner-op doing dispatch) | All loads, escalations, dispatch feed | ❌ No |
-| `admin` | Business account manager (not necessarily ops) | Account settings, user management | ❌ No |
-| `broker` | Books/assigns loads (in-house or external) | Load board, rate confirmation, assignment | ❌ No |
-| `fleet_manager` | Manages multiple businesses (external service) | All businesses they manage | ❌ No (billed separately) |
+A 3B ID can own multiple businesses. Each gets a unique 3B-B ID.
 
----
+**ID Format:** `3B-B-00000001` (sequential, zero-padded, 8 digits)
 
-## Key Design Decisions
+**Table:** `public.businesses`
 
-### Decision 1: Owner-Operator is BOTH a business AND a user
-An owner-op doesn't need a separate dispatcher account.  
-Role `owner` on an `owner_op` business implicitly grants dispatch + driver access.  
-The UI shows them dispatcher AND driver views based on what they're doing.
+Example — Brian Martin (`3B-U-00000001`) owns:
 
-### Decision 2: Dispatcher can be an owner-op OR an employee
-Same role name (`dispatcher`), different business context.  
-- Owner-op dispatching themselves → role `owner` on their own business
-- Employee dispatcher at Star Freight → role `dispatcher` on Star Freight's business record
-- External dispatch service → `fleet_manager` on a `fleet_management` business with a cross-business relationship
+```
+Bounce Back Coffee     → 3B-B-00000001
+3B Ecosystem           → 3B-B-00000002
+Future Trucking Co.    → 3B-B-00000003
+```
 
-### Decision 3: Broker is a relationship, not just a role
-A broker can be:
-- An **in-house role** on a carrier business (Star Freight has someone who does brokering)
-- An **external business** (a brokerage company) with a relationship to the carrier
-- An **owner-op** who also has broker authority on their own loads
-
-The `fleet_business_relationships` table handles external broker ↔ carrier connections.
-
-### Decision 4: Driver is always a leaf user, never the billing anchor
-Drivers belong to a business (as employee or contractor).  
-They never own a billing relationship directly.  
-Exception: a driver who IS an owner-op → they have an `owner` role on their OWN business, and separately a `driver` role within that same business (or the business implicitly grants both).
+**Key fields:** `company_name`, `entity_type`, `formation_date`, `ein`, `mc_number`, `dot_number`, `business_type`, `owner_id → profiles.id`
 
 ---
 
-## Schema Design
+## Business Members — Two Independent Layers
+
+### Layer 1: Ecosystem Governance (`business_members`)
+
+Controls who can access a business across ALL 3B products.
 
 ```sql
--- ── Business types ────────────────────────────────────────────────────────────
--- owner_op:         single-seat operation, owner drives + dispatches
--- carrier:          fleet business with drivers + dispatcher(s)
--- brokerage:        freight broker business
--- fleet_management: manages other businesses' fleets
-
-ALTER TABLE businesses ADD COLUMN IF NOT EXISTS
-  type text NOT NULL DEFAULT 'carrier'
-  CHECK (type IN ('owner_op','carrier','brokerage','fleet_management'));
-
--- ── Updated role set in fleet_business_members ────────────────────────────────
--- Drop old constraint, add new one
-ALTER TABLE fleet_business_members
-  DROP CONSTRAINT IF EXISTS fleet_business_members_role_check;
-
-ALTER TABLE fleet_business_members
-  ADD CONSTRAINT fleet_business_members_role_check
-  CHECK (role IN ('owner','driver','dispatcher','admin','broker','fleet_manager'));
-
--- ── Cross-business relationships ──────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS fleet_business_relationships (
-  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  primary_business_id uuid NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
-  related_business_id uuid NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
-  relationship_type   text NOT NULL
-    CHECK (relationship_type IN ('broker_carrier','fleet_manager_carrier','owner_op_network')),
-  active              boolean DEFAULT true,
-  created_at          timestamptz DEFAULT now(),
-  UNIQUE (primary_business_id, related_business_id, relationship_type)
+create table business_members (
+  id          uuid primary key default gen_random_uuid(),
+  business_id uuid not null references businesses(id) on delete cascade,
+  user_id     uuid not null references profiles(id)  on delete cascade,
+  role        text not null default 'employee'
+    check (role in ('owner','partner','manager','employee','advisor')),
+  invited_by  uuid references profiles(id),
+  joined_at   timestamptz not null default now(),
+  created_at  timestamptz not null default now(),
+  unique (business_id, user_id)
 );
+```
 
-CREATE INDEX IF NOT EXISTS idx_biz_rel_primary  ON fleet_business_relationships(primary_business_id);
-CREATE INDEX IF NOT EXISTS idx_biz_rel_related  ON fleet_business_relationships(related_business_id);
+| Role | Who They Are | Billing Anchor? |
+|------|-------------|----------------|
+| `owner` | Equity owner, controls everything | ✅ Yes |
+| `partner` | Equity partner, same access as owner | ✅ Yes |
+| `manager` | Manages operations, no equity | ❌ No |
+| `employee` | Team member, standard access | ❌ No |
+| `advisor` | Advisory relationship, read-only | ❌ No |
 
--- ── Update Star Freight to correct business type ──────────────────────────────
-UPDATE businesses SET type = 'carrier' WHERE slug = 'star-freight-services';
+### Layer 2: Fleet Commander Operations (`fleet_business_members`)
+
+Controls what a user sees *inside Fleet Commander*. Independent of Layer 1.
+
+| Role | What They See |
+|------|--------------|
+| `owner` | Everything — fleet health, reports, billing |
+| `driver` | Their own loads, HOS, trips |
+| `dispatcher` | All loads, dispatch feed, escalations |
+| `admin` | Account settings, user management |
+| `broker` | Load board, rate confirmations, assignment |
+| `fleet_manager` | Multi-business fleet view |
+
+**A user can hold roles in both layers simultaneously.** Example: someone who is a `partner` in `business_members` (owns equity) AND a `dispatcher` in `fleet_business_members` (runs day-to-day ops).
+
+---
+
+## Bankability Score (0–100)
+
+The bankability score tells you how ready a business is for funding before you talk to a lender.
+
+**Function:** `calc_bankability_score(businesses)` — callable in SQL and mirrored in `src/lib/identity-registry.ts`
+
+| Factor | Points | Why Lenders Care |
+|--------|--------|-----------------|
+| Entity Formed | 10 | Legitimate business exists |
+| EIN | 10 | Can open accounts and file taxes |
+| Business Address | 10 | Physical/virtual — not a personal address |
+| Business Phone | 10 | Dedicated line, not a cell |
+| Website | 10 | Professional web presence |
+| Domain Email | 10 | `you@yourcompany.com`, not Gmail |
+| Bank Account | 15 | Money flows somewhere real |
+| Revenue | 15 | Business actually generates income (7 pts if generating, 15 if documented) |
+| Business Credit | 10 | Has its own credit profile (5 pts if building, 10 if established) |
+| **Total** | **100** | |
+
+---
+
+## How Each Product Connects
+
+```
+3B ID (profiles.id)
+  │
+  ├─ Fleet Commander
+  │    └─ 3B ID → Select Business → fleet_business_members (operational roles)
+  │         fleet_loads.user_id     = profiles.id
+  │         fleet_loads.business_id = businesses.id
+  │
+  ├─ Funding Machine
+  │    └─ 3B ID → Select Business → funding_profiles.business_id
+  │
+  ├─ Credit Builder (Personal)
+  │    └─ 3B ID → personal_credit_profiles.user_id
+  │
+  ├─ Content Command
+  │    └─ 3B ID → Select Business → content_assets.business_id
+  │
+  └─ Media Group
+       └─ 3B ID → Select Business → domains.business_id → websites.domain_id
 ```
 
 ---
 
-## UI Role → View Mapping
+## EXT05 — Identity & Business Registry Module
 
-| Role | `userMode.ts` equivalent | Default landing | Key panels |
-|---|---|---|---|
-| `owner` on `owner_op` | `owner_operator` + `driver` | Dashboard (split view) | DriverOps Cockpit + Dispatch + Reports |
-| `driver` | `driver` | Dashboard | DriverOps Cockpit, HOS, Trips |
-| `dispatcher` | `dispatcher` | Dispatch | DispatchOps AI, Escalation Queue, Load Health |
-| `owner` on `carrier` | `owner_operator` | Dashboard | Fleet Health, Reports, Account |
-| `broker` | (new — not in userMode yet) | Dispatch | Load board, rate confirmation |
-| `fleet_manager` | (new — not in userMode yet) | Dashboard | Multi-business fleet view |
-| `admin` | (new) | Account | User management, settings |
+**Modules:**
+- Create 3B ID (auto on signup)
+- Verify Identity (`unverified → pending → verified`)
+- Create Business (assigns 3B-B ID)
+- Invite Team Members (fleet_team_invites)
+- Manage Ownership (business_members roles)
 
----
+**Business Registry Dashboard** — for every business:
 
-## What Needs to Change in the Codebase
-
-### 1. `src/lib/userMode.ts`
-Add `broker` and `fleet_manager` to the mode types.  
-Map from membership role → display mode.
-
-### 2. `src/lib/auth-adapter.ts`
-`getCurrentUser()` should resolve the user's role within their business context.  
-Return both `businessId` + `role` so every component knows who's viewing.
-
-### 3. `src/config/navConfig.ts`
-Add broker and fleet_manager nav entries.  
-Owner-op gets a merged driver+dispatcher view.
-
-### 4. `src/components/ops/RoleOpsView.tsx`
-Add `broker` and `fleet_manager` view panels.  
-`owner` on `owner_op` → merged DriverView + DispatcherView.
+| Field | Source |
+|-------|--------|
+| Business Name | `businesses.company_name` |
+| 3B Business ID | `businesses.three_b_biz_id` |
+| Owner | `profiles.first_name + last_name` |
+| Entity Type | `businesses.entity_type` |
+| State | `businesses.state_of_formation` |
+| EIN Status | `businesses.has_ein` |
+| Website | `businesses.has_website` |
+| Funding Status | `businesses.has_funding` |
+| Credit Status | `businesses.credit_status` |
+| Bankability Score | `calc_bankability_score(businesses.*)` |
 
 ---
 
-## Open Questions (T2 Decisions Needed)
+## Schema Files
+
+| File | Purpose |
+|------|---------|
+| `supabase/3b_ecosystem_schema.sql` | Canonical ecosystem schema (run in 3B Ecosystem Supabase project) |
+| `supabase/migrations/20260606_3b_identity_arch.sql` | Fleet Commander migration (run in Fleet Commander Supabase project) |
+| `src/lib/identity-registry.ts` | TypeScript types + client-side bankability score + data fetching |
+| `src/lib/profile.ts` | Profile and business types for Fleet Commander UI |
+| `src/lib/auth-adapter.ts` | Auth bridge — resolves Fleet Commander operational role from fleet_business_members |
+
+---
+
+## Open Questions
 
 | Question | Options | Who Decides |
-|---|---|---|
-| Billing anchor: who pays? | Business (Star Freight pays for all its members) vs individual users | Founder |
-| Owner-op billing: per-seat or flat? | $X/month flat vs $X per driver | Founder |
-| External broker access: invite-only or open? | Broker receives invite link vs self-registers | Product decision |
-| Fleet manager: billed through managed businesses or direct? | Fleet Mgmt Co pays, or each owner-op they manage pays | Founder |
-| Contractor driver vs employee driver: different access? | Same role, different metadata | Product decision |
+|----------|---------|-------------|
+| Billing anchor: business or individual? | Business pays for all members vs individual seats | Founder |
+| Owner-op: flat fee or per-seat? | $X/month flat vs $X per driver | Founder |
+| External broker access: invite-only? | Broker receives invite link vs self-registers | Product |
+| Partner: same billing rights as owner? | Full billing access vs owner-only | Founder |
+| Verification: manual or automated? | Human review vs third-party (Stripe Identity, Persona) | Founder |

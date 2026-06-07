@@ -10,16 +10,20 @@
  *
  * Swap trigger: NEXT_PUBLIC_AUTH_MODE=ecosystem → routes to auth-3boost.
  *
- * ── Identity model ────────────────────────────────────────────────────────────
+ * ── Two-layer identity model ──────────────────────────────────────────────────
  *
- * Driver       → always a user (leaf, never billing anchor)
- * Dispatcher   → owner-op doing their own dispatch, OR employee of a carrier
- * Owner-op     → role 'owner' on an 'owner_op' business (driver + dispatcher implied)
- * Broker       → in-house role on a carrier, OR external brokerage business
- * Fleet manager→ manages multiple businesses (cross-business relationship)
+ * Layer 1 — 3B Ecosystem (business_members table):
+ *   Governance roles: owner | partner | manager | employee | advisor
+ *   Scopes which businesses a 3B ID can access across ALL products.
  *
- * Business types: owner_op | carrier | brokerage | fleet_management
- * Member roles:   owner | driver | dispatcher | admin | broker | fleet_manager
+ * Layer 2 — Fleet Commander (fleet_business_members table):
+ *   Operational roles: owner | driver | dispatcher | admin | broker | fleet_manager
+ *   Determines what a user sees INSIDE Fleet Commander.
+ *
+ * A user can be a 'partner' in business_members AND a 'dispatcher' in
+ * fleet_business_members simultaneously — the two roles are independent.
+ *
+ * Business types: owner_op | carrier | brokerage | fleet_management | service | other
  */
 
 import { createClient } from '@/lib/supabase-browser'

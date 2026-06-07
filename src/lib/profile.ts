@@ -7,40 +7,95 @@ export type UserProfile = {
   id:                  string
   created_at:          string | null
   updated_at:          string | null
-  display_name:        string | null
-  full_name:           string | null
+
+  // 3B Identity
+  three_b_id:          string | null   // 3B-U-00000001
+  first_name:          string | null
+  last_name:           string | null
   email:               string | null
-  role:                string
-  // 3B identity
-  three_b_id:          string | null
-  three_b_biz_id:      string | null
-  three_b_linked:      boolean
-  // Driver credentials
+  phone:               string | null
+
+  // Address
+  address_line1:       string | null
+  address_line2:       string | null
+  city:                string | null
+  state:               string | null
+  zip:                 string | null
+
+  // Verification
+  verification_status: 'unverified' | 'pending' | 'verified'
+  verified_at:         string | null
+
+  // Display
+  avatar_url:          string | null
+
+  // Product entitlements
+  has_fleet:           boolean
+  has_credit:          boolean
+  has_funding:         boolean
+  has_payments:        boolean
+  has_media:           boolean
+  has_content:         boolean
+
+  // Driver credentials (Fleet Commander)
   cdl_number:          string | null
   cdl_state:           string | null
-  phone:               string | null
+  cdl_class:           string | null
+  cdl_expires:         string | null
+  endorsements:        string | null
   tractor_number:      string | null
   trailer_number:      string | null
-  // Business link
+
+  // Billing
+  stripe_customer_id:  string | null
+
+  // Active business context
   default_business_id: string | null
 }
 
 export type BusinessProfile = {
-  id:                  string
-  created_at:          string | null
-  updated_at:          string | null
-  owner_user_id:       string | null
-  business_name:       string | null
-  threeb_business_id:  string | null
-  business_type:       string
-  status:              string
+  id:                   string
+  created_at:           string | null
+  updated_at:           string | null
+  three_b_biz_id:       string | null   // 3B-B-00000001
+  company_name:         string
+  slug:                 string | null
+  entity_type:          string | null
+  formation_date:       string | null
+  ein:                  string | null
+  mc_number:            string | null
+  dot_number:           string | null
+  address:              string | null
+  city:                 string | null
+  state:                string | null
+  zip:                  string | null
+  business_phone:       string | null
+  website:              string | null
+  domain_email:         string | null
+  owner_id:             string | null
+  business_type:        string
+  has_fleet:            boolean
+  has_funding:          boolean
+  has_credit:           boolean
+  has_payments:         boolean
+  has_media:            boolean
+  has_content:          boolean
+  stripe_account_id:    string | null
+  has_ein:              boolean
+  has_business_address: boolean
+  has_business_phone:   boolean
+  has_website:          boolean
+  has_domain_email:     boolean
+  has_bank_account:     boolean
+  revenue_status:       'none' | 'generating' | 'documented'
+  credit_status:        'none' | 'building' | 'established'
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Returns the current user's profile row, or null if not signed in / no table.
- * Never throws — safe to call in unauthenticated alpha mode.
+ * Returns the current user's profile row, or null if not signed in.
+ * Never throws — safe to call in unauthenticated / offline mode.
  */
 export async function getCurrentProfile(): Promise<UserProfile | null> {
   try {
@@ -55,19 +110,18 @@ export async function getCurrentProfile(): Promise<UserProfile | null> {
       .single()
 
     if (error) return null
-    return data ?? null
+    return data as UserProfile ?? null
   } catch {
     return null
   }
 }
 
-// Backward-compat alias (settings page uses getProfile)
+// Backward-compat alias
 export const getProfile = getCurrentProfile
 
 /**
- * Returns the user's business profile.
- * Pass a specific businessId, or omit to fetch their first owned business.
- * Returns null if not signed in, no business exists, or table is missing.
+ * Returns the user's business by ID.
+ * Falls back to their first owned business when no ID provided.
  */
 export async function getCurrentBusiness(businessId?: string | null): Promise<BusinessProfile | null> {
   try {
@@ -77,26 +131,24 @@ export async function getCurrentBusiness(businessId?: string | null): Promise<Bu
 
     if (businessId) {
       const { data, error } = await supabase
-        .from('business_profiles')
+        .from('businesses')
         .select('*')
         .eq('id', businessId)
         .single()
       if (error) return null
-      return data ?? null
+      return data as BusinessProfile ?? null
     }
 
-    // Fetch owner's first business
     const { data, error } = await supabase
-      .from('business_profiles')
+      .from('businesses')
       .select('*')
-      .eq('owner_user_id', user.id)
-      .eq('status', 'active')
+      .eq('owner_id', user.id)
       .order('created_at', { ascending: true })
       .limit(1)
       .single()
 
     if (error) return null
-    return data ?? null
+    return data as BusinessProfile ?? null
   } catch {
     return null
   }
@@ -123,7 +175,6 @@ export async function updateProfile(patch: Partial<UserProfile>): Promise<void> 
 
 /**
  * Returns the auth user id, or null if not signed in.
- * Cheap helper used by useMission to attach identity without a full profile fetch.
  */
 export async function getAuthUserId(): Promise<string | null> {
   try {
