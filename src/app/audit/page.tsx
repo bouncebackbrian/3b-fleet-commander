@@ -3,32 +3,14 @@ import { useState, useEffect } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import LoadBadge from '@/components/ui/LoadBadge'
 import KpiCard from '@/components/ui/KpiCard'
-import { supabase } from '@/lib/supabase'
 import { SAMPLE_LOADS } from '@/lib/store'
-import type { Load, MoveType, LoadStatus } from '@/types'
+import type { Load } from '@/types'
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 const fmtM = (n: number) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const inp: React.CSSProperties = { width: '100%', padding: '.8rem 1rem', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface-2)', outline: 'none', fontSize: 'var(--text-sm)' }
 const lbl: React.CSSProperties = { display: 'block', fontSize: 'var(--text-xs)', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 5 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function fromDB(r: any): Load {
-  return {
-    id: r.id, date: r.date, loadNumber: r.load_number, bolRef: r.bol_ref ?? undefined,
-    dispatcher: r.dispatcher, broker: r.broker ?? undefined, trailer: r.trailer ?? undefined,
-    moveType: r.move_type as MoveType, origin: r.origin, destination: r.destination,
-    status: 'Complete' as LoadStatus,
-    dispatchMiles: Number(r.dispatch_miles) || 0, actualMiles: Number(r.actual_miles) || 0,
-    deadheadMiles: Number(r.deadhead_miles) || 0, paidMiles: Number(r.paid_miles) || 0,
-    cpmRate: Number(r.cpm_rate) || 0.55, fuelCost: Number(r.fuel_cost) || 0,
-    waitHours: Number(r.wait_hours) || 0, detentionHours: Number(r.detention_hours) || 0,
-    detentionPay: Number(r.detention_pay) || 0, settlementPay: Number(r.settlement_pay) || 0,
-    notes: r.notes ?? undefined, proofSaved: Boolean(r.proof_saved),
-    settlementVerified: Boolean(r.settlement_verified),
-    createdAt: r.created_at, updatedAt: r.updated_at,
-  }
-}
 
 type Verdict = 'SHORT' | 'PAID' | 'OVERPAID' | 'MISSING DATA'
 function verdict(l: Load): Verdict {
@@ -91,12 +73,12 @@ export default function Audit() {
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    if (!supabase) { setLoads(SAMPLE_LOADS); setLoading(false); return }
-    supabase.from('loads').select('*').order('date', { ascending: false })
-      .then(({ data, error }) => {
-        if (!error && data) setLoads(data.map(fromDB))
-        setLoading(false)
-      })
+    fetch('/api/fleet/loads')
+      .then(r => r.ok ? r.json() : Promise.reject(r))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .then((data: any[]) => setLoads(data as Load[]))
+      .catch(() => setLoads(SAMPLE_LOADS))
+      .finally(() => setLoading(false))
   }, [])
 
   function openPanel(l: Load) {
@@ -110,28 +92,40 @@ export default function Audit() {
     e.preventDefault()
     if (!selected) return
     setSaving(true)
-    const patch = {
-      paid_miles: Number(form.paidMiles) || 0,
-      settlement_pay: Number(form.settlementPay) || 0,
-      notes: form.notes || null,
-      settlement_verified: true,
-      updated_at: new Date().toISOString(),
+    const res = await fetch(`/api/fleet/loads/${selected.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        paidMiles:          Number(form.paidMiles) || 0,
+        settlementPay:      Number(form.settlementPay) || 0,
+        notes:              form.notes || null,
+        settlementVerified: true,
+      }),
+    })
+    if (res.ok) {
+      const updated = await res.json() as Load
+      setLoads(ls => ls.map(l => l.id === selected.id ? updated : l))
     }
-    if (!supabase) {
-      setLoads(ls => ls.map(l => l.id === selected.id ? { ...l, paidMiles: patch.paid_miles, settlementPay: patch.settlement_pay, notes: form.notes || undefined, settlementVerified: true } : l))
-      setSaving(false); closePanel(); return
-    }
-    const { data, error } = await supabase.from('loads').update(patch).eq('id', selected.id).select().single()
-    if (!error && data) setLoads(ls => ls.map(l => l.id === selected.id ? fromDB(data) : l))
     setSaving(false); closePanel()
   }
 
   async function toggleVerified(l: Load, e: React.MouseEvent) {
     e.stopPropagation()
     const next = !l.settlementVerified
-    if (!supabase) { setLoads(ls => ls.map(x => x.id === l.id ? { ...x, settlementVerified: next } : x)); return }
-    const { data, error } = await supabase.from('loads').update({ settlement_verified: next, updated_at: new Date().toISOString() }).eq('id', l.id).select().single()
-    if (!error && data) setLoads(ls => ls.map(x => x.id === l.id ? fromDB(data) : x))
+    // optimistic update
+    setLoads(ls => ls.map(x => x.id === l.id ? { ...x, settlementVerified: next } : x))
+    const res = await fetch(`/api/fleet/loads/${l.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ settlementVerified: next }),
+    })
+    if (res.ok) {
+      const updated = await res.json() as Load
+      setLoads(ls => ls.map(x => x.id === l.id ? updated : x))
+    } else {
+      // revert on failure
+      setLoads(ls => ls.map(x => x.id === l.id ? { ...x, settlementVerified: !next } : x))
+    }
   }
 
   function copyScript() {

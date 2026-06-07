@@ -3,7 +3,6 @@ import { useState, useEffect, useRef } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import KpiCard from '@/components/ui/KpiCard'
 import LoadBadge from '@/components/ui/LoadBadge'
-import { supabase } from '@/lib/supabase'
 import { SAMPLE_FUEL } from '@/lib/store'
 import Attachments from '@/components/ui/Attachments'
 import type { FuelEntry } from '@/types'
@@ -18,20 +17,6 @@ const fmtM = (n: number) => '$' + n.toLocaleString('en-US', { minimumFractionDig
 const inp: React.CSSProperties = { width: '100%', padding: '.8rem 1rem', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface-2)', outline: 'none', fontSize: 'var(--text-sm)' }
 const lbl: React.CSSProperties = { display: 'block', fontSize: 'var(--text-xs)', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 5 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function fromDB(r: any): FuelEntry {
-  return {
-    id: r.id, date: r.date, location: r.location,
-    fuelType: r.fuel_type as FuelEntry['fuelType'],
-    gallons: Number(r.gallons) || 0,
-    pricePerGal: r.price_per_gal ? Number(r.price_per_gal) : undefined,
-    totalCost: Number(r.total_cost) || 0,
-    loadNumber: r.load_number ?? undefined,
-    receiptSaved: Boolean(r.receipt_saved),
-    notes: r.notes ?? undefined,
-    createdAt: r.created_at,
-  }
-}
 
 type F = { date: string; location: string; fuelType: FuelEntry['fuelType']; gallons: string; pricePerGal: string; totalCost: string; loadNumber: string; notes: string }
 const BLANK: F = { date: '', location: '', fuelType: 'Tractor', gallons: '', pricePerGal: '', totalCost: '', loadNumber: '', notes: '' }
@@ -52,12 +37,11 @@ export default function Fuel() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (!supabase) { setEntries(SAMPLE_FUEL); setLoading(false); return }
-    supabase.from('fuel_entries').select('*').order('date', { ascending: false })
-      .then(({ data, error }) => {
-        if (!error && data) setEntries(data.map(fromDB))
-        setLoading(false)
-      })
+    fetch('/api/fleet/fuel')
+      .then(r => r.ok ? r.json() : Promise.reject(r))
+      .then((data: FuelEntry[]) => setEntries(data))
+      .catch(() => setEntries(SAMPLE_FUEL))
+      .finally(() => setLoading(false))
   }, [])
 
   async function handleSave(e: React.FormEvent) {
@@ -76,28 +60,49 @@ export default function Fuel() {
       load_number: form.loadNumber || null,
       notes: form.notes || null,
     }
-    if (!supabase) {
-      const entry: FuelEntry = fromDB({ ...payload, id: Math.random().toString(36).slice(2), receipt_saved: false, created_at: new Date().toISOString() })
+    const res = await fetch('/api/fleet/fuel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date:       form.date,
+        location:   form.location,
+        fuelType:   form.fuelType,
+        gallons:    Number(form.gallons) || 0,
+        pricePerGal: Number(form.pricePerGal) || undefined,
+        totalCost:  total,
+        loadNumber: form.loadNumber || undefined,
+        notes:      form.notes || undefined,
+      }),
+    })
+    if (res.ok) {
+      const entry: FuelEntry = await res.json()
       setEntries(es => [entry, ...es])
-      setSaving(false); setForm(BLANK); return
     }
-    const { data, error } = await supabase.from('fuel_entries').insert(payload).select().single()
-    if (!error && data) setEntries(es => [fromDB(data), ...es])
     setSaving(false); setForm(BLANK)
   }
 
   async function handleDelete(entry: FuelEntry) {
-    if (!supabase) { setEntries(es => es.filter(e => e.id !== entry.id)); setDeleteTarget(null); return }
-    const { error } = await supabase.from('fuel_entries').delete().eq('id', entry.id)
-    if (!error) setEntries(es => es.filter(e => e.id !== entry.id))
+    const res = await fetch(`/api/fleet/fuel/${entry.id}`, { method: 'DELETE' })
+    if (res.ok) setEntries(es => es.filter(e => e.id !== entry.id))
     setDeleteTarget(null)
   }
 
   async function toggleReceipt(entry: FuelEntry) {
     const next = !entry.receiptSaved
-    if (!supabase) { setEntries(es => es.map(e => e.id === entry.id ? { ...e, receiptSaved: next } : e)); return }
-    const { data, error } = await supabase.from('fuel_entries').update({ receipt_saved: next }).eq('id', entry.id).select().single()
-    if (!error && data) setEntries(es => es.map(e => e.id === entry.id ? fromDB(data) : e))
+    // optimistic update
+    setEntries(es => es.map(e => e.id === entry.id ? { ...e, receiptSaved: next } : e))
+    const res = await fetch(`/api/fleet/fuel/${entry.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ receiptSaved: next }),
+    })
+    if (res.ok) {
+      const updated: FuelEntry = await res.json()
+      setEntries(es => es.map(e => e.id === entry.id ? updated : e))
+    } else {
+      // revert on failure
+      setEntries(es => es.map(e => e.id === entry.id ? { ...e, receiptSaved: !next } : e))
+    }
   }
 
   async function handleScanReceipt(e: React.ChangeEvent<HTMLInputElement>) {

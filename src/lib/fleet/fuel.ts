@@ -85,6 +85,37 @@ export async function createFuelEntry(
   return entry
 }
 
+export async function updateFuelEntry(
+  id: string,
+  input: Partial<CreateFuelInput & { receiptSaved: boolean }>,
+  userId: string,
+  email: string | null,
+): Promise<FuelEntry> {
+  const { data: before } = await fleetServiceClient.from('fuel_entries').select('*').eq('id', id).eq('user_id', userId).maybeSingle()
+  const updates: Record<string, unknown> = {}
+  if (input.date          !== undefined) updates.date          = input.date
+  if (input.location      !== undefined) updates.location      = input.location
+  if (input.fuelType      !== undefined) updates.fuel_type     = input.fuelType
+  if (input.gallons       !== undefined) updates.gallons       = input.gallons
+  if (input.pricePerGal   !== undefined) updates.price_per_gal = input.pricePerGal
+  if (input.totalCost     !== undefined) updates.total_cost    = input.totalCost
+  if (input.loadNumber    !== undefined) updates.load_number   = input.loadNumber
+  if (input.notes         !== undefined) updates.notes         = input.notes
+  if (input.receiptSaved  !== undefined) updates.receipt_saved = input.receiptSaved
+
+  const { data, error } = await fleetServiceClient
+    .from('fuel_entries')
+    .update(updates)
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select('*')
+    .single()
+  if (error) throw error
+  const entry = fromRow(data)
+  audit.log({ userId, email, action: 'fuel.update', resource: 'fuel_entries', resourceId: id, before, after: entry })
+  return entry
+}
+
 export async function deleteFuelEntry(id: string, userId: string, email: string | null): Promise<void> {
   const { data: before } = await fleetServiceClient.from('fuel_entries').select('*').eq('id', id).eq('user_id', userId).maybeSingle()
   const { error } = await fleetServiceClient.from('fuel_entries').delete().eq('id', id).eq('user_id', userId)

@@ -96,6 +96,38 @@ export async function createDelay(
   return delay
 }
 
+export async function updateDelay(
+  id: string,
+  input: Partial<CreateDelayInput & { dispatcherNotified: boolean; proofSaved: boolean }>,
+  userId: string,
+  email: string | null,
+): Promise<DelayEntry> {
+  const { data: before } = await fleetServiceClient.from('delays').select('*').eq('id', id).eq('user_id', userId).maybeSingle()
+  const updates: Record<string, unknown> = {}
+  if (input.loadNumber          !== undefined) updates.load_number          = input.loadNumber
+  if (input.trailer             !== undefined) updates.trailer               = input.trailer
+  if (input.delayType           !== undefined) updates.delay_type            = input.delayType
+  if (input.location            !== undefined) updates.location              = input.location
+  if (input.totalHours          !== undefined) updates.total_hours           = input.totalHours
+  if (input.billable            !== undefined) updates.billable              = input.billable
+  if (input.detentionRate       !== undefined) updates.detention_rate        = input.detentionRate
+  if (input.notes               !== undefined) updates.notes                 = input.notes
+  if (input.dispatcherNotified  !== undefined) updates.dispatcher_notified   = input.dispatcherNotified
+  if (input.proofSaved          !== undefined) updates.proof_saved           = input.proofSaved
+
+  const { data, error } = await fleetServiceClient
+    .from('delays')
+    .update(updates)
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select('*')
+    .single()
+  if (error) throw error
+  const delay = fromRow(data)
+  audit.log({ userId, email, action: 'delay.update', resource: 'delays', resourceId: id, before, after: delay })
+  return delay
+}
+
 export async function deleteDelay(id: string, userId: string, email: string | null): Promise<void> {
   const { data: before } = await fleetServiceClient.from('delays').select('*').eq('id', id).eq('user_id', userId).maybeSingle()
   const { error } = await fleetServiceClient.from('delays').delete().eq('id', id).eq('user_id', userId)

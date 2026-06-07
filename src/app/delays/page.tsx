@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import LoadBadge from '@/components/ui/LoadBadge'
 import KpiCard from '@/components/ui/KpiCard'
-import { supabase } from '@/lib/supabase'
 import { SAMPLE_DELAYS } from '@/lib/store'
 import Attachments from '@/components/ui/Attachments'
 import type { DelayEntry } from '@/types'
@@ -12,21 +11,6 @@ const DELAY_TYPES = ['Traffic','Gate','Shipper Wait','Receiver Wait','No receivi
 const inp: React.CSSProperties = { width: '100%', padding: '.8rem 1rem', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface-2)', outline: 'none', fontSize: 'var(--text-sm)' }
 const lbl: React.CSSProperties = { display: 'block', fontSize: 'var(--text-xs)', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 5 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function fromDB(r: any): DelayEntry {
-  return {
-    id: r.id, loadNumber: r.load_number, trailer: r.trailer ?? undefined,
-    delayType: r.delay_type, location: r.location,
-    totalHours: Number(r.total_hours) || 0,
-    billable: r.billable as 'Yes' | 'No' | 'Review',
-    detentionRate: r.detention_rate ? Number(r.detention_rate) : undefined,
-    potentialPay: Number(r.potential_pay) || 0,
-    dispatcherNotified: Boolean(r.dispatcher_notified),
-    proofSaved: Boolean(r.proof_saved),
-    notes: r.notes ?? undefined,
-    createdAt: r.created_at,
-  }
-}
 
 type F = { loadNumber: string; trailer: string; delayType: string; location: string; totalHours: string; billable: 'Yes' | 'No' | 'Review'; detentionRate: string; notes: string }
 const BLANK: F = { loadNumber: '', trailer: '', delayType: 'Traffic', location: '', totalHours: '', billable: 'Review', detentionRate: '', notes: '' }
@@ -40,12 +24,11 @@ export default function Delays() {
   const [attachTarget, setAttachTarget] = useState<DelayEntry | null>(null)
 
   useEffect(() => {
-    if (!supabase) { setEntries(SAMPLE_DELAYS); setLoading(false); return }
-    supabase.from('delays').select('*').order('created_at', { ascending: false })
-      .then(({ data, error }) => {
-        if (!error && data) setEntries(data.map(fromDB))
-        setLoading(false)
-      })
+    fetch('/api/fleet/delays')
+      .then(r => r.ok ? r.json() : Promise.reject(r))
+      .then((data: DelayEntry[]) => setEntries(data))
+      .catch(() => setEntries(SAMPLE_DELAYS))
+      .finally(() => setLoading(false))
   }, [])
 
   async function handleSave(e: React.FormEvent) {
@@ -53,39 +36,49 @@ export default function Delays() {
     setSaving(true)
     const hours = Number(form.totalHours) || 0
     const rate = Number(form.detentionRate) || 0
-    const payload = {
-      load_number: form.loadNumber,
-      trailer: form.trailer || null,
-      delay_type: form.delayType,
-      location: form.location,
-      total_hours: hours,
-      billable: form.billable,
-      detention_rate: rate || null,
-      potential_pay: form.billable === 'Yes' ? hours * rate : 0,
-      notes: form.notes || null,
-    }
-    if (!supabase) {
-      const entry: DelayEntry = { ...fromDB({ ...payload, id: Math.random().toString(36).slice(2), dispatcher_notified: false, proof_saved: false, created_at: new Date().toISOString() }) }
+    const res = await fetch('/api/fleet/delays', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        loadNumber:    form.loadNumber,
+        trailer:       form.trailer || undefined,
+        delayType:     form.delayType,
+        location:      form.location,
+        totalHours:    hours,
+        billable:      form.billable,
+        detentionRate: rate || undefined,
+        notes:         form.notes || undefined,
+      }),
+    })
+    if (res.ok) {
+      const entry: DelayEntry = await res.json()
       setEntries(es => [entry, ...es])
-      setSaving(false); setForm(BLANK); return
     }
-    const { data, error } = await supabase.from('delays').insert(payload).select().single()
-    if (!error && data) setEntries(es => [fromDB(data), ...es])
     setSaving(false); setForm(BLANK)
   }
 
   async function handleDelete(entry: DelayEntry) {
-    if (!supabase) { setEntries(es => es.filter(e => e.id !== entry.id)); setDeleteTarget(null); return }
-    const { error } = await supabase.from('delays').delete().eq('id', entry.id)
-    if (!error) setEntries(es => es.filter(e => e.id !== entry.id))
+    const res = await fetch(`/api/fleet/delays/${entry.id}`, { method: 'DELETE' })
+    if (res.ok) setEntries(es => es.filter(e => e.id !== entry.id))
     setDeleteTarget(null)
   }
 
   async function toggleNotified(entry: DelayEntry) {
     const next = !entry.dispatcherNotified
-    if (!supabase) { setEntries(es => es.map(e => e.id === entry.id ? { ...e, dispatcherNotified: next } : e)); return }
-    const { data, error } = await supabase.from('delays').update({ dispatcher_notified: next }).eq('id', entry.id).select().single()
-    if (!error && data) setEntries(es => es.map(e => e.id === entry.id ? fromDB(data) : e))
+    // optimistic update
+    setEntries(es => es.map(e => e.id === entry.id ? { ...e, dispatcherNotified: next } : e))
+    const res = await fetch(`/api/fleet/delays/${entry.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dispatcherNotified: next }),
+    })
+    if (res.ok) {
+      const updated: DelayEntry = await res.json()
+      setEntries(es => es.map(e => e.id === entry.id ? updated : e))
+    } else {
+      // revert on failure
+      setEntries(es => es.map(e => e.id === entry.id ? { ...e, dispatcherNotified: !next } : e))
+    }
   }
 
   const totalHours = entries.reduce((a, e) => a + (e.totalHours || 0), 0)
