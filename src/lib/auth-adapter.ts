@@ -26,7 +26,8 @@
  * Business types: owner_op | carrier | brokerage | fleet_management | service | other
  */
 
-import { createClient } from '@/lib/supabase-browser'
+import { createAuthClient } from '@/lib/auth-client'        // Core_Eco — identity/session
+import { createClient }     from '@/lib/supabase-browser'   // Fleet DB — membership data
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -89,12 +90,11 @@ export async function getCurrentUser(): Promise<FleetUser | null> {
   }
 
   try {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return null
 
-    // Resolve business membership
-    const { data: membership } = await supabase
+    // Resolve business membership from Fleet DB
+    const { data: membership } = await createClient()
       .from('fleet_business_members')
       .select(`
         role,
@@ -137,11 +137,10 @@ export async function getUserBusinesses(): Promise<Array<{
   role:         MemberRole
 }>> {
   try {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return []
 
-    const { data } = await supabase
+    const { data } = await createClient()
       .from('fleet_business_members')
       .select(`
         role,
@@ -173,8 +172,7 @@ export async function getSession() {
     throw new Error('auth-3boost not yet wired')
   }
   try {
-    const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession()
+    const { data: { session } } = await createAuthClient().auth.getSession()
     return session
   } catch { return null }
 }
@@ -189,8 +187,7 @@ export async function signOut(): Promise<void> {
     return // TODO: auth-3boost sign out
   }
   try {
-    const supabase = createClient()
-    await supabase.auth.signOut()
+    await createAuthClient().auth.signOut()
   } catch { /* ignore */ }
 }
 
