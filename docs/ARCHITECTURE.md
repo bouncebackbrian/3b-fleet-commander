@@ -1,6 +1,39 @@
 # Fleet Commander — Architecture
 
 > Phase 3B baseline. Updated as the system grows.
+> Current state: Phase 2 complete — see section below.
+
+---
+
+## Governing Principle
+
+> Documents establish intent.
+> Code enforces intent.
+> Audit logs verify intent.
+
+**Architecture health check:** For any mutation in the system, you should be able to point to a document describing it, code enforcing it, and an audit row proving it happened. If any layer is missing, the system is incomplete.
+
+---
+
+## Current Architecture (Phase 2 — as of 2026-06-07)
+
+```
+Browser
+  ↓
+Core_Eco (rkwdryneutgyqrnbuwaz)   ← auth / identity SOR
+  ↓ cookie session + requireFleetAuth()
+/api/fleet/*                       ← Next.js API routes (server-only)
+  ↓ fleet membership check
+/lib/fleet/*                       ← service layer (service-role client)
+  ↓
+Fleet DB (goqzhdrmrdlkchmwfiur)    ← all fleet data
+  ↓ fire-and-forget
+fleet_audit_logs                   ← immutable audit trail (ADR-006)
+```
+
+**Invariant:** No Fleet UI component calls the Fleet DB directly. All writes go through the API → service → DB → audit chain.
+
+**Auth split:** Core_Eco owns sessions. Fleet DB owns data. Never mixed.
 
 ---
 
