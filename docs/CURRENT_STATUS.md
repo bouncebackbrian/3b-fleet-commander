@@ -60,6 +60,17 @@ Dashboard
 Audit log
   [ ] Confirm fleet_audit_logs rows created for each mutation above
   [ ] Check actor_user_id, action, before_state/after_state populated correctly
+
+  Verification query (run in Supabase SQL editor on goqzhdrmrdlkchmwfiur):
+
+  select action, resource_type, resource_id, actor_user_id, created_at
+  from fleet_audit_logs
+  order by created_at desc
+  limit 20;
+
+  Expected: one row per mutation (fuel.create, fuel.update, fuel.delete,
+  delay.create, delay.update, delay.delete, load.create, load.update, load.delete)
+  with actor_user_id populated and before_state/after_state non-null on update/delete.
 ```
 
 ---
