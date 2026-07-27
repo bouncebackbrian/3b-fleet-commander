@@ -203,3 +203,51 @@ pre code{background:none;padding:0}
   .cc-body        { flex-direction:column; overflow:visible; }
   .cc-landscape-only { display:none !important; }
 }
+
+/* ── Dump Truck Mode — iPad landscape driver shell ───────────────────────── */
+/* Three-region layout: left rail (shift context), center (primary action),
+   right rail (day activity + quick actions). Landscape-first — stacks on
+   narrow/portrait screens rather than truncating. */
+.dt-shell {
+  min-height: 100dvh; background: var(--bg); color: var(--text);
+  display: flex; flex-direction: column;
+}
+.dt-body {
+  flex: 1; display: flex; flex-direction: column; gap: 1px;
+  background: var(--border);
+}
+.dt-left, .dt-center, .dt-right {
+  background: var(--bg); padding: 1rem;
+}
+.dt-center { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; }
+
+@media (min-width: 900px) and (orientation: landscape) {
+  .dt-body { flex-direction: row; height: calc(100dvh - 56px); overflow: hidden; }
+  .dt-left  { width: 280px; flex-shrink: 0; overflow-y: auto; }
+  .dt-center { flex: 1; min-width: 0; }
+  .dt-right { width: 340px; flex-shrink: 0; overflow-y: auto; }
+}
+
+.dt-primary-btn {
+  width: 100%; max-width: 520px; min-height: 140px;
+  border-radius: var(--radius-xl); background: var(--primary); color: #04140f;
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem); font-weight: 900; letter-spacing: .01em;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  box-shadow: var(--shadow-lg); transition: transform var(--transition), opacity var(--transition);
+  padding: 1rem;
+}
+.dt-primary-btn:active { transform: scale(.97); }
+.dt-primary-btn:disabled { opacity: .5; }
+.dt-secondary-btn {
+  width: 100%; max-width: 520px; min-height: 72px;
+  border-radius: var(--radius-lg); background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border); font-size: 1.05rem; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; gap: .5rem;
+}
+.dt-quick-btn {
+  min-height: 56px; min-width: 56px; border-radius: var(--radius-md);
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; font-size: .72rem; font-weight: 700; padding: .4rem;
+}
+.dt-quick-btn:active { background: var(--surface-off); }

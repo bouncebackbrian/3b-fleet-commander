@@ -17,4 +17,10 @@ Mileage Intelligence System — load tracking, detention, settlement audit, prof
 ```bash
 npm install
 npm run dev
+npm run test   # vitest unit tests
 ```
+
+## Dump Truck Mode
+
+See [`docs/DUMP_TRUCK_MODE.md`](docs/DUMP_TRUCK_MODE.md) for the driver
+cockpit, admin setup, migrations, and known limitations.

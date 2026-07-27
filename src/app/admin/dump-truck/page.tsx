@@ -1,0 +1,213 @@
+'use client'
+import { useEffect, useState } from 'react'
+import { toast } from '@/hooks/useToast'
+import ToastContainer from '@/components/shared/ToastContainer'
+import type { DumpTruckSite, DumpTruckJob, SiteType } from '@/lib/dumpTruck/types'
+import type { EquipmentOption } from '@/lib/fleet/dumpTruck/equipment'
+import type { DriverOption } from '@/lib/fleet/dumpTruck/jobs'
+
+const SITE_TYPES: SiteType[] = ['yard', 'pickup', 'dump', 'customer', 'fuel', 'maintenance', 'scale', 'disposal', 'parking', 'other']
+
+const cardStyle: React.CSSProperties = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '1.25rem' }
+const inputStyle: React.CSSProperties = { padding: '.6rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', width: '100%' }
+const labelStyle: React.CSSProperties = { fontSize: '.72rem', fontWeight: 700, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase' as const }
+const btnStyle: React.CSSProperties = { padding: '.65rem 1.2rem', borderRadius: 10, background: 'var(--primary)', color: '#04140f', fontWeight: 800 }
+
+export default function DumpTruckAdminPage() {
+  const [sites, setSites] = useState<DumpTruckSite[]>([])
+  const [jobs, setJobs] = useState<DumpTruckJob[]>([])
+  const [equipment, setEquipment] = useState<{ trucks: EquipmentOption[]; trailers: EquipmentOption[] }>({ trucks: [], trailers: [] })
+  const [drivers, setDrivers] = useState<DriverOption[]>([])
+
+  const reload = () => {
+    fetch('/api/fleet/dump-truck/sites').then(r => r.json()).then(b => setSites(b.sites ?? []))
+    fetch('/api/fleet/dump-truck/jobs').then(r => r.json()).then(b => setJobs(b.jobs ?? []))
+    fetch('/api/fleet/dump-truck/equipment').then(r => r.json()).then(setEquipment)
+    fetch('/api/fleet/dump-truck/drivers').then(r => r.json()).then(b => setDrivers(b.drivers ?? []))
+  }
+  useEffect(reload, [])
+
+  return (
+    <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: 1100, margin: '0 auto' }}>
+      <div>
+        <h1 style={{ fontSize: '1.4rem', fontWeight: 900 }}>Dump Truck Mode — Setup</h1>
+        <p style={{ color: 'var(--muted)', fontSize: '.85rem', marginTop: 4 }}>
+          Minimal setup screens for sites and jobs so drivers can run a full day. Trucks/trailers come from the
+          existing fleet equipment registry — add them there first if the lists below are empty. The full
+          geocoding/map-pin location directory (spec §6) is a follow-up build, not included here.
+        </p>
+      </div>
+
+      <SitesPanel sites={sites} onCreated={reload} />
+      <JobsPanel jobs={jobs} sites={sites} equipment={equipment} drivers={drivers} onCreated={reload} />
+
+      <ToastContainer />
+    </div>
+  )
+}
+
+function SitesPanel({ sites, onCreated }: { sites: DumpTruckSite[]; onCreated: () => void }) {
+  const [form, setForm] = useState({
+    name: '', siteType: 'yard' as SiteType, addressLine1: '', city: '', state: '', postalCode: '',
+    lat: '', lng: '', geofenceRadiusM: '300',
+  })
+  const [busy, setBusy] = useState(false)
+
+  const submit = async () => {
+    if (!form.name) { toast.error('Site name is required'); return }
+    setBusy(true)
+    try {
+      const res = await fetch('/api/fleet/dump-truck/sites', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...form,
+          lat: form.lat ? Number(form.lat) : null,
+          lng: form.lng ? Number(form.lng) : null,
+          geofenceRadiusM: Number(form.geofenceRadiusM) || 300,
+        }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not create site')
+      toast.success('Site created')
+      setForm({ name: '', siteType: 'yard', addressLine1: '', city: '', state: '', postalCode: '', lat: '', lng: '', geofenceRadiusM: '300' })
+      onCreated()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not create site')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div style={cardStyle}>
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '1rem' }}>Sites ({sites.length})</h2>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '.75rem', marginBottom: '1rem' }}>
+        <Field label="Name"><input style={inputStyle} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></Field>
+        <Field label="Type">
+          <select style={inputStyle} value={form.siteType} onChange={e => setForm({ ...form, siteType: e.target.value as SiteType })}>
+            {SITE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </Field>
+        <Field label="Address"><input style={inputStyle} value={form.addressLine1} onChange={e => setForm({ ...form, addressLine1: e.target.value })} /></Field>
+        <Field label="City"><input style={inputStyle} value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} /></Field>
+        <Field label="State"><input style={inputStyle} value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} /></Field>
+        <Field label="Zip"><input style={inputStyle} value={form.postalCode} onChange={e => setForm({ ...form, postalCode: e.target.value })} /></Field>
+        <Field label="Latitude"><input style={inputStyle} value={form.lat} onChange={e => setForm({ ...form, lat: e.target.value })} placeholder="39.5296" /></Field>
+        <Field label="Longitude"><input style={inputStyle} value={form.lng} onChange={e => setForm({ ...form, lng: e.target.value })} placeholder="-119.8138" /></Field>
+        <Field label="Geofence (m)"><input style={inputStyle} value={form.geofenceRadiusM} onChange={e => setForm({ ...form, geofenceRadiusM: e.target.value })} /></Field>
+      </div>
+      <button style={{ ...btnStyle, opacity: busy ? .5 : 1 }} disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Add Site'}</button>
+
+      <table style={{ width: '100%', marginTop: '1.25rem', fontSize: '.85rem' }}>
+        <thead><tr style={{ color: 'var(--muted)', textAlign: 'left' }}><th>Name</th><th>Type</th><th>City/State</th><th>Coords</th></tr></thead>
+        <tbody>
+          {sites.map(s => (
+            <tr key={s.id} style={{ borderTop: '1px solid var(--border)' }}>
+              <td style={{ padding: '.4rem 0' }}>{s.name}</td>
+              <td>{s.siteType}</td>
+              <td>{[s.city, s.state].filter(Boolean).join(', ') || '—'}</td>
+              <td>{s.lat != null ? `${s.lat.toFixed(4)}, ${s.lng!.toFixed(4)}` : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function JobsPanel({ jobs, sites, equipment, drivers, onCreated }: {
+  jobs: DumpTruckJob[]; sites: DumpTruckSite[]
+  equipment: { trucks: EquipmentOption[]; trailers: EquipmentOption[] }
+  drivers: DriverOption[]
+  onCreated: () => void
+}) {
+  const [form, setForm] = useState({
+    jobNumber: '', customerName: '', brokerName: '', driverId: '', truckId: '', trailerId: '',
+    pickupSiteId: '', dumpSiteId: '', material: '',
+  })
+  const [busy, setBusy] = useState(false)
+
+  const submit = async () => {
+    if (!form.jobNumber) { toast.error('Job number is required'); return }
+    setBusy(true)
+    try {
+      const res = await fetch('/api/fleet/dump-truck/jobs', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, status: 'scheduled' }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not create job')
+      toast.success('Job created')
+      setForm({ jobNumber: '', customerName: '', brokerName: '', driverId: '', truckId: '', trailerId: '', pickupSiteId: '', dumpSiteId: '', material: '' })
+      onCreated()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not create job')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const pickupSites = sites.filter(s => s.siteType === 'pickup' || s.siteType === 'customer')
+  const dumpSites = sites.filter(s => s.siteType === 'dump' || s.siteType === 'disposal')
+
+  return (
+    <div style={cardStyle}>
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '1rem' }}>Jobs ({jobs.length})</h2>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '.75rem', marginBottom: '1rem' }}>
+        <Field label="Job Number"><input style={inputStyle} value={form.jobNumber} onChange={e => setForm({ ...form, jobNumber: e.target.value })} /></Field>
+        <Field label="Customer"><input style={inputStyle} value={form.customerName} onChange={e => setForm({ ...form, customerName: e.target.value })} /></Field>
+        <Field label="Broker"><input style={inputStyle} value={form.brokerName} onChange={e => setForm({ ...form, brokerName: e.target.value })} /></Field>
+        <Field label="Material"><input style={inputStyle} value={form.material} onChange={e => setForm({ ...form, material: e.target.value })} /></Field>
+        <Field label="Driver">
+          <select style={inputStyle} value={form.driverId} onChange={e => setForm({ ...form, driverId: e.target.value })}>
+            <option value="">Unassigned</option>
+            {drivers.map(d => <option key={d.userId} value={d.userId}>{d.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Truck">
+          <select style={inputStyle} value={form.truckId} onChange={e => setForm({ ...form, truckId: e.target.value })}>
+            <option value="">Unassigned</option>
+            {equipment.trucks.map(t => <option key={t.id} value={t.id}>{t.unitNumber}</option>)}
+          </select>
+        </Field>
+        <Field label="Trailer">
+          <select style={inputStyle} value={form.trailerId} onChange={e => setForm({ ...form, trailerId: e.target.value })}>
+            <option value="">None</option>
+            {equipment.trailers.map(t => <option key={t.id} value={t.id}>{t.unitNumber}</option>)}
+          </select>
+        </Field>
+        <Field label="Pickup Site">
+          <select style={inputStyle} value={form.pickupSiteId} onChange={e => setForm({ ...form, pickupSiteId: e.target.value })}>
+            <option value="">Select…</option>
+            {pickupSites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Dump Site">
+          <select style={inputStyle} value={form.dumpSiteId} onChange={e => setForm({ ...form, dumpSiteId: e.target.value })}>
+            <option value="">Select…</option>
+            {dumpSites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </Field>
+      </div>
+      <button style={{ ...btnStyle, opacity: busy ? .5 : 1 }} disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Add Job'}</button>
+
+      <table style={{ width: '100%', marginTop: '1.25rem', fontSize: '.85rem' }}>
+        <thead><tr style={{ color: 'var(--muted)', textAlign: 'left' }}><th>Job #</th><th>Customer</th><th>Driver</th><th>Status</th></tr></thead>
+        <tbody>
+          {jobs.map(j => (
+            <tr key={j.id} style={{ borderTop: '1px solid var(--border)' }}>
+              <td style={{ padding: '.4rem 0' }}>{j.jobNumber}</td>
+              <td>{j.customerName ?? '—'}</td>
+              <td>{drivers.find(d => d.userId === j.driverId)?.name ?? '—'}</td>
+              <td>{j.status}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div><div style={labelStyle}>{label}</div>{children}</div>
+}

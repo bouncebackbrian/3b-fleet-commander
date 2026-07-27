@@ -11,6 +11,7 @@ const COOKIE_OPTS = {
 const PROTECTED = [
   '/dashboard', '/dispatch', '/loads', '/trips', '/fuel',
   '/expenses', '/audit', '/delays', '/mis', '/settings', '/trip',
+  '/driver', '/admin',
 ]
 
 export async function middleware(request: NextRequest) {

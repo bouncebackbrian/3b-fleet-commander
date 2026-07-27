@@ -112,6 +112,22 @@ export const FLEET_NAV: NavEntry[] = [
     tier:  ['pro', 'enterprise'],
   },
 
+  // ── Dump Truck Mode — driver cockpit ─────────────────────────────────────
+  {
+    id: 'fleet-dump-truck-driver', label: 'Dump Truck', href: '/driver/dump-truck', icon: '🚛',
+    family: 'fleet', enabled: true,
+    modes: ['driver', 'owner_op'],
+    tier:  ['starter', 'pro', 'enterprise'],
+  },
+
+  // ── Dump Truck Mode — sites/jobs setup ───────────────────────────────────
+  {
+    id: 'fleet-dump-truck-admin', label: 'Dump Truck Setup', href: '/admin/dump-truck', icon: '🧭',
+    family: 'fleet', enabled: true,
+    modes: ['dispatcher', 'owner_op', 'fleet_owner', 'fleet_manager', 'admin'],
+    tier:  ['starter', 'pro', 'enterprise'],
+  },
+
   // ── Account / admin ───────────────────────────────────────────────────────
   {
     id: 'fleet-account', label: 'Account', href: '/account', icon: '⚙️',

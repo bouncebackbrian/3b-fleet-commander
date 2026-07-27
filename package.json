@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.54.0",
@@ -30,6 +32,9 @@
     "@types/node": "^20",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "typescript": "^5"
+    "@vitest/coverage-v8": "^4.1.10",
+    "happy-dom": "^20.11.1",
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }

@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Gauge, BarChart2, Truck, FileCheck, Clock, Fuel, Settings, ChevronLeft, ChevronRight, MapPin, MessageSquare, LogOut, Receipt } from 'lucide-react'
+import { Gauge, BarChart2, Truck, FileCheck, Clock, Fuel, Settings, ChevronLeft, ChevronRight, MapPin, MessageSquare, LogOut, Receipt, HardHat, MapPinned } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
 import { createAuthClient } from '@/lib/auth-client'
 
@@ -29,6 +29,13 @@ const MODULES = [
       {href:'/expenses', label:'Expense Tracker',   icon:Receipt},
       {href:'/delays',   label:'Delay & Detention', icon:Clock},
       {href:'/fuel',     label:'Fuel Log',          icon:Fuel},
+    ]
+  },
+  {
+    group: 'Dump Truck Mode',
+    items: [
+      {href:'/driver/dump-truck', label:'Driver Cockpit', icon:HardHat},
+      {href:'/admin/dump-truck',  label:'Sites & Jobs',   icon:MapPinned},
     ]
   },
   {
