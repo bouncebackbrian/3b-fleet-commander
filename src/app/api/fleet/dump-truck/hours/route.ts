@@ -1,0 +1,44 @@
+/**
+ * GET /api/fleet/dump-truck/hours — driver weekly-hours portal data (spec §10)
+ *
+ * Query params:
+ *   range = current_week | previous_week | current_pay_period | previous_pay_period | custom
+ *   from, to = YYYY-MM-DD (required when range=custom)
+ *
+ * Always scoped to the authenticated driver's own records.
+ */
+
+import { NextRequest, NextResponse } from 'next/server'
+import { requireFleetAuth } from '@/lib/fleet-auth-guard'
+import { resolveRange, type RangeType } from '@/lib/dumpTruck/hours'
+import { buildDriverHoursForRange } from '@/lib/fleet/dumpTruck/hours'
+
+export const dynamic = 'force-dynamic'
+
+const VALID_RANGES: RangeType[] = ['current_week', 'previous_week', 'current_pay_period', 'previous_pay_period', 'custom']
+
+export async function GET(request: NextRequest) {
+  const auth = await requireFleetAuth()
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const rangeParam = request.nextUrl.searchParams.get('range') ?? 'current_week'
+  if (!VALID_RANGES.includes(rangeParam as RangeType)) {
+    return NextResponse.json({ error: `range must be one of ${VALID_RANGES.join(', ')}` }, { status: 400 })
+  }
+  const rangeType = rangeParam as RangeType
+
+  const from = request.nextUrl.searchParams.get('from')
+  const to = request.nextUrl.searchParams.get('to')
+  if (rangeType === 'custom' && (!from || !to)) {
+    return NextResponse.json({ error: 'from and to are required when range=custom' }, { status: 400 })
+  }
+
+  try {
+    const range = resolveRange(rangeType, new Date(), from && to ? { start: from, end: to } : undefined)
+    const result = await buildDriverHoursForRange(auth.businessId, auth.userId, range)
+    return NextResponse.json({ range, rangeType, ...result })
+  } catch (err) {
+    console.error('[api/fleet/dump-truck/hours] GET error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}

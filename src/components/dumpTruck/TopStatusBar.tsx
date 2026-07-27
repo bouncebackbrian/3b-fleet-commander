@@ -1,4 +1,5 @@
 'use client'
+import Link from 'next/link'
 
 interface Props {
   isOnline: boolean
@@ -37,6 +38,15 @@ export default function TopStatusBar({ isOnline, pendingCount, failedCount, gpsP
           color={gpsPermission === 'granted' ? 'var(--success)' : 'var(--muted)'}
           icon="📍"
         />
+        <Link
+          href="/driver/hours"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 4, color: 'var(--primary)',
+            padding: '.35rem .6rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)',
+          }}
+        >
+          📊 Hours
+        </Link>
       </div>
     </div>
   )

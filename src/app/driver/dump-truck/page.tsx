@@ -20,10 +20,12 @@ import IncidentQuickSheet from '@/components/dumpTruck/IncidentQuickSheet'
 import PhotoTicketSheet from '@/components/dumpTruck/PhotoTicketSheet'
 import NavigateSheet from '@/components/dumpTruck/NavigateSheet'
 import SubmitDaySheet from '@/components/dumpTruck/SubmitDaySheet'
+import FuelSheet from '@/components/dumpTruck/FuelSheet'
+import LoadTicketSheet from '@/components/dumpTruck/LoadTicketSheet'
 
 type SheetKey =
   | 'clock_in' | 'odometer_pickup' | 'odometer_dropoff' | 'pretrip' | 'posttrip'
-  | 'delay' | 'note' | 'defect' | 'incident' | 'photo' | 'ticket' | 'submit' | null
+  | 'delay' | 'note' | 'defect' | 'incident' | 'photo' | 'ticket' | 'fuel' | 'submit' | null
 
 export default function DumpTruckDriverPage() {
   const {
@@ -90,10 +92,10 @@ export default function DumpTruckDriverPage() {
     { key: 'delay', icon: delayActive ? '⏸️' : '⏱️', label: delayActive ? 'End Delay' : 'Delay', enabled: !!context?.shift },
     { key: 'note', icon: '📝', label: 'Note', enabled: !!context?.shift },
     { key: 'photo', icon: '📷', label: 'Photo', enabled: !!context?.shift },
-    { key: 'ticket', icon: '🎫', label: 'Ticket', enabled: !!context?.shift },
+    { key: 'ticket', icon: '🎫', label: 'Load Ticket', enabled: !!context?.shift && (context?.loadCycles.length ?? 0) > 0 },
     { key: 'defect', icon: '🔧', label: 'Defect', enabled: !!context?.shift?.truckId },
     { key: 'incident', icon: '🚨', label: 'Incident', enabled: !!context?.shift },
-    { key: 'fuel', icon: '⛽', label: 'Fuel (Soon)', enabled: false },
+    { key: 'fuel', icon: '⛽', label: 'Add Fuel', enabled: !!context?.shift?.truckId },
     { key: 'correction', icon: '↩️', label: 'Report Issue', enabled: !!context?.shift },
   ]
 
@@ -225,7 +227,22 @@ export default function DumpTruckDriverPage() {
       )}
 
       {sheet === 'ticket' && context?.shift && (
-        <PhotoTicketSheet shiftId={context.shift.id} docType="scale_ticket" title="Scan Ticket" onClose={() => setSheet(null)} onUploaded={() => fireEvent('ticket_captured')} />
+        <LoadTicketSheet
+          shiftId={context.shift.id}
+          loadCycles={[...context.loadCycles].sort((a, b) => b.sequence - a.sequence)}
+          onClose={() => setSheet(null)}
+          onSaved={() => { fireEvent('ticket_captured'); refetch() }}
+        />
+      )}
+
+      {sheet === 'fuel' && context?.shift?.truckId && (
+        <FuelSheet
+          shiftId={context.shift.id}
+          vehicleId={context.shift.truckId}
+          jobId={activeJobId}
+          onClose={() => setSheet(null)}
+          onSaved={refetch}
+        />
       )}
 
       {sheet === 'defect' && context?.shift?.truckId && (

@@ -120,6 +120,14 @@ export const FLEET_NAV: NavEntry[] = [
     tier:  ['starter', 'pro', 'enterprise'],
   },
 
+  // ── Dump Truck Mode — driver hours portal ────────────────────────────────
+  {
+    id: 'fleet-dump-truck-hours', label: 'My Hours', href: '/driver/hours', icon: '⏱️',
+    family: 'fleet', enabled: true,
+    modes: ['driver', 'owner_op'],
+    tier:  ['starter', 'pro', 'enterprise'],
+  },
+
   // ── Dump Truck Mode — sites/jobs setup ───────────────────────────────────
   {
     id: 'fleet-dump-truck-admin', label: 'Dump Truck Setup', href: '/admin/dump-truck', icon: '🧭',

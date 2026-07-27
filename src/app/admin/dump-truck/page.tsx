@@ -40,6 +40,7 @@ export default function DumpTruckAdminPage() {
 
       <SitesPanel sites={sites} onCreated={reload} />
       <JobsPanel jobs={jobs} sites={sites} equipment={equipment} drivers={drivers} onCreated={reload} />
+      <PayPolicyPanel />
 
       <ToastContainer />
     </div>
@@ -210,4 +211,61 @@ function JobsPanel({ jobs, sites, equipment, drivers, onCreated }: {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div><div style={labelStyle}>{label}</div>{children}</div>
+}
+
+function PayPolicyPanel() {
+  const [baseHourlyRate, setBaseHourlyRate] = useState('32.00')
+  const [dailyOtThresholdHours, setDailyOtThresholdHours] = useState('8.00')
+  const [otMultiplier, setOtMultiplier] = useState('1.50')
+  const [isDefault, setIsDefault] = useState(true)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/fleet/dump-truck/pay-policy').then(r => r.json()).then(b => {
+      if (!b.policy) return
+      setBaseHourlyRate(String(b.policy.baseHourlyRate))
+      setDailyOtThresholdHours(String(b.policy.dailyOtThresholdHours))
+      setOtMultiplier(String(b.policy.otMultiplier))
+      setIsDefault(!!b.policy.isDefault)
+    })
+  }, [])
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      const res = await fetch('/api/fleet/dump-truck/pay-policy', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseHourlyRate: Number(baseHourlyRate),
+          dailyOtThresholdHours: Number(dailyOtThresholdHours),
+          otMultiplier: Number(otMultiplier),
+        }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not save pay policy')
+      toast.success('Pay policy saved')
+      setIsDefault(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not save pay policy')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div style={cardStyle}>
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '.5rem' }}>Driver Hours — Estimated Pay Policy</h2>
+      <p style={{ fontSize: '.8rem', color: 'var(--muted)', marginBottom: '1rem' }}>
+        Powers the &quot;Estimated Earnings&quot; figures on the driver hours portal only — a single hourly
+        rate with daily overtime. This is <strong>not</strong> a full payroll engine: per-load/per-mile/
+        per-ton/detention rates, weekly overtime, double-time, and payroll approval are not implemented.
+        {isDefault && ' Currently using the built-in default (not yet saved for this business).'}
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '.75rem', marginBottom: '1rem' }}>
+        <Field label="Base Hourly Rate ($)"><input style={inputStyle} type="number" step="0.01" value={baseHourlyRate} onChange={e => setBaseHourlyRate(e.target.value)} /></Field>
+        <Field label="Daily OT Threshold (hrs)"><input style={inputStyle} type="number" step="0.25" value={dailyOtThresholdHours} onChange={e => setDailyOtThresholdHours(e.target.value)} /></Field>
+        <Field label="OT Multiplier"><input style={inputStyle} type="number" step="0.05" value={otMultiplier} onChange={e => setOtMultiplier(e.target.value)} /></Field>
+      </div>
+      <button style={{ ...btnStyle, opacity: busy ? .5 : 1 }} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save Pay Policy'}</button>
+    </div>
+  )
 }

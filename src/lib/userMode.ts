@@ -79,6 +79,7 @@ const ALL_TABS: NavTab[] = [
   { href: '/compliance',  label: 'Compliance',  emoji: '⚖️', command: 'Compliance'  },
   { href: '/maintenance', label: 'Maintenance', emoji: '🔧', command: 'Maintenance' },
   { href: '/driver/dump-truck', label: 'Dump Truck', emoji: '🏗️', command: 'Dump Truck' },
+  { href: '/driver/hours',      label: 'My Hours',   emoji: '⏱️', command: 'Dump Truck' },
   { href: '/admin/dump-truck',  label: 'DT Setup',   emoji: '🧭', command: 'Dump Truck' },
   { href: '/settings',    label: 'Settings',    emoji: '⚙️', command: 'System'      },
 ]
@@ -87,8 +88,8 @@ const ALL_TABS: NavTab[] = [
 // Vault is the proof/document layer. Trailer is the operational inspection layer.
 // driver mode swaps Owner (expenses) for Trailer Intel — more relevant on the road.
 const MODE_TAB_HREFS: Record<UserMode, string[]> = {
-  driver:         ['/dashboard', '/trips', '/driver/dump-truck', '/trailer', '/maintenance', '/compliance', '/vault'],
-  owner_operator: ['/dashboard', '/dispatch', '/trips', '/driver/dump-truck', '/admin/dump-truck', '/maintenance', '/compliance', '/vault'],
+  driver:         ['/dashboard', '/trips', '/driver/dump-truck', '/driver/hours', '/trailer', '/maintenance', '/compliance', '/vault'],
+  owner_operator: ['/dashboard', '/dispatch', '/trips', '/driver/dump-truck', '/driver/hours', '/admin/dump-truck', '/maintenance', '/compliance', '/vault'],
   dispatcher:     ['/dispatch', '/loads', '/trips', '/admin/dump-truck', '/maintenance', '/compliance', '/vault'],
   fleet_admin:    ['/dashboard', '/dispatch', '/trips', '/admin/dump-truck', '/maintenance', '/compliance', '/trailer', '/vault'],
 }

@@ -71,8 +71,11 @@ export async function recordEvent(
     throw new DumpTruckError('Shift not found', 404)
   }
 
+  // correction_requested is the driver's post-hoc dispute mechanism (spec §10: "Request a
+  // correction with an explanation") — it must remain fireable on a submitted/locked shift,
+  // which every other event type is intentionally blocked from touching.
   const flowState = await getShiftFlowState(input.shiftId)
-  if (!canFireEvent(flowState, input.eventType)) {
+  if (input.eventType !== 'correction_requested' && !canFireEvent(flowState, input.eventType)) {
     throw new DumpTruckError(
       `"${input.eventType}" is not valid from the current shift state ("${flowState}")`,
       409,
