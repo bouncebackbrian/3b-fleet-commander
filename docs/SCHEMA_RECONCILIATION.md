@@ -158,6 +158,24 @@ Truck Mode:
    `auth.users` — the two are not guaranteed to match and, per this
    incident, sometimes don't.
 
+   **Update, same night:** `20260728_identity_bridge_compliance_fields.sql`
+   went further and dropped `profiles.id`'s own FK to Fleet's local
+   `auth.users` (same reasoning as item 6 — real identity is Core_Eco-owned,
+   not local), so a real `profiles` row now exists for
+   `bouncebackbrian@outlook.com` (`bf568e3f-af39-4487-9649-953ddefd1216`).
+   This is still a patch, not the real bridge described above — no
+   auto-provisioning happens for the *next* Core_Eco user who touches Fleet
+   Commander; each one still needs a `profiles` row created by hand until
+   the real bridge (Admin API-provisioned identity, or reading Core_Eco
+   directly) is built. The same migration also added `businesses`
+   compliance columns (`three_b_biz_id`, `dot_number`, `mc_number`, `ein`,
+   `insurance_carrier`, `insurance_policy_number`, `insurance_expiry`) —
+   all nullable, all currently empty. **No 3B ID or 3B Business ID
+   generator function exists anywhere in this database** (confirmed via
+   `information_schema.routines`/`triggers`) — `three_b_id`/
+   `three_b_biz_id` values are not fabricated anywhere in this codebase;
+   building that sequential-id generator is real, separate, unbuilt work.
+
 ## Snapshots
 
 - `docs/schema-snapshots/2026-07-28-pre-fleet-equipment.md` — full column/
