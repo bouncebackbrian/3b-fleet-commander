@@ -397,6 +397,34 @@ carries over automatically:
    no new env vars needed.
 6. `npm run test` in CI if you want the 90 unit tests gating merges.
 
+### 8.1 Production merge — verified 2026-07-28
+
+`claude/new-session-mgyqti` was fast-forward merged into `main`
+(`37e86e6..a5252f6`) and pushed, triggering a Vercel production build for
+`3b-fleet-commander` (deployment `dpl_GbJfcWuV4fxHnjUsiJQLi4B2m2Ad`, commit
+`a5252f6`). What was actually verified, and how:
+
+- **Build succeeded** — deployment `readyState: READY`, `target: production`,
+  confirmed via the Vercel API (`get_project` / `list_deployments`).
+- **Live at the production domain** — `fleet.bouncebackbrian.com` (the
+  project's assigned production domain) now points at this deployment.
+- **No runtime errors** — `get_runtime_errors` for the project returned zero
+  errors in the 2 hours following the deploy.
+- **Routes resolve, not 500** — `/driver/dump-truck`, `/admin/dump-truck`,
+  and `/driver/hours` were each fetched directly against
+  `fleet.bouncebackbrian.com` and returned HTTP 200, server-rendering the
+  `/login` screen (expected — these routes require an authenticated session
+  and correctly redirect rather than erroring).
+
+What was **not** verified: an actual authenticated click-through of the
+Dump Truck driver cockpit, admin setup screens, or hours portal in a real
+browser session against the restored production database — no real user
+credentials for the live `goqzhdrmrdlkchmwfiur` project were available in
+this environment. The HTTP-level checks above confirm the deployment is
+live, builds cleanly, and the routes are wired up and don't crash
+pre-authentication; they do not confirm post-login UI behavior. Do a manual
+sign-in smoke test before relying on this in the field.
+
 ## 9. Admin Setup Steps
 
 1. Make sure at least one truck (`fleet_equipment`, `equipment_type` other
