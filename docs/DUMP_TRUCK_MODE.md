@@ -184,6 +184,13 @@ its files were originally written against.
    Practical risk was low (the functions only return a boolean gated on
    `auth.uid()`, which is null for anon) but there was no reason to leave
    it open.
+8. `20260728_fleet_dt_jobs_dispatch_fields.sql` — **new**, adds 13 nullable
+   columns to `fleet_dt_jobs` (`load_time`, `order_date`, `delivery_date`,
+   `cosignee_name`, `ordered_by`, `contact_phone`, `truck_type`,
+   `directions`, `travel_time_minutes`, `fuel_surcharge`, `price_per_hour`,
+   `price_per_ton`, `material_cost`) so the admin Jobs form can capture
+   everything on the real paper dispatch ticket the business uses today,
+   not just the fields Dump Truck Mode originally needed operationally.
 
 Two files also touched code, not schema, to match the live database:
 `src/lib/fleet/dumpTruck/shared.ts` (`getDriverBusinessMeta`) and

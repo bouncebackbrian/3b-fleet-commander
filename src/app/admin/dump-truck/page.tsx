@@ -122,10 +122,13 @@ function JobsPanel({ jobs, sites, equipment, drivers, onCreated }: {
   drivers: DriverOption[]
   onCreated: () => void
 }) {
-  const [form, setForm] = useState({
-    jobNumber: '', customerName: '', brokerName: '', driverId: '', truckId: '', trailerId: '',
+  const emptyForm = {
+    jobNumber: '', poNumber: '', customerName: '', brokerName: '', driverId: '', truckId: '', trailerId: '',
     pickupSiteId: '', dumpSiteId: '', material: '',
-  })
+    loadTime: '', orderDate: '', deliveryDate: '', cosigneeName: '', orderedBy: '', contactPhone: '',
+    truckType: '', directions: '', travelTimeMinutes: '', fuelSurcharge: '', pricePerHour: '', pricePerTon: '', materialCost: '',
+  }
+  const [form, setForm] = useState(emptyForm)
   const [busy, setBusy] = useState(false)
 
   const submit = async () => {
@@ -134,11 +137,22 @@ function JobsPanel({ jobs, sites, equipment, drivers, onCreated }: {
     try {
       const res = await fetch('/api/fleet/dump-truck/jobs', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, status: 'scheduled' }),
+        body: JSON.stringify({
+          ...form,
+          status: 'scheduled',
+          loadTime: form.loadTime || null,
+          orderDate: form.orderDate || null,
+          deliveryDate: form.deliveryDate || null,
+          travelTimeMinutes: form.travelTimeMinutes ? Number(form.travelTimeMinutes) : null,
+          fuelSurcharge: form.fuelSurcharge ? Number(form.fuelSurcharge) : null,
+          pricePerHour: form.pricePerHour ? Number(form.pricePerHour) : null,
+          pricePerTon: form.pricePerTon ? Number(form.pricePerTon) : null,
+          materialCost: form.materialCost ? Number(form.materialCost) : null,
+        }),
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Could not create job')
       toast.success('Job created')
-      setForm({ jobNumber: '', customerName: '', brokerName: '', driverId: '', truckId: '', trailerId: '', pickupSiteId: '', dumpSiteId: '', material: '' })
+      setForm(emptyForm)
       onCreated()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not create job')
@@ -156,6 +170,7 @@ function JobsPanel({ jobs, sites, equipment, drivers, onCreated }: {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '.75rem', marginBottom: '1rem' }}>
         <Field label="Job Number"><input style={inputStyle} value={form.jobNumber} onChange={e => setForm({ ...form, jobNumber: e.target.value })} /></Field>
+        <Field label="PO Number"><input style={inputStyle} value={form.poNumber} onChange={e => setForm({ ...form, poNumber: e.target.value })} /></Field>
         <Field label="Customer"><input style={inputStyle} value={form.customerName} onChange={e => setForm({ ...form, customerName: e.target.value })} /></Field>
         <Field label="Broker"><input style={inputStyle} value={form.brokerName} onChange={e => setForm({ ...form, brokerName: e.target.value })} /></Field>
         <Field label="Material"><input style={inputStyle} value={form.material} onChange={e => setForm({ ...form, material: e.target.value })} /></Field>
@@ -177,6 +192,7 @@ function JobsPanel({ jobs, sites, equipment, drivers, onCreated }: {
             {equipment.trailers.map(t => <option key={t.id} value={t.id}>{t.unitNumber}</option>)}
           </select>
         </Field>
+        <Field label="Truck Type"><input style={inputStyle} value={form.truckType} onChange={e => setForm({ ...form, truckType: e.target.value })} /></Field>
         <Field label="Pickup Site">
           <select style={inputStyle} value={form.pickupSiteId} onChange={e => setForm({ ...form, pickupSiteId: e.target.value })}>
             <option value="">Select…</option>
@@ -190,7 +206,26 @@ function JobsPanel({ jobs, sites, equipment, drivers, onCreated }: {
           </select>
         </Field>
       </div>
-      <button style={{ ...btnStyle, opacity: busy ? .5 : 1 }} disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Add Job'}</button>
+
+      <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' as const, margin: '1rem 0 .5rem' }}>
+        Dispatch Ticket Details
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '.75rem', marginBottom: '1rem' }}>
+        <Field label="Load Time"><input style={inputStyle} type="time" value={form.loadTime} onChange={e => setForm({ ...form, loadTime: e.target.value })} /></Field>
+        <Field label="Order Date"><input style={inputStyle} type="date" value={form.orderDate} onChange={e => setForm({ ...form, orderDate: e.target.value })} /></Field>
+        <Field label="Delivery Date"><input style={inputStyle} type="date" value={form.deliveryDate} onChange={e => setForm({ ...form, deliveryDate: e.target.value })} /></Field>
+        <Field label="Ordered By"><input style={inputStyle} value={form.orderedBy} onChange={e => setForm({ ...form, orderedBy: e.target.value })} /></Field>
+        <Field label="Cosignee"><input style={inputStyle} value={form.cosigneeName} onChange={e => setForm({ ...form, cosigneeName: e.target.value })} /></Field>
+        <Field label="Phone Number"><input style={inputStyle} value={form.contactPhone} onChange={e => setForm({ ...form, contactPhone: e.target.value })} /></Field>
+        <Field label="Travel Time (min)"><input style={inputStyle} type="number" value={form.travelTimeMinutes} onChange={e => setForm({ ...form, travelTimeMinutes: e.target.value })} /></Field>
+        <Field label="Fuel Surcharge ($)"><input style={inputStyle} type="number" step="0.01" value={form.fuelSurcharge} onChange={e => setForm({ ...form, fuelSurcharge: e.target.value })} /></Field>
+        <Field label="Price Per Hour ($)"><input style={inputStyle} type="number" step="0.01" value={form.pricePerHour} onChange={e => setForm({ ...form, pricePerHour: e.target.value })} /></Field>
+        <Field label="Price Per Ton ($)"><input style={inputStyle} type="number" step="0.01" value={form.pricePerTon} onChange={e => setForm({ ...form, pricePerTon: e.target.value })} /></Field>
+        <Field label="Material Cost ($)"><input style={inputStyle} type="number" step="0.01" value={form.materialCost} onChange={e => setForm({ ...form, materialCost: e.target.value })} /></Field>
+      </div>
+      <Field label="Directions"><textarea style={{ ...inputStyle, minHeight: 60 }} value={form.directions} onChange={e => setForm({ ...form, directions: e.target.value })} /></Field>
+
+      <button style={{ ...btnStyle, opacity: busy ? .5 : 1, marginTop: '1rem' }} disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Add Job'}</button>
 
       <table style={{ width: '100%', marginTop: '1.25rem', fontSize: '.85rem' }}>
         <thead><tr style={{ color: 'var(--muted)', textAlign: 'left' }}><th>Job #</th><th>Customer</th><th>Driver</th><th>Status</th></tr></thead>

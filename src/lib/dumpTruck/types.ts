@@ -162,6 +162,25 @@ export interface DumpTruckJob {
   estQuantity: number | null
   quantityUnit: 'loads' | 'tons' | 'cubic_yards' | 'hours' | 'miles' | 'units'
   status: 'draft' | 'scheduled' | 'active' | 'completed' | 'cancelled'
+
+  // Dispatch-ticket fields (2026-07-28) — mirror the paper dispatch ticket
+  // (load time, order/delivery date, cosignee, ordered-by, phone, truck
+  // type, directions, travel time, fuel surcharge, price per hour/ton,
+  // material cost) so the admin Jobs form can replace it, not just
+  // supplement it.
+  loadTime: string | null
+  orderDate: string | null
+  deliveryDate: string | null
+  cosigneeName: string | null
+  orderedBy: string | null
+  contactPhone: string | null
+  truckType: string | null
+  directions: string | null
+  travelTimeMinutes: number | null
+  fuelSurcharge: number | null
+  pricePerHour: number | null
+  pricePerTon: number | null
+  materialCost: number | null
 }
 
 export interface DumpTruckShift {

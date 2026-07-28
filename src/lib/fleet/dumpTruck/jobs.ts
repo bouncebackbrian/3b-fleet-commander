@@ -24,6 +24,19 @@ function fromRow(r: any): DumpTruckJob {
     estQuantity: r.est_quantity != null ? Number(r.est_quantity) : null,
     quantityUnit: r.quantity_unit,
     status: r.status,
+    loadTime: r.load_time,
+    orderDate: r.order_date,
+    deliveryDate: r.delivery_date,
+    cosigneeName: r.cosignee_name,
+    orderedBy: r.ordered_by,
+    contactPhone: r.contact_phone,
+    truckType: r.truck_type,
+    directions: r.directions,
+    travelTimeMinutes: r.travel_time_minutes != null ? Number(r.travel_time_minutes) : null,
+    fuelSurcharge: r.fuel_surcharge != null ? Number(r.fuel_surcharge) : null,
+    pricePerHour: r.price_per_hour != null ? Number(r.price_per_hour) : null,
+    pricePerTon: r.price_per_ton != null ? Number(r.price_per_ton) : null,
+    materialCost: r.material_cost != null ? Number(r.material_cost) : null,
   }
 }
 
@@ -92,6 +105,19 @@ export interface CreateJobInput {
   scheduledAt?: string | null
   instructions?: string | null
   status?: DumpTruckJob['status']
+  loadTime?: string | null
+  orderDate?: string | null
+  deliveryDate?: string | null
+  cosigneeName?: string | null
+  orderedBy?: string | null
+  contactPhone?: string | null
+  truckType?: string | null
+  directions?: string | null
+  travelTimeMinutes?: number | null
+  fuelSurcharge?: number | null
+  pricePerHour?: number | null
+  pricePerTon?: number | null
+  materialCost?: number | null
 }
 
 export async function createJob(
@@ -119,6 +145,19 @@ export async function createJob(
       scheduled_at: input.scheduledAt ?? null,
       instructions: input.instructions ?? null,
       status: input.status ?? 'scheduled',
+      load_time: input.loadTime ?? null,
+      order_date: input.orderDate ?? null,
+      delivery_date: input.deliveryDate ?? null,
+      cosignee_name: input.cosigneeName ?? null,
+      ordered_by: input.orderedBy ?? null,
+      contact_phone: input.contactPhone ?? null,
+      truck_type: input.truckType ?? null,
+      directions: input.directions ?? null,
+      travel_time_minutes: input.travelTimeMinutes ?? null,
+      fuel_surcharge: input.fuelSurcharge ?? null,
+      price_per_hour: input.pricePerHour ?? null,
+      price_per_ton: input.pricePerTon ?? null,
+      material_cost: input.materialCost ?? null,
       created_by: userId,
     })
     .select('*')
