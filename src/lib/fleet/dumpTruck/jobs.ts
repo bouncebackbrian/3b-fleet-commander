@@ -45,11 +45,16 @@ export interface DriverOption {
   threebId: string | null
 }
 
-/** Drivers (fleet_business_members.role='driver') available to assign a job to. */
+/**
+ * Drivers (fleet_business_members.role='driver') available to assign a job to.
+ *
+ * SCHEMA NOTE (2026-07-28): live `profiles` has a single `full_name` column,
+ * not `first_name`/`last_name` — see docs/SCHEMA_RECONCILIATION.md.
+ */
 export async function listDrivers(businessId: string): Promise<DriverOption[]> {
   const { data, error } = await fleetServiceClient
     .from('fleet_business_members')
-    .select('user_id, profiles(first_name, last_name, three_b_id)')
+    .select('user_id, profiles(full_name, three_b_id)')
     .eq('business_id', businessId)
     .eq('role', 'driver')
     .eq('active', true)
@@ -57,8 +62,7 @@ export async function listDrivers(businessId: string): Promise<DriverOption[]> {
   return (data ?? []).map(r => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const profile = r.profiles as any
-    const name = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || 'Unnamed driver'
-    return { userId: r.user_id, name, threebId: profile?.three_b_id ?? null }
+    return { userId: r.user_id, name: profile?.full_name || 'Unnamed driver', threebId: profile?.three_b_id ?? null }
   })
 }
 

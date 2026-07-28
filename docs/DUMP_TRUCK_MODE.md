@@ -72,12 +72,19 @@ New routes:
 | `/api/fleet/dump-truck/hours/export` | Driver Personal Records CSV (detail/summary) |
 | `/api/fleet/dump-truck/pay-policy` | Get/set the minimal hourly+OT policy (owner/admin write) |
 
-New migrations (apply after the three Phase 1/2 migrations, same caveat —
-**not applied to any live Supabase project by this session**, see §3 below):
+New migrations, applied after the three Phase 1/2 migrations:
 
 4. `20260728_fleet_dt_fuel_hours.sql` — `fleet_dt_fuel_entries`,
    `fleet_dt_pay_policies`, `fleet_dt_driver_record_exports`, RLS on all three.
 5. `20260728_fleet_dt_events_correction_policy.sql` — the RLS fix above.
+
+**Update, same day:** all five migrations were subsequently applied to the
+live "Fleet Commander" Supabase project (`goqzhdrmrdlkchmwfiur`) as part of
+a production deployment — see the new §3 "Deployment Status" below, which
+also covers a schema-drift discovery (`fleet_equipment` didn't exist in
+production) and two more migrations that resulted from it. This section's
+original text is left as written at the time for the record; §3 is the
+current source of truth on what's actually live.
 
 New tests: `fuel.test.ts` (11), `hours.test.ts` (14), `csv.test.ts` (3) —
 **90/90 vitest tests passing** total (was 60 after Phase 1+2).
@@ -128,34 +135,111 @@ also received an entry for consistency, but that file is pre-existing
 forward-looking scaffolding not yet wired into any rendered component —
 same as its neighbors.
 
-## 3. Database Migrations Added
+## 3. Database Migrations — Deployment Status
 
-Applied in this order (`supabase/migrations/`):
+**Status as of 2026-07-28: applied and verified on the live "Fleet
+Commander" Supabase project (`goqzhdrmrdlkchmwfiur`).** This section
+documents what was actually done and how it was verified — not a plan, an
+after-the-fact record.
 
-1. `20260727_fleet_dt_core.sql` — sites, jobs, shifts, events, vehicle
-   custody, drive segments, load cycles, RLS, `fleet_dt_shift_summary` view.
-2. `20260727_fleet_dt_inspections_docs.sql` — documents, inspection
-   templates/versions/items, inspections, defects, incidents, corrections,
-   private `fleet-dt-documents` Storage bucket + RLS.
-3. `20260727_fleet_dt_seed_templates.sql` — the default Dump Truck pre-trip
-   (47 items) and post-trip (16 items) checklist templates from spec §8.
-4. `20260728_fleet_dt_fuel_hours.sql` — `fleet_dt_fuel_entries`,
-   `fleet_dt_pay_policies`, `fleet_dt_driver_record_exports`, RLS on all three.
-5. `20260728_fleet_dt_events_correction_policy.sql` — fixes the
-   `fleet_dt_events` insert policy so a driver's `correction_requested`
-   event can still fire after their shift is submitted/locked (every other
-   event type keeps the original open-shift-only restriction).
+### What happened
 
-**None of these five migrations have been applied to any live Supabase
-project by this session — verified false, not just unstated.** This
-environment has no Supabase credentials or CLI link configured
-(`SUPABASE_SERVICE_ROLE_KEY` etc. are unset placeholders used only to get
-`next build` to complete its static-generation pass). Nothing in this
-session ran `supabase db push`, called the Supabase MCP `apply_migration`
-tool, or executed SQL against `goqzhdrmrdlkchmwfiur` or any other project.
-Apply all five migrations, in the numeric order above, via `supabase db
-push` or the SQL editor before testing against a real database — Phase 3's
-API routes will fail at runtime (relations do not exist) until that happens.
+The project was found paused (`INACTIVE`) and was restored
+(`mcp__Supabase__restore_project`) before any of this work. Applying the
+five Dump Truck Mode migrations then surfaced real schema drift: the live
+database's applied-migration history stopped in early June, well before
+several migration files that exist in this repo — most critically,
+**`fleet_equipment` did not exist at all**, despite every Dump Truck Mode
+table foreign-keying trucks/trailers to it, and despite a full historical
+migration for it sitting unapplied in `supabase/migrations/20260623_fleet_equipment.sql`.
+Live `profiles`/`businesses` also don't match the columns
+`identity-registry.ts` (existing repo code) assumes. Full detail, and what
+remains as tracked follow-up work, is in **`docs/SCHEMA_RECONCILIATION.md`**
+— read it before assuming any identity/business column not listed here
+exists in production.
+
+Given that discovery, the approved path was a **minimal, scope-limited
+fix** — not a backfill of the full unapplied migration history — plus
+adapting Dump Truck Mode's code to the live schema instead of the schema
+its files were originally written against.
+
+### Migrations applied, in order
+
+1. `20260728_fleet_equipment_minimal.sql` — **new**, added to close the gap
+   above. A deliberately minimal, self-contained `fleet_equipment` table
+   (`id`, `business_id`, `unit_number`, `equipment_type`, `status`, `vin`,
+   `license_plate`, `notes`) — only what Dump Truck Mode's code reads. Not
+   the full historical equipment registry (maintenance schedules, odometer
+   logs, DOT/MC numbers) — that remains a reconciliation-project decision.
+2. `20260727_fleet_dt_core.sql`
+3. `20260727_fleet_dt_inspections_docs.sql`
+4. `20260727_fleet_dt_seed_templates.sql`
+5. `20260728_fleet_dt_fuel_hours.sql`
+6. `20260728_fleet_dt_events_correction_policy.sql`
+7. `20260728_fleet_dt_lock_down_helper_functions.sql` — **new**, hardening:
+   the security advisor flagged `fleet_dt_has_role`/`fleet_dt_is_member`
+   (both `SECURITY DEFINER`) as directly callable by the unauthenticated
+   `anon` role via RPC. Revoked `EXECUTE` from `public`/`anon`, kept it for
+   `authenticated`/`service_role` (required for RLS policies to evaluate).
+   Practical risk was low (the functions only return a boolean gated on
+   `auth.uid()`, which is null for anon) but there was no reason to leave
+   it open.
+
+Two files also touched code, not schema, to match the live database:
+`src/lib/fleet/dumpTruck/shared.ts` (`getDriverBusinessMeta`) and
+`src/lib/fleet/dumpTruck/jobs.ts` (`listDrivers`) now query
+`profiles.full_name` and `businesses.name` instead of the non-existent
+`first_name`/`last_name`/`company_name` columns. 3B Business ID
+(`threebBizId`) is hard-coded `null` in every Dump Truck Mode output —
+never fabricated — because no such column exists in production yet.
+
+### How it was verified (all before merging to `main`)
+
+- **Schema snapshot taken first**: `docs/schema-snapshots/2026-07-28-pre-fleet-equipment.md`
+  — full column/constraint/RLS dump of `businesses`, `profiles`,
+  `fleet_business_members` before any DDL, for future reconciliation.
+- **Every migration's `apply_migration` call returned success** — checked
+  individually, not assumed from a batch.
+- **`mcp__Supabase__list_migrations` confirms all 7 are recorded** as
+  applied, in order, after the pre-existing June history.
+- **Security advisor run twice** (before and after the lock-down
+  migration): confirmed every pre-existing `WARN`/`ERROR` finding
+  (permissive `USING (true)` policies on `fleet_loads`, `delays`,
+  `attachments`, etc.) predates this session and was not introduced or
+  worsened by it — i.e., **no existing RLS policy was weakened**. The two
+  new-function findings were fixed.
+- **Full transactional dry-run**: a single `BEGIN … ROLLBACK` block created
+  one truck, one trailer, one yard/pickup/dump site, one job, one shift,
+  and walked the *entire* clock-in → truck-pickup → pre-trip → load cycle
+  (loading/unloading, drive segments empty+loaded+empty) → post-trip →
+  truck-drop-off → clock-out → submit-day → post-submission
+  `correction_requested` sequence — plus a document/ticket attach, a
+  standalone defect, a fuel entry, an incident, a dispatcher correction, a
+  pay policy row, and an export audit row. All 16 tables' foreign keys,
+  check constraints, and unique constraints resolved correctly together.
+  Rolled back and confirmed **zero residual rows** in any new table
+  afterward (row counts re-checked post-rollback).
+- **Exact CSV/query column lists checked directly**: `profiles.full_name`,
+  `profiles.three_b_id`, `businesses.name`, `fleet_equipment` columns, and
+  `fleet_dt_shift_summary` (the view) all selected without error against
+  the live schema.
+- **Storage bucket confirmed**: `fleet-dt-documents` exists, `public: false`.
+- Existing tables were never `ALTER`ed or `DROP`ped by this work, so
+  existing Fleet Commander functionality's schema is provably unchanged —
+  confirmed by re-checking row counts on `businesses`/`profiles`/
+  `fleet_business_members`/`fleet_loads` matched the pre-DDL snapshot.
+
+### Not verified
+
+- **No live UI/browser test against the deployed app** — this was schema
+  and SQL-level verification via the Supabase MCP tools, not a logged-in
+  end-to-end click-through of `/driver/dump-truck` in a browser. See §11 for
+  what a real pre-release check should still include.
+- **RLS was reviewed by policy text and the advisor tool, not by
+  attempting cross-tenant access as two real authenticated users** — the
+  dry-run above ran as service role (bypasses RLS by design, like the SQL
+  editor), which validates schema/constraint correctness but not RLS
+  enforcement itself.
 
 Also fixed, unrelated but blocking (carried over from Phase 1+2, still true):
 `tsconfig.json` was type-checking Deno edge functions under
@@ -170,8 +254,12 @@ longer matched the installed `stripe` package type (bumped
   from `fleet-auth-guard.ts` — no new auth path.
 - **Identity**: `profiles.three_b_id` (3B ID), `businesses` / `fleet_business_members`
   (3B Business ID + tenant roles) — no duplicate identity tables.
-- **Trucks/trailers**: `fleet_equipment` (already had `trailer_dump` and
-  `straight_truck`/`tractor` types) — no new vehicle table.
+- **Trucks/trailers**: `fleet_equipment`. Correction (2026-07-28): this table
+  did not actually exist in the live database when first written — see §3
+  "Deployment Status" and `docs/SCHEMA_RECONCILIATION.md`. A minimal version
+  was added as part of deploying Dump Truck Mode rather than a new
+  Dump-Truck-specific vehicle table, keeping the "reuse, don't duplicate"
+  intent even though the thing being reused had to be created first.
 - **Audit logging**: `src/lib/fleet/audit.ts` → `fleet_audit_logs`, called
   from every mutation.
 - **Toast/offline-banner UI patterns**: `useToast`, `useOnlineStatus`.
@@ -217,6 +305,12 @@ unfinished" applies here — being explicit, and updated for Phase 3:
 - **Payroll approval workflow, Admin Payroll Portal (§11), billing/broker
   engine (§12), live dispatch map (§13), fleet-wide reports (§18) — not
   built.**
+- **The 3B Business ID and full identity model are not actually in the
+  production database** — see `docs/SCHEMA_RECONCILIATION.md`. This was
+  discovered, not introduced, by this work, but it means "3B Business ID"
+  is currently a TypeScript-only concept in `identity-registry.ts`, not a
+  real column. Dump Truck Mode leaves it `null` everywhere rather than
+  fabricating one.
 - **Side-effect writes are not one DB transaction.** Recording an event and
   its derived custody/segment/load-cycle rows (and now fuel entries/ticket
   attachments) are sequential Supabase calls, not a single atomic RPC. A
@@ -282,18 +376,26 @@ the hours portal or fuel numbers as authoritative:**
 
 ## 8. Deployment Steps
 
-1. Apply all five migrations above, in numeric order, to the Fleet Supabase
-   project. **This has not been done by this session — do it before
-   expecting any Dump Truck Mode route to work against a real database.**
-2. Regenerate TypeScript DB types if your workflow does so
+**Status: done, for the `goqzhdrmrdlkchmwfiur` ("Fleet Commander") Supabase
+project, as of 2026-07-28** — see §3 for exactly what was applied and how
+it was verified. If deploying Dump Truck Mode to a *different* Supabase
+project, redo these steps there; nothing about this database-side work
+carries over automatically:
+
+1. Confirm `fleet_equipment` exists first — if not, apply
+   `20260728_fleet_equipment_minimal.sql` (or a richer equipment migration,
+   if the target project already has a fuller one — check before applying
+   blindly, per `docs/SCHEMA_RECONCILIATION.md`).
+2. Apply the 6 remaining migrations listed in §3, in order.
+3. Regenerate TypeScript DB types if your workflow does so
    (`supabase gen types typescript`) — this build hand-wrote row mappers in
    `src/lib/fleet/dumpTruck/*.ts` rather than depending on generated types,
    so this is optional, not required.
-3. Confirm the `fleet-dt-documents` Storage bucket was created by the second
-   migration (`select * from storage.buckets where id = 'fleet-dt-documents'`).
-4. Deploy the app as usual (`npm run build`, Vercel or existing pipeline) —
+4. Confirm the `fleet-dt-documents` Storage bucket was created
+   (`select * from storage.buckets where id = 'fleet-dt-documents'`).
+5. Deploy the app as usual (`npm run build`, Vercel or existing pipeline) —
    no new env vars needed.
-5. `npm run test` in CI if you want the 60 unit tests gating merges.
+6. `npm run test` in CI if you want the 90 unit tests gating merges.
 
 ## 9. Admin Setup Steps
 

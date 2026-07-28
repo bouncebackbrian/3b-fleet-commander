@@ -22,20 +22,27 @@ export interface DriverBusinessMeta {
   threebBizId: string | null
 }
 
-/** Driver + tenant identity fields used to header CSV exports (spec §10). */
+/**
+ * Driver + tenant identity fields used to header CSV exports (spec §10).
+ *
+ * SCHEMA NOTE (2026-07-28): the live `profiles` table has a single
+ * `full_name` column, not `first_name`/`last_name`, and the live
+ * `businesses` table has `name`, not `company_name` — and no
+ * `three_b_biz_id` column at all yet. `threebBizId` is therefore always
+ * null here; it is not fabricated. See docs/SCHEMA_RECONCILIATION.md for
+ * the tracked follow-up to add a real 3B Business ID column.
+ */
 export async function getDriverBusinessMeta(businessId: string, driverId: string): Promise<DriverBusinessMeta> {
   const [{ data: profile }, { data: business }] = await Promise.all([
-    fleetServiceClient.from('profiles').select('first_name, last_name, three_b_id').eq('id', driverId).maybeSingle(),
-    fleetServiceClient.from('businesses').select('company_name, three_b_biz_id').eq('id', businessId).maybeSingle(),
+    fleetServiceClient.from('profiles').select('full_name, three_b_id').eq('id', driverId).maybeSingle(),
+    fleetServiceClient.from('businesses').select('name').eq('id', businessId).maybeSingle(),
   ])
 
-  const driverName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || 'Unnamed Driver'
-
   return {
-    driverName,
+    driverName: profile?.full_name || 'Unnamed Driver',
     threebId: profile?.three_b_id ?? null,
-    businessName: business?.company_name ?? 'Unknown Business',
-    threebBizId: business?.three_b_biz_id ?? null,
+    businessName: business?.name ?? 'Unknown Business',
+    threebBizId: null, // no 3B Business ID column exists in production yet — see docs/SCHEMA_RECONCILIATION.md
   }
 }
 
