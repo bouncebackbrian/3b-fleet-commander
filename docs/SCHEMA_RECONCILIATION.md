@@ -58,6 +58,36 @@ migration files or some of the repository's own application code
    is worth knowing about — that pre-existing policy may already be
    effectively a no-op for actual "owner" users.
 
+6. **CRITICAL, found live in production on 2026-07-28 night, blocked a real
+   driver from clocking in:** every Dump Truck Mode table's driver/actor
+   columns (`driver_id`, `created_by`, `uploaded_by`, `actor_id`, etc. —
+   24 foreign keys across `fleet_dt_shifts`, `fleet_dt_events`,
+   `fleet_dt_jobs`, `fleet_equipment`, and 14 other tables) hard-FK to
+   `public.profiles(id)`, and `profiles.id` itself hard-FKs to **this
+   project's own local `auth.users`**. But per
+   `docs/ecosystem-bridge/SHARED_AUTH_ARCHITECTURE.md` (ADR-001), real
+   identity/session is owned by a **separate** Supabase project, "Core_Eco"
+   (`rkwdryneutgyqrnbuwaz`) — see `src/lib/auth-server-client.ts`,
+   `src/lib/supabase-browser.ts`. A user validated via Core_Eco can have
+   (and in this case did have) **zero matching row in Fleet's local
+   `auth.users`**: `bouncebackbrian@outlook.com` resolves to
+   `bf568e3f-af39-4487-9649-953ddefd1216` in Core_Eco (a real, active
+   session, signed in 2026-07-28) with nothing matching in Fleet's own
+   `auth.users`/`profiles`. Every write keyed to that real session id threw
+   a foreign-key violation — surfacing to the driver as "Could not load
+   shift data" and every clock-in attempt silently failing.
+   `fleet_business_members.user_id` already had **no such constraint** and
+   already worked correctly with Core_Eco ids (that's the only reason
+   login/role resolution worked at all). Fixed by
+   `supabase/migrations/20260728_fleet_dt_decouple_profiles_fk.sql`, which
+   drops all 24 `profiles(id)` FKs on Dump Truck Mode tables (bringing them
+   in line with `fleet_business_members`'s existing working pattern) and
+   corrects the one Fleet-local id that had already been written
+   (`7f5b2267-...`) to the real Core_Eco session id (`bf568e3f-...`) for
+   the affected business_members/jobs/equipment rows. Verified via a
+   transactional dry-run of a full clock-in insert (shift + event) after
+   the fix, zero residue.
+
 ## What Dump Truck Mode did about it (scope-limited, per explicit direction)
 
 Given a live, largely-empty database (1 `businesses` row, 0 `profiles` rows
@@ -111,6 +141,22 @@ Truck Mode:
    session's `fleet_equipment` surprise happened. A CI check that fails a
    PR when local migration files don't match what's applied to the target
    project would catch this going forward.
+6. **Build a real Core_Eco → Fleet identity bridge.** Dropping the
+   `profiles(id)` FKs (item 6 above) unblocks writes tonight but is a
+   patch, not a fix — Fleet's local `profiles` table (driver names, CDL
+   info, etc.) is now silently disconnected from whichever driver id a
+   Core_Eco session actually has, for every table that used to enforce it.
+   The real fix is provisioning a matching local identity (via the Supabase
+   Admin API, not hand-written SQL into `auth.users`) the first time a
+   Core_Eco user touches Fleet Commander — or dropping Fleet's local
+   `profiles`/`auth.users` dependency entirely in favor of reading identity
+   straight from Core_Eco. Until that exists, any driver whose Fleet
+   membership was set up manually (as `bouncebackbrian@outlook.com`'s was,
+   tonight) needs their `fleet_business_members.user_id` and any
+   `fleet_dt_jobs.driver_id` verified against their **actual Core_Eco
+   session id**, not whatever id happens to exist in Fleet's own
+   `auth.users` — the two are not guaranteed to match and, per this
+   incident, sometimes don't.
 
 ## Snapshots
 
