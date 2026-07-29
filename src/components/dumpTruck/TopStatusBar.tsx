@@ -10,16 +10,30 @@ interface Props {
   wx?: WeatherInfo | null
   weather?: WeatherData | null
   weatherLoading?: boolean
+  businessName?: string | null
+  driverName?: string | null
 }
 
-export default function TopStatusBar({ isOnline, pendingCount, failedCount, gpsPermission, wx, weather, weatherLoading }: Props) {
+export default function TopStatusBar({
+  isOnline, pendingCount, failedCount, gpsPermission, wx, weather, weatherLoading, businessName, driverName,
+}: Props) {
   return (
     <div style={{
       height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: '0 1rem', background: 'var(--surface)', borderBottom: '1px solid var(--border)',
     }}>
-      <div style={{ fontWeight: 900, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span>🚛</span> Dump Truck Mode
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
+        <div style={{ fontWeight: 900, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>🚛</span> Dump Truck Mode
+        </div>
+        {(businessName || driverName) && (
+          <div style={{
+            fontSize: '.68rem', color: 'var(--muted)', fontWeight: 600, marginLeft: 26,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {[businessName, driverName].filter(Boolean).join(' · ')}
+          </div>
+        )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '.8rem', fontWeight: 700 }}>
         <StatusChip

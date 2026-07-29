@@ -36,6 +36,7 @@ export default function DumpTruckDriverPage() {
   const {
     loading, context, flowState, primaryAction, timeline,
     activeJobId, setActiveJobId, isOnline, queueSummary,
+    driverName, businessName,
     fireEvent, clockIn, submitDay, refetch,
   } = useDumpTruckDriver()
   const { wx, weather, weatherLoading } = useWeather()
@@ -150,6 +151,8 @@ export default function DumpTruckDriverPage() {
         wx={wx}
         weather={weather}
         weatherLoading={weatherLoading}
+        businessName={businessName}
+        driverName={driverName}
       />
 
       <div className="dt-body">

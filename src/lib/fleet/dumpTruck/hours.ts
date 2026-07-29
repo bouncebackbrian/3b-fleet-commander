@@ -48,7 +48,7 @@ export async function buildDriverHoursForRange(
   const equipmentIds = [...new Set(shifts.flatMap(s => [s.truck_id, s.trailer_id]).filter(Boolean))] as string[]
 
   const [eventsRes, segmentsRes, custodyRes, loadCyclesRes, equipmentRes] = await Promise.all([
-    fleetServiceClient.from('fleet_dt_events').select('shift_id, event_type, effective_at').in('shift_id', shiftIds),
+    fleetServiceClient.from('fleet_dt_events').select('shift_id, event_type, effective_at, notes').in('shift_id', shiftIds),
     fleetServiceClient.from('fleet_dt_drive_segments').select('shift_id, category, duration_seconds').in('shift_id', shiftIds),
     fleetServiceClient.from('fleet_dt_vehicle_custody').select('shift_id, started_at, ended_at, start_odometer, end_odometer').in('shift_id', shiftIds),
     fleetServiceClient.from('fleet_dt_load_cycles').select('shift_id, job_id, quantity, weight_tons, dump_depart_event_id').in('shift_id', shiftIds),
@@ -68,7 +68,7 @@ export async function buildDriverHoursForRange(
   const rows: DailyHoursRow[] = shifts.map(shift => {
     const events = (eventsRes.data ?? [])
       .filter(e => e.shift_id === shift.id)
-      .map(e => ({ eventType: e.event_type as DumpTruckEventType, effectiveAt: e.effective_at }))
+      .map(e => ({ eventType: e.event_type as DumpTruckEventType, effectiveAt: e.effective_at, notes: e.notes as string | null }))
 
     const segments = (segmentsRes.data ?? []).filter(s => s.shift_id === shift.id)
     const driveSecondsByCategory = { ...EMPTY_CATEGORY_SECONDS }

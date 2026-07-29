@@ -70,6 +70,7 @@ export function resolveRange(rangeType: RangeType, reference: Date, custom?: Dat
 export interface TimedEvent {
   eventType: DumpTruckEventType
   effectiveAt: string
+  notes?: string | null
 }
 
 /** Sums duration between each `startType` and the next `endType` seen after it. Unmatched opens are ignored (never invents an end time). */
@@ -88,6 +89,47 @@ export function sumPairedDurationSeconds(events: TimedEvent[], startType: DumpTr
   return total
 }
 
+// ── Delay-reason bucketing ───────────────────────────────────────────────────
+// DelaySheet stores the driver-picked reason as the leading segment of
+// delay_started.notes (e.g. "Traffic — backed up on I-80"). Bucketing by that
+// reason gives dispatch "other work" categories (traffic, mechanical, etc)
+// beyond the single lumped delay total — spec follow-up, not a DB column.
+
+const TRAFFIC_DELAY_REASONS = ['traffic']
+const MECHANICAL_DELAY_REASONS = ['waiting for mechanic', 'breakdown']
+
+function delayReason(notes: string | null | undefined): string {
+  if (!notes) return 'Other'
+  const reason = notes.split('—')[0].trim()
+  return reason || 'Other'
+}
+
+/** Sums delay_started→delay_ended durations, bucketed by the reason on delay_started.notes. */
+export function bucketDelaySecondsByReason(events: TimedEvent[]): Record<string, number> {
+  const sorted = [...events].sort((a, b) => a.effectiveAt.localeCompare(b.effectiveAt))
+  const totals: Record<string, number> = {}
+  let openAt: string | null = null
+  let openReason = 'Other'
+  for (const e of sorted) {
+    if (e.eventType === 'delay_started') {
+      openAt = e.effectiveAt
+      openReason = delayReason(e.notes)
+    } else if (e.eventType === 'delay_ended' && openAt) {
+      const seconds = Math.max(0, (new Date(e.effectiveAt).getTime() - new Date(openAt).getTime()) / 1000)
+      totals[openReason] = (totals[openReason] ?? 0) + seconds
+      openAt = null
+    }
+  }
+  return totals
+}
+
+function sumReasonBucket(totals: Record<string, number>, reasons: string[]): number {
+  const lowerReasons = reasons.map(r => r.toLowerCase())
+  return Object.entries(totals)
+    .filter(([reason]) => lowerReasons.includes(reason.toLowerCase()))
+    .reduce((sum, [, seconds]) => sum + seconds, 0)
+}
+
 export interface CategoryTimeSeconds {
   pretripSeconds: number
   posttripSeconds: number
@@ -96,17 +138,28 @@ export interface CategoryTimeSeconds {
   fuelingSeconds: number
   delaySeconds: number
   breakSeconds: number
+  trafficDelaySeconds: number
+  mechanicalDelaySeconds: number
+  otherDelaySeconds: number
 }
 
 export function buildCategoryTimeFromEvents(events: TimedEvent[]): CategoryTimeSeconds {
+  const delaySeconds = sumPairedDurationSeconds(events, 'delay_started', 'delay_ended')
+  const delayByReason = bucketDelaySecondsByReason(events)
+  const trafficDelaySeconds = sumReasonBucket(delayByReason, TRAFFIC_DELAY_REASONS)
+  const mechanicalDelaySeconds = sumReasonBucket(delayByReason, MECHANICAL_DELAY_REASONS)
+
   return {
     pretripSeconds: sumPairedDurationSeconds(events, 'pretrip_started', 'pretrip_completed'),
     posttripSeconds: sumPairedDurationSeconds(events, 'posttrip_started', 'posttrip_completed'),
     loadingSeconds: sumPairedDurationSeconds(events, 'loading_started', 'loading_completed'),
     unloadingSeconds: sumPairedDurationSeconds(events, 'unloading_started', 'unloading_completed'),
     fuelingSeconds: sumPairedDurationSeconds(events, 'fuel_stop_started', 'fuel_stop_ended'),
-    delaySeconds: sumPairedDurationSeconds(events, 'delay_started', 'delay_ended'),
+    delaySeconds,
     breakSeconds: sumPairedDurationSeconds(events, 'break_started', 'break_ended'),
+    trafficDelaySeconds,
+    mechanicalDelaySeconds,
+    otherDelaySeconds: Math.max(0, delaySeconds - trafficDelaySeconds - mechanicalDelaySeconds),
   }
 }
 
@@ -194,6 +247,9 @@ export interface DailyHoursRow {
   unloadingWaitingHours: number
   fuelingHours: number
   delayHours: number
+  trafficDelayHours: number
+  mechanicalDelayHours: number
+  otherDelayHours: number
   unpaidBreakHours: number
   paidBreakHours: number
   vehicleCustodyHours: number
@@ -263,6 +319,9 @@ export function buildDailyHoursRow(input: DailyHoursRowInput): DailyHoursRow {
     unloadingWaitingHours: round2(cat.unloadingSeconds / 3600),
     fuelingHours: round2(cat.fuelingSeconds / 3600),
     delayHours: round2(cat.delaySeconds / 3600),
+    trafficDelayHours: round2(cat.trafficDelaySeconds / 3600),
+    mechanicalDelayHours: round2(cat.mechanicalDelaySeconds / 3600),
+    otherDelayHours: round2(cat.otherDelaySeconds / 3600),
     unpaidBreakHours: round2(cat.breakSeconds / 3600),
     paidBreakHours: 0,
     vehicleCustodyHours: round2(input.custodySeconds / 3600),
@@ -298,6 +357,10 @@ export interface RangeSummary {
   totalLoads: number
   totalQuantity: number
   totalMiles: number
+  totalFuelingHours: number
+  totalTrafficDelayHours: number
+  totalMechanicalDelayHours: number
+  totalOtherDelayHours: number
   estimatedGrossEarnings: number
   payrollApprovedGrossEarnings: null
 }
@@ -313,6 +376,10 @@ export function buildRangeSummary(rows: DailyHoursRow[]): RangeSummary {
     totalLoads: sum(rows.map(r => r.loadsCompleted)),
     totalQuantity: round2(sum(rows.map(r => r.quantityHauled))),
     totalMiles: sum(rows.map(r => r.shiftMiles ?? 0)),
+    totalFuelingHours: round2(sum(rows.map(r => r.fuelingHours))),
+    totalTrafficDelayHours: round2(sum(rows.map(r => r.trafficDelayHours))),
+    totalMechanicalDelayHours: round2(sum(rows.map(r => r.mechanicalDelayHours))),
+    totalOtherDelayHours: round2(sum(rows.map(r => r.otherDelayHours))),
     estimatedGrossEarnings: round2(sum(rows.map(r => r.estimatedGrossEarnings))),
     payrollApprovedGrossEarnings: null,
   }

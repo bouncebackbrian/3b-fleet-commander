@@ -97,6 +97,23 @@ export interface NavLaunchOption {
   copyValue: string | null
 }
 
+/**
+ * Build navigate options for a bare GPS point (an event's captured lat/lng —
+ * a scale queue, a random stop, a logged location) rather than a known Site.
+ * No address/restrictions context exists for these, so it's just the map
+ * launchers + copy-coordinates fallback.
+ */
+export function buildCoordNavLaunchOptions(lat: number, lng: number, label: string): NavLaunchOption[] {
+  const dest: NavDestination = { lat, lng, address: null, label, sourcePoint: 'site_pin' }
+  const coords = formatCoordinates(lat, lng)
+
+  return [
+    { provider: 'google_maps', label: 'Google Maps', url: buildGoogleMapsUrl(dest), copyValue: null },
+    { provider: 'apple_maps', label: 'Apple Maps', url: buildAppleMapsUrl(dest), copyValue: null },
+    { provider: 'copy_coordinates', label: 'Copy Coordinates', url: null, copyValue: coords },
+  ]
+}
+
 /** Build the full set of navigate options the UI renders as large buttons. */
 export function buildNavLaunchOptions(site: DumpTruckSite): NavLaunchOption[] {
   const dest = resolveNavDestination(site)

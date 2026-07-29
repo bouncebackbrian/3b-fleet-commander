@@ -33,11 +33,15 @@ export interface TimelineEntry {
   effectiveAt: string
   notes: string | null
   pending: boolean
+  lat: number | null
+  lng: number | null
 }
 
 interface DriverContextResponse {
   shift: { id: string; businessId: string; driverId: string; truckId: string | null; trailerId: string | null; state: string; loadCount: number } | null
-  events: { id: string; eventType: DumpTruckEventType; effectiveAt: string; notes: string | null }[]
+  driverName: string
+  businessName: string
+  events: { id: string; eventType: DumpTruckEventType; effectiveAt: string; notes: string | null; lat: number | null; lng: number | null }[]
   sites: DumpTruckSite[]
   jobs: DumpTruckJob[]
   openDefects: { id: string; description: string; severity: string }[]
@@ -123,7 +127,10 @@ export function useDumpTruckDriver() {
     ...(context?.events ?? []).map(e => ({ ...e, pending: false })),
     ...queuedForShift
       .filter(q => !(context?.events ?? []).some(e => e.id === q.event.id))
-      .map(q => ({ id: q.event.id, eventType: q.event.eventType, effectiveAt: q.event.effectiveAt, notes: q.event.notes, pending: true })),
+      .map(q => ({
+        id: q.event.id, eventType: q.event.eventType, effectiveAt: q.event.effectiveAt, notes: q.event.notes,
+        pending: true, lat: q.event.geo.lat, lng: q.event.geo.lng,
+      })),
   ].sort((a, b) => a.effectiveAt.localeCompare(b.effectiveAt))
 
   const flowState: FlowStateId = computeFlowState(timeline.map(t => t.eventType))
@@ -238,6 +245,7 @@ export function useDumpTruckDriver() {
     loading, context, flowState, primaryAction, timeline,
     activeJobId, setActiveJobId,
     isOnline, queueSummary,
+    driverName: context?.driverName ?? null, businessName: context?.businessName ?? null,
     fireEvent, clockIn, submitDay, refetch: fetchContext,
   }
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   getWeekRange, getPreviousWeekRange, resolveRange,
-  sumPairedDurationSeconds, buildCategoryTimeFromEvents,
+  sumPairedDurationSeconds, buildCategoryTimeFromEvents, bucketDelaySecondsByReason,
   splitRegularOvertime, estimateHourlyGrossPay, DEFAULT_PAY_POLICY,
   buildDailyHoursRow, buildRangeSummary, type TimedEvent,
 } from './hours'
@@ -74,6 +74,49 @@ describe('buildCategoryTimeFromEvents', () => {
     expect(cat.pretripSeconds).toBe(20 * 60)
     expect(cat.delaySeconds).toBe(30 * 60)
     expect(cat.loadingSeconds).toBe(0)
+  })
+})
+
+describe('bucketDelaySecondsByReason', () => {
+  it('buckets delay duration under the reason prefix on delay_started.notes', () => {
+    const events: TimedEvent[] = [
+      { eventType: 'delay_started', effectiveAt: '2026-07-27T08:00:00Z', notes: 'Traffic — backed up on I-80' },
+      { eventType: 'delay_ended', effectiveAt: '2026-07-27T08:20:00Z' },
+      { eventType: 'delay_started', effectiveAt: '2026-07-27T10:00:00Z', notes: 'Waiting for mechanic' },
+      { eventType: 'delay_ended', effectiveAt: '2026-07-27T10:30:00Z' },
+      { eventType: 'delay_started', effectiveAt: '2026-07-27T12:00:00Z', notes: 'Scale line' },
+      { eventType: 'delay_ended', effectiveAt: '2026-07-27T12:10:00Z' },
+    ]
+    const buckets = bucketDelaySecondsByReason(events)
+    expect(buckets['Traffic']).toBe(20 * 60)
+    expect(buckets['Waiting for mechanic']).toBe(30 * 60)
+    expect(buckets['Scale line']).toBe(10 * 60)
+  })
+
+  it('falls back to Other when notes are missing', () => {
+    const events: TimedEvent[] = [
+      { eventType: 'delay_started', effectiveAt: '2026-07-27T08:00:00Z' },
+      { eventType: 'delay_ended', effectiveAt: '2026-07-27T08:15:00Z' },
+    ]
+    expect(bucketDelaySecondsByReason(events)).toEqual({ Other: 15 * 60 })
+  })
+})
+
+describe('buildCategoryTimeFromEvents — traffic/mechanical breakdown', () => {
+  it('splits delaySeconds into traffic, mechanical, and other buckets', () => {
+    const events: TimedEvent[] = [
+      { eventType: 'delay_started', effectiveAt: '2026-07-27T08:00:00Z', notes: 'Traffic' },
+      { eventType: 'delay_ended', effectiveAt: '2026-07-27T08:20:00Z' },
+      { eventType: 'delay_started', effectiveAt: '2026-07-27T10:00:00Z', notes: 'Breakdown' },
+      { eventType: 'delay_ended', effectiveAt: '2026-07-27T10:30:00Z' },
+      { eventType: 'delay_started', effectiveAt: '2026-07-27T12:00:00Z', notes: 'Weather' },
+      { eventType: 'delay_ended', effectiveAt: '2026-07-27T12:15:00Z' },
+    ]
+    const cat = buildCategoryTimeFromEvents(events)
+    expect(cat.delaySeconds).toBe(65 * 60)
+    expect(cat.trafficDelaySeconds).toBe(20 * 60)
+    expect(cat.mechanicalDelaySeconds).toBe(30 * 60)
+    expect(cat.otherDelaySeconds).toBe(15 * 60)
   })
 })
 
@@ -179,6 +222,7 @@ describe('buildRangeSummary', () => {
       payrollApprovalStatus: 'not_implemented' as const, exceptionStatus: 'none' as const,
       pretripHours: 0, posttripHours: 0, onDutyNotDrivingHours: 0,
       loadingWaitingHours: 0, unloadingWaitingHours: 0, fuelingHours: 0, delayHours: 0,
+      trafficDelayHours: 0, mechanicalDelayHours: 0, otherDelayHours: 0,
       unpaidBreakHours: 0, paidBreakHours: 0, doubleTimeHours: 0, hourlyEstimatedEarnings: 0,
       manualYardTravelHours: 0,
     }

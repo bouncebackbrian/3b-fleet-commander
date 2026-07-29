@@ -5,6 +5,8 @@ import ToastContainer from '@/components/shared/ToastContainer'
 import type { DumpTruckSite, DumpTruckJob, SiteType } from '@/lib/dumpTruck/types'
 import type { EquipmentOption } from '@/lib/fleet/dumpTruck/equipment'
 import type { DriverOption } from '@/lib/fleet/dumpTruck/jobs'
+import AdminActivityLogPanel from '@/components/dumpTruck/AdminActivityLogPanel'
+import AdminPayrollHoursPanel from '@/components/dumpTruck/AdminPayrollHoursPanel'
 
 const SITE_TYPES: SiteType[] = ['yard', 'pickup', 'dump', 'customer', 'fuel', 'maintenance', 'scale', 'disposal', 'parking', 'other']
 
@@ -41,6 +43,8 @@ export default function DumpTruckAdminPage() {
       <SitesPanel sites={sites} onCreated={reload} />
       <JobsPanel jobs={jobs} sites={sites} equipment={equipment} drivers={drivers} onCreated={reload} />
       <PayPolicyPanel />
+      <AdminPayrollHoursPanel drivers={drivers} />
+      <AdminActivityLogPanel drivers={drivers} />
 
       <ToastContainer />
     </div>

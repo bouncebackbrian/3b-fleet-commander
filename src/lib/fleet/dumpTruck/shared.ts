@@ -46,6 +46,20 @@ export async function getDriverBusinessMeta(businessId: string, driverId: string
   }
 }
 
+export interface BusinessMeta {
+  businessName: string
+  threebBizId: string | null
+}
+
+/** Business-only identity fields — used to header dispatch-wide (multi-driver) CSV exports. */
+export async function getBusinessMeta(businessId: string): Promise<BusinessMeta> {
+  const { data: business } = await fleetServiceClient.from('businesses').select('name').eq('id', businessId).maybeSingle()
+  return {
+    businessName: business?.name ?? 'Unknown Business',
+    threebBizId: null, // no 3B Business ID column exists in production yet — see docs/SCHEMA_RECONCILIATION.md
+  }
+}
+
 /** Ordered primary-sequence event types for a shift, used to derive the flow state. */
 export async function getShiftFlowState(shiftId: string): Promise<FlowStateId> {
   const { data, error } = await fleetServiceClient
