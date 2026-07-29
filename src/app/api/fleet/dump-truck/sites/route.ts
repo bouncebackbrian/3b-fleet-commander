@@ -22,10 +22,15 @@ export async function GET() {
   }
 }
 
+// Open to any active business member, not just canWrite() roles — a driver
+// who ends up at a new pickup/dump site with nothing on file yet needs to
+// be able to add it themselves rather than wait on dispatch (same reasoning
+// as the location-pin endpoint). Every field here can already be created by
+// an admin/dispatcher through the same function; this is a permission
+// change, not a new capability.
 export async function POST(request: NextRequest) {
   const auth = await requireFleetAuth()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canWrite(auth.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   try {
     const body = await request.json()
