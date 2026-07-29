@@ -59,7 +59,16 @@ export interface DriverOption {
 }
 
 /**
- * Drivers (fleet_business_members.role='driver') available to assign a job to.
+ * Active business members available to assign a job to / show in driver
+ * pickers (job assignment, dispatch activity log, payroll hours).
+ *
+ * Not filtered to role='driver' — in a small operation the owner, an admin,
+ * or a dispatcher is very often also the one behind the wheel (a solo
+ * owner-operator testing this app is exactly that case), so restricting to
+ * the 'driver' role silently hid them from every driver dropdown even
+ * though their shifts/events were recorded correctly. Any active member can
+ * appear here; only members who actually have shift/hours data show up in
+ * the payroll and activity-log results themselves.
  *
  * SCHEMA NOTE (2026-07-28): live `profiles` has a single `full_name` column,
  * not `first_name`/`last_name` — see docs/SCHEMA_RECONCILIATION.md.
@@ -69,7 +78,6 @@ export async function listDrivers(businessId: string): Promise<DriverOption[]> {
     .from('fleet_business_members')
     .select('user_id, profiles(full_name, three_b_id)')
     .eq('business_id', businessId)
-    .eq('role', 'driver')
     .eq('active', true)
   if (error) throw error
   return (data ?? []).map(r => {
