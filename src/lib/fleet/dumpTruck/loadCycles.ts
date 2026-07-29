@@ -45,6 +45,7 @@ export type TicketType = 'scale' | 'delivery'
 export async function attachLoadTicket(
   businessId: string, loadCycleId: string, ticketType: TicketType,
   docId: string, ticketNumber: string | null, weightTons: number | null,
+  ticketCapturedAt: string | null,
   userId: string, email: string | null,
 ): Promise<void> {
   const { data: loadCycle } = await fleetServiceClient
@@ -59,6 +60,7 @@ export async function attachLoadTicket(
     : { delivery_ticket_doc_id: docId }
   if (ticketNumber) update.ticket_number = ticketNumber
   if (weightTons != null) update.weight_tons = weightTons
+  if (ticketCapturedAt) update.ticket_captured_at = ticketCapturedAt
 
   const { error } = await fleetServiceClient.from('fleet_dt_load_cycles').update(update).eq('id', loadCycleId)
   if (error) throw error

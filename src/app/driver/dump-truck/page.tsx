@@ -2,6 +2,7 @@
 import { useMemo, useState } from 'react'
 import { useDumpTruckDriver } from '@/hooks/useDumpTruckDriver'
 import { canDispatchWithDefects } from '@/lib/dumpTruck/inspections'
+import { siteAwareActionLabel } from '@/lib/dumpTruck/actionLabels'
 import type { DumpTruckSite } from '@/lib/dumpTruck/types'
 import { toast } from '@/hooks/useToast'
 import ToastContainer from '@/components/shared/ToastContainer'
@@ -49,6 +50,16 @@ export default function DumpTruckDriverPage() {
   const activeJob = context?.jobs.find(j => j.id === activeJobId) ?? null
   const pickupSite = context?.sites.find(s => s.id === activeJob?.pickupSiteId)
   const dumpSite = context?.sites.find(s => s.id === activeJob?.dumpSiteId)
+  const yardSite = context?.sites.find(s => s.siteType === 'yard')
+
+  const siteLabelCtx = { pickupSiteName: pickupSite?.name, dumpSiteName: dumpSite?.name, yardSiteName: yardSite?.name }
+  const displayAction = {
+    ...primaryAction,
+    label: siteAwareActionLabel(primaryAction.eventType, primaryAction.label, siteLabelCtx),
+    secondary: primaryAction.secondary
+      ? { ...primaryAction.secondary, label: siteAwareActionLabel(primaryAction.secondary.eventType, primaryAction.secondary.label, siteLabelCtx) }
+      : undefined,
+  }
 
   const blockingDefectReason = (() => {
     if (!context?.openDefects.length) return null
@@ -130,7 +141,7 @@ export default function DumpTruckDriverPage() {
 
         <div className="dt-center">
           <CenterAction
-            action={primaryAction}
+            action={displayAction}
             busy={false}
             disabledReason={disabledReason}
             onPrimary={handlePrimary}
