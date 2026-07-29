@@ -29,6 +29,9 @@ import {
   enqueueFuelEntry, getRetryableFuelEntriesNow, markFuelSyncing, markFuelSynced, markFuelFailed,
   summarizeFuelQueue, type FuelQueueSummary,
 } from '@/lib/dumpTruck/offlineFuelQueue'
+import {
+  enqueueLocationPing, getRetryableLocationPings, markLocationSyncing, markLocationSynced, markLocationFailed,
+} from '@/lib/dumpTruck/locationQueue'
 import type { DumpTruckEvent, DumpTruckEventType, DumpTruckSite, DumpTruckJob } from '@/lib/dumpTruck/types'
 
 export interface TimelineEntry {
@@ -53,6 +56,8 @@ interface DriverContextResponse {
 }
 
 const SYNC_INTERVAL_MS = 12000
+const CONTEXT_POLL_INTERVAL_MS = 60000
+const LOCATION_PING_INTERVAL_MS = 5 * 60 * 1000
 
 export function useDumpTruckDriver() {
   const isOnline = useOnlineStatus()
@@ -62,6 +67,9 @@ export function useDumpTruckDriver() {
   const [queueSummary, setQueueSummary] = useState<QueueSummary>({ pending: 0, syncing: 0, failed: 0, total: 0 })
   const [fuelQueueSummary, setFuelQueueSummary] = useState<FuelQueueSummary>({ pending: 0, syncing: 0, failed: 0, total: 0 })
   const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const contextPollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const locationPingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const seenJobIdsRef = useRef<Set<string> | null>(null)
 
   const refreshQueueSummary = useCallback(() => setQueueSummary(summarizeQueue()), [])
   const refreshFuelQueueSummary = useCallback(() => { summarizeFuelQueue().then(setFuelQueueSummary) }, [])
@@ -73,6 +81,16 @@ export function useDumpTruckDriver() {
       const body = await res.json()
       setContext(body.context)
       if (!activeJobId && body.context.jobs?.length) setActiveJobId(body.context.jobs[0].id)
+
+      // New-job notification: diff against the last-seen id set (first load
+      // just establishes the baseline — nothing is "new" on mount).
+      const currentIds = new Set<string>((body.context.jobs ?? []).map((j: DumpTruckJob) => j.id))
+      if (seenJobIdsRef.current) {
+        for (const job of (body.context.jobs ?? []) as DumpTruckJob[]) {
+          if (!seenJobIdsRef.current.has(job.id)) toast.success(`New job assigned: ${job.jobNumber}`)
+        }
+      }
+      seenJobIdsRef.current = currentIds
     } catch {
       toast.error('Could not load shift data — check connection')
     } finally {
@@ -82,6 +100,14 @@ export function useDumpTruckDriver() {
   }, [])
 
   useEffect(() => { fetchContext() }, [fetchContext])
+
+  // Poll for newly-assigned jobs even when idle (no offline-queue activity
+  // to otherwise trigger a refetch) — driver dashboard has no push infra,
+  // this is the lightweight substitute.
+  useEffect(() => {
+    contextPollTimerRef.current = setInterval(fetchContext, CONTEXT_POLL_INTERVAL_MS)
+    return () => { if (contextPollTimerRef.current) clearInterval(contextPollTimerRef.current) }
+  }, [fetchContext])
 
   // ── Offline queue flush loop ────────────────────────────────────────────
   const flushQueue = useCallback(async () => {
@@ -142,17 +168,57 @@ export function useDumpTruckDriver() {
     if (anySynced) fetchContext()
   }, [fetchContext, refreshFuelQueueSummary])
 
+  // ── Live truck location ping loop (only while a shift with a truck is open) ──
+  const flushLocationQueue = useCallback(async () => {
+    if (!navigator.onLine) return
+    const retryable = getRetryableLocationPings()
+    for (const item of retryable) {
+      markLocationSyncing(item.idempotencyKey)
+      try {
+        const res = await fetch('/api/fleet/dump-truck/equipment/location', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ equipmentId: item.equipmentId, lat: item.lat, lng: item.lng }),
+        })
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          throw new Error(body.error ?? `HTTP ${res.status}`)
+        }
+        markLocationSynced(item.idempotencyKey)
+      } catch (err) {
+        markLocationFailed(item.idempotencyKey, err instanceof Error ? err.message : 'sync failed')
+      }
+    }
+  }, [])
+
+  const pingLocation = useCallback(async () => {
+    const truckId = context?.shift?.truckId
+    if (!truckId) return
+    const geo = await captureGeolocation()
+    if (geo.lat == null || geo.lng == null) return
+    enqueueLocationPing(truckId, geo.lat, geo.lng)
+    flushLocationQueue()
+  }, [context?.shift?.truckId, flushLocationQueue])
+
+  useEffect(() => {
+    if (!context?.shift?.truckId) return
+    pingLocation()
+    locationPingTimerRef.current = setInterval(pingLocation, LOCATION_PING_INTERVAL_MS)
+    return () => { if (locationPingTimerRef.current) clearInterval(locationPingTimerRef.current) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context?.shift?.id, context?.shift?.truckId])
+
   useEffect(() => {
     refreshQueueSummary()
     refreshFuelQueueSummary()
-    syncTimerRef.current = setInterval(() => { flushQueue(); flushFuelQueue() }, SYNC_INTERVAL_MS)
-    const onOnline = () => { flushQueue(); flushFuelQueue() }
+    syncTimerRef.current = setInterval(() => { flushQueue(); flushFuelQueue(); flushLocationQueue() }, SYNC_INTERVAL_MS)
+    const onOnline = () => { flushQueue(); flushFuelQueue(); flushLocationQueue() }
     window.addEventListener('online', onOnline)
     return () => {
       if (syncTimerRef.current) clearInterval(syncTimerRef.current)
       window.removeEventListener('online', onOnline)
     }
-  }, [flushQueue, flushFuelQueue, refreshQueueSummary, refreshFuelQueueSummary])
+  }, [flushQueue, flushFuelQueue, flushLocationQueue, refreshQueueSummary, refreshFuelQueueSummary])
 
   // ── Derived state ────────────────────────────────────────────────────────
   const queuedForShift = context?.shift

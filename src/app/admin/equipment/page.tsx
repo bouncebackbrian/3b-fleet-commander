@@ -9,8 +9,12 @@
  * registration/insurance/inspection copies and service receipts.
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import { toast } from '@/hooks/useToast'
 import ToastContainer from '@/components/shared/ToastContainer'
+import type { TruckLocation } from '@/components/map/TruckLocationsMap'
+
+const TruckLocationsMap = dynamic(() => import('@/components/map/TruckLocationsMap'), { ssr: false })
 
 interface EquipmentRecord {
   id: string
@@ -30,6 +34,9 @@ interface EquipmentRecord {
   nextServiceDueDate: string | null
   nextServiceDueMiles: number | null
   notes: string | null
+  currentLat: number | null
+  currentLng: number | null
+  locationUpdatedAt: string | null
 }
 
 interface ServiceRecord {
@@ -87,6 +94,8 @@ export default function EquipmentAdminPage() {
 
       <NewEquipmentPanel onCreated={load} />
 
+      <TruckLocationsPanel equipment={equipment} />
+
       <div style={cardStyle}>
         <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '1rem' }}>Equipment ({equipment.length})</h2>
         {loading && <div style={{ color: 'var(--muted)', padding: '1rem 0' }}>Loading…</div>}
@@ -124,6 +133,49 @@ export default function EquipmentAdminPage() {
       </div>
 
       <ToastContainer />
+    </div>
+  )
+}
+
+function minutesAgoLabel(updatedAt: string | null): string {
+  if (!updatedAt) return 'unknown'
+  const minutes = Math.round((Date.now() - new Date(updatedAt).getTime()) / 60000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  return `${Math.round(minutes / 60)}h ago`
+}
+
+/**
+ * Live "last known position" for trucks with an active shift pinging
+ * location (see /api/fleet/dump-truck/equipment/location) — not a full
+ * tracking history, just where each truck was last seen.
+ */
+function TruckLocationsPanel({ equipment }: { equipment: EquipmentRecord[] }) {
+  const located = equipment
+    .filter((e): e is EquipmentRecord & { currentLat: number; currentLng: number } => e.currentLat != null && e.currentLng != null)
+    .sort((a, b) => new Date(b.locationUpdatedAt ?? 0).getTime() - new Date(a.locationUpdatedAt ?? 0).getTime())
+
+  return (
+    <div style={cardStyle}>
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '.25rem' }}>Truck Locations</h2>
+      <p style={{ color: 'var(--muted)', fontSize: '.8rem', marginBottom: '1rem' }}>
+        Last known position while a driver has an active shift on the truck.
+      </p>
+      {located.length === 0 ? (
+        <div style={{ color: 'var(--faint)', fontSize: '.85rem' }}>No trucks reporting a location yet.</div>
+      ) : (
+        <>
+          <TruckLocationsMap trucks={located.map(t => ({ id: t.id, unitNumber: t.unitNumber, currentLat: t.currentLat, currentLng: t.currentLng, locationUpdatedAt: t.locationUpdatedAt } satisfies TruckLocation))} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: '1rem' }}>
+            {located.map(t => (
+              <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.82rem', padding: '.4rem .6rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                <div style={{ fontWeight: 700 }}>🚛 {t.unitNumber}</div>
+                <div style={{ color: 'var(--muted)' }}>{minutesAgoLabel(t.locationUpdatedAt)}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }

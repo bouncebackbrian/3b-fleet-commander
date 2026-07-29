@@ -22,6 +22,18 @@ function perpMi(pt: LatLon, o: LatLon, d: LatLon) {
   return distMi(pt, { lat: o.lat + t * (d.lat - o.lat), lon: o.lon + t * (d.lon - o.lon) })
 }
 
+/** Real road-route distance via OSRM (same public router RouteMap.tsx already uses) — falls back to the straight-line×1.18 estimate if OSRM is unreachable. */
+async function osrmRouteMiles(o: LatLon, d: LatLon): Promise<number | null> {
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${o.lon},${o.lat};${d.lon},${d.lat}?overview=false`
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const data = await res.json()
+    if (data.code !== 'Ok' || !data.routes?.[0]?.distance) return null
+    return data.routes[0].distance / 1609.344 // meters -> miles
+  } catch { return null }
+}
+
 async function geocode(q: string): Promise<LatLon | null> {
   try {
     const res = await fetch(
@@ -64,8 +76,9 @@ export async function GET(req: NextRequest) {
   if (!originCoord) return NextResponse.json({ error: `Cannot geocode: ${originQ}` }, { status: 400 })
   if (!destCoord) return NextResponse.json({ error: `Cannot geocode: ${destQ}` }, { status: 400 })
 
-  // Road miles ≈ straight-line × 1.18
-  const totalMiles = Math.round(distMi(originCoord, destCoord) * 1.18)
+  // Real road distance via OSRM; straight-line × 1.18 only as a fallback if OSRM is unreachable.
+  const osrmMiles = await osrmRouteMiles(originCoord, destCoord)
+  const totalMiles = Math.round(osrmMiles ?? distMi(originCoord, destCoord) * 1.18)
   const depart = departStr ? new Date(departStr) : new Date()
 
   // Fetch Love's locations
@@ -127,26 +140,52 @@ export async function GET(req: NextRequest) {
   const AVG_FUEL_STOP_MIN = 15   // quick fuel only
   const SHOWER_STOP_MIN = 30     // shower + meal
 
+  // Precompute route position + diesel price once per corridor store, so stop
+  // selection below can compare price across every candidate in a window
+  // instead of just taking the first one encountered going down the route.
+  const enriched = corridor.map(loc => {
+    const pt = { lat: loc.latitude, lon: loc.longitude }
+    const miFromOrigin = Math.round(routeT(pt, originCoord, destCoord) * totalMiles)
+    const pd = priceMap.get(loc.siteId)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fp: any[] = pd?.fuelPrices || []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const diesel = fp.find((f: any) => f.type?.toUpperCase().includes('DIESEL') || f.name?.toUpperCase().includes('DIESEL'))
+    return { loc, miFromOrigin, dieselPrice: diesel ? Number(diesel.price) : null }
+  })
+
   let lastStopMi = 0
   let timeMs = depart.getTime()
   let driveMin = 0
   let onDutyMin = 0
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stops: any[] = []
+  const used = new Set<number>()
 
-  for (const loc of corridor) {
-    const pt = { lat: loc.latitude, lon: loc.longitude }
-    const t = routeT(pt, originCoord, destCoord)
-    const miFromOrigin = Math.round(t * totalMiles)
+  for (;;) {
+    // Cheapest diesel among stores within the target-interval window; falls
+    // back to the nearest past-threshold store if nothing in-window has
+    // price data (or nothing falls in-window at all) — same reachability
+    // guarantee the old "first past threshold" logic gave, just price-aware
+    // when there's a real choice.
+    const windowLow = lastStopMi + STOP_EVERY_MI * 0.70
+    const windowHigh = lastStopMi + STOP_EVERY_MI * 1.30
+    const inWindow = enriched.filter((e, i) => !used.has(i) && e.miFromOrigin >= windowLow && e.miFromOrigin <= windowHigh)
+    let chosenIdx = -1
+    if (inWindow.length > 0) {
+      const priced = inWindow.filter(e => e.dieselPrice != null)
+      const pool = priced.length > 0 ? priced : inWindow
+      const cheapest = pool.reduce((a, b) => (b.dieselPrice ?? Infinity) < (a.dieselPrice ?? Infinity) ? b : a)
+      chosenIdx = enriched.indexOf(cheapest)
+    } else {
+      chosenIdx = enriched.findIndex((e, i) => !used.has(i) && e.miFromOrigin >= windowLow)
+    }
+    if (chosenIdx === -1) break
+    used.add(chosenIdx)
+
+    const { loc, miFromOrigin, dieselPrice } = enriched[chosenIdx]
     const miFromLast = miFromOrigin - lastStopMi
-    if (miFromLast < STOP_EVERY_MI * 0.70) continue
 
-    // Enrich with prices + showers
-    const pd = priceMap.get(loc.siteId)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const fp: any[] = pd?.fuelPrices || []
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const diesel = fp.find((f: any) => f.type?.toUpperCase().includes('DIESEL') || f.name?.toUpperCase().includes('DIESEL'))
     const sd = showerMap.get(loc.siteId)
     const showersAvail = sd?.active && sd?.availableShowers > 0
     const hasRestaurant = (loc.restaurants || []).length > 0
@@ -180,7 +219,7 @@ export async function GET(req: NextRequest) {
       stopType,
       stopMin,
       recommended: mandatoryBreak || isShowerStop,
-      diesel: diesel ? Number(diesel.price) : null,
+      diesel: dieselPrice,
       showers: sd ? { available: sd.availableShowers, total: sd.totalShowers, queued: sd.numInQueue, active: sd.active } : null,
       hasRestaurant,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

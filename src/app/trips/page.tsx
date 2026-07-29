@@ -1093,6 +1093,41 @@ export default function TripPlanner() {
 
   // Mission Stops — same persistence path as dashboard (localStorage + Supabase async)
   const { mission, addStop, updateStop } = useMission()
+  const [fuelStopBusy, setFuelStopBusy] = useState(false)
+
+  // Calls /api/plan-trip (real OSRM mileage + cheapest-diesel-in-window stop
+  // selection, see that route) and adds the cheapest recommended fuel stop
+  // it finds as a real waypoint on the active mission.
+  const addCheapestFuelStop = async () => {
+    if (!mission?.origin || !mission?.destination) return
+    setFuelStopBusy(true)
+    try {
+      const res = await fetch(`/api/plan-trip?origin=${encodeURIComponent(mission.origin)}&dest=${encodeURIComponent(mission.destination)}`)
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Could not plan route')
+      const data = await res.json()
+      const fuelStops = (data.stops ?? []).filter((s: { diesel: number | null }) => s.diesel != null)
+      const cheapest = fuelStops.length > 0
+        ? fuelStops.reduce((a: { diesel: number }, b: { diesel: number }) => (b.diesel < a.diesel ? b : a))
+        : (data.stops ?? [])[0]
+      if (!cheapest) { alert('No fuel stops found along this route.'); return }
+
+      addStop({
+        id: crypto.randomUUID(),
+        sequence: 0, // re-sequenced by insertStop
+        type: 'fuel',
+        name: cheapest.name,
+        address: cheapest.address ?? undefined,
+        city: cheapest.city || undefined,
+        state: cheapest.state || undefined,
+        notes: cheapest.diesel != null ? `Diesel $${cheapest.diesel.toFixed(3)}/gal — cheapest on route` : undefined,
+      }, 'after_current')
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not plan fuel stop')
+    } finally {
+      setFuelStopBusy(false)
+    }
+  }
+
   const [showTripAddStop,      setShowTripAddStop]      = useState(false)
   const [showTripIncident,     setShowTripIncident]     = useState(false)
   const [showTripCompliance,   setShowTripCompliance]   = useState(false)
@@ -1760,13 +1795,23 @@ export default function TripPlanner() {
                       📦 Mission Stops
                       {mission && <span style={{ fontWeight: 600, textTransform: 'none', letterSpacing: 0, marginLeft: 6, color: 'var(--muted)' }}>— {mission.loadNumber || 'Active Load'}</span>}
                     </span>
-                    <button
-                      onClick={() => setShowTripAddStop(true)}
-                      disabled={!mission}
-                      style={{ fontSize: '.72rem', fontWeight: 800, padding: '.28rem .7rem', borderRadius: 7, border: '1px dashed rgba(0,232,176,.45)', background: 'rgba(0,232,176,.06)', color: mission ? 'var(--primary)' : 'var(--muted)', cursor: mission ? 'pointer' : 'not-allowed' }}
-                    >
-                      + Add Stop
-                    </button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        onClick={addCheapestFuelStop}
+                        disabled={!mission?.origin || !mission?.destination || fuelStopBusy}
+                        title="Find the cheapest real Love's diesel price along this route and add it as a stop"
+                        style={{ fontSize: '.72rem', fontWeight: 800, padding: '.28rem .7rem', borderRadius: 7, border: '1px dashed rgba(245,194,0,.45)', background: 'rgba(245,194,0,.06)', color: mission?.origin && mission?.destination ? '#f5c200' : 'var(--muted)', cursor: mission?.origin && mission?.destination && !fuelStopBusy ? 'pointer' : 'not-allowed' }}
+                      >
+                        {fuelStopBusy ? 'Finding…' : '⛽ Cheapest Fuel Stop'}
+                      </button>
+                      <button
+                        onClick={() => setShowTripAddStop(true)}
+                        disabled={!mission}
+                        style={{ fontSize: '.72rem', fontWeight: 800, padding: '.28rem .7rem', borderRadius: 7, border: '1px dashed rgba(0,232,176,.45)', background: 'rgba(0,232,176,.06)', color: mission ? 'var(--primary)' : 'var(--muted)', cursor: mission ? 'pointer' : 'not-allowed' }}
+                      >
+                        + Add Stop
+                      </button>
+                    </div>
                   </div>
                   {mission ? (
                     mission.stops && mission.stops.length > 0 ? (

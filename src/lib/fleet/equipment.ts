@@ -32,6 +32,9 @@ export interface EquipmentRecord {
   nextServiceDueDate: string | null
   nextServiceDueMiles: number | null
   notes: string | null
+  currentLat: number | null
+  currentLng: number | null
+  locationUpdatedAt: string | null
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -57,6 +60,9 @@ function fromRow(r: any): EquipmentRecord {
     nextServiceDueDate: r.next_service_due_date,
     nextServiceDueMiles: r.next_service_due_miles,
     notes: r.notes,
+    currentLat: r.current_lat != null ? Number(r.current_lat) : null,
+    currentLng: r.current_lng != null ? Number(r.current_lng) : null,
+    locationUpdatedAt: r.location_updated_at,
   }
 }
 
@@ -227,4 +233,39 @@ export async function createServiceRecord(
   const record = serviceRecordFromRow(data)
   audit.log({ userId, email, action: 'fleet.equipment.service_record.create', resource: 'fleet_equipment_service_records', resourceId: record.id, after: record })
   return record
+}
+
+// ── Live location ────────────────────────────────────────────────────────────
+
+/**
+ * "Latest known position" cache only — not a history log (out of scope for
+ * this pass; see plan doc). Not audited: this fires every few minutes while
+ * a shift is active and is telemetry, not an accountability action — an
+ * audit trail entry per ping would flood fleet_audit_logs for no benefit.
+ */
+export async function updateEquipmentLocation(
+  businessId: string, equipmentId: string, lat: number, lng: number,
+): Promise<void> {
+  const { error } = await fleetServiceClient
+    .from('fleet_equipment')
+    .update({ current_lat: lat, current_lng: lng, location_updated_at: new Date().toISOString() })
+    .eq('id', equipmentId)
+    .eq('business_id', businessId)
+  if (error) throw error
+}
+
+/** Every truck with a known position — powers the dispatch Truck Locations panel. */
+export async function listEquipmentLocations(businessId: string): Promise<Pick<EquipmentRecord, 'id' | 'unitNumber' | 'equipmentType' | 'currentLat' | 'currentLng' | 'locationUpdatedAt'>[]> {
+  const { data, error } = await fleetServiceClient
+    .from('fleet_equipment')
+    .select('id, unit_number, equipment_type, current_lat, current_lng, location_updated_at')
+    .eq('business_id', businessId)
+    .not('current_lat', 'is', null)
+    .not('current_lng', 'is', null)
+    .order('location_updated_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []).map(r => ({
+    id: r.id, unitNumber: r.unit_number, equipmentType: r.equipment_type,
+    currentLat: Number(r.current_lat), currentLng: Number(r.current_lng), locationUpdatedAt: r.location_updated_at,
+  }))
 }

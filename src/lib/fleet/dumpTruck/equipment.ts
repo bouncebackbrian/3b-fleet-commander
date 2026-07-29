@@ -10,6 +10,8 @@ export interface EquipmentOption {
   unitNumber: string
   equipmentType: string
   status: string
+  currentLat: number | null
+  currentLng: number | null
 }
 
 /**
@@ -31,13 +33,17 @@ const TRAILER_EQUIPMENT_TYPES = new Set(['trailer_dump', 'pup_trailer'])
 export async function listDumpTruckEquipment(businessId: string): Promise<{ trucks: EquipmentOption[]; trailers: EquipmentOption[] }> {
   const { data, error } = await fleetServiceClient
     .from('fleet_equipment')
-    .select('id, unit_number, equipment_type, status')
+    .select('id, unit_number, equipment_type, status, current_lat, current_lng')
     .eq('business_id', businessId)
     .eq('status', 'active')
     .order('unit_number', { ascending: true })
   if (error) throw error
 
-  const rows = (data ?? []).map(r => ({ id: r.id, unitNumber: r.unit_number, equipmentType: r.equipment_type, status: r.status }))
+  const rows = (data ?? []).map(r => ({
+    id: r.id, unitNumber: r.unit_number, equipmentType: r.equipment_type, status: r.status,
+    currentLat: r.current_lat != null ? Number(r.current_lat) : null,
+    currentLng: r.current_lng != null ? Number(r.current_lng) : null,
+  }))
   return {
     trucks: rows.filter(r => !TRAILER_EQUIPMENT_TYPES.has(r.equipmentType)),
     trailers: rows.filter(r => TRAILER_EQUIPMENT_TYPES.has(r.equipmentType)),

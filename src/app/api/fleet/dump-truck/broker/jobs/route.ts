@@ -1,13 +1,14 @@
 /**
  * /api/fleet/dump-truck/broker/jobs — Broker Desk (Broker portal)
  *
- * GET  — list jobs with a broker on file (view-level Broker portal access)
+ * GET   — list jobs relevant to the broker desk (view-level Broker portal access)
+ * POST  — propose a new deal, status 'proposed', no driver/truck yet (manage-level required)
  * PATCH — update broker name / rate fields on one job (manage-level required)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireFleetAuth, hasPortal, canManage } from '@/lib/fleet-auth-guard'
-import { listBrokerJobs, updateJobBrokerFields } from '@/lib/fleet/dumpTruck/jobs'
+import { listBrokerJobs, updateJobBrokerFields, proposeJob } from '@/lib/fleet/dumpTruck/jobs'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +22,34 @@ export async function GET() {
     return NextResponse.json({ jobs })
   } catch (err) {
     console.error('[api/fleet/dump-truck/broker/jobs] GET error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const auth = await requireFleetAuth()
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!canManage(auth.portals, 'broker')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  try {
+    const body = await request.json()
+    const job = await proposeJob(auth.businessId, {
+      customerName: body.customerName,
+      brokerName: body.brokerName,
+      material: body.material,
+      estQuantity: body.estQuantity,
+      quantityUnit: body.quantityUnit,
+      pickupSiteId: body.pickupSiteId,
+      dumpSiteId: body.dumpSiteId,
+      fuelSurcharge: body.fuelSurcharge,
+      pricePerHour: body.pricePerHour,
+      pricePerTon: body.pricePerTon,
+      materialCost: body.materialCost,
+      instructions: body.instructions,
+    }, auth.userId, auth.email)
+    return NextResponse.json({ job })
+  } catch (err) {
+    console.error('[api/fleet/dump-truck/broker/jobs] POST error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

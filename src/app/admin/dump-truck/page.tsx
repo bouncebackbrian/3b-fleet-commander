@@ -5,6 +5,7 @@ import ToastContainer from '@/components/shared/ToastContainer'
 import type { DumpTruckSite, DumpTruckJob, SiteType } from '@/lib/dumpTruck/types'
 import type { EquipmentOption } from '@/lib/fleet/dumpTruck/equipment'
 import type { DriverOption } from '@/lib/fleet/dumpTruck/jobs'
+import { haversineMeters } from '@/lib/dumpTruck/geofence'
 import AdminActivityLogPanel from '@/components/dumpTruck/AdminActivityLogPanel'
 import AdminPayrollHoursPanel from '@/components/dumpTruck/AdminPayrollHoursPanel'
 import AdminFuelPanel from '@/components/dumpTruck/AdminFuelPanel'
@@ -42,6 +43,7 @@ export default function DumpTruckAdminPage() {
       </div>
 
       <SitesPanel sites={sites} onCreated={reload} />
+      <PendingDealsPanel jobs={jobs} sites={sites} equipment={equipment} drivers={drivers} onAccepted={reload} />
       <JobsPanel jobs={jobs} sites={sites} equipment={equipment} drivers={drivers} onCreated={reload} />
       <PayPolicyPanel drivers={drivers} />
       <AdminPayrollHoursPanel drivers={drivers} />
@@ -118,6 +120,109 @@ function SitesPanel({ sites, onCreated }: { sites: DumpTruckSite[]; onCreated: (
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+/**
+ * Broker deals awaiting a driver/truck assignment (status 'proposed').
+ * Dispatch's driver/truck picks are pre-sorted closest-first (haversine
+ * from the job's pickup site to each truck's last known GPS position, see
+ * fleet_equipment.current_lat/current_lng) so accepting is usually just
+ * confirming the top option, not hunting through the full list.
+ */
+function PendingDealsPanel({ jobs, sites, equipment, drivers, onAccepted }: {
+  jobs: DumpTruckJob[]; sites: DumpTruckSite[]
+  equipment: { trucks: EquipmentOption[]; trailers: EquipmentOption[] }
+  drivers: DriverOption[]
+  onAccepted: () => void
+}) {
+  const proposed = jobs.filter(j => j.status === 'proposed')
+  const [picks, setPicks] = useState<Record<string, { driverId: string; truckId: string; trailerId: string }>>({})
+  const [busy, setBusy] = useState<string | null>(null)
+
+  if (proposed.length === 0) return null
+
+  const trucksByDistance = (pickupSiteId: string | null): EquipmentOption[] => {
+    const site = sites.find(s => s.id === pickupSiteId)
+    if (!site || site.lat == null || site.lng == null) return equipment.trucks
+    return [...equipment.trucks].sort((a, b) => {
+      const da = a.currentLat != null && a.currentLng != null ? haversineMeters(site.lat!, site.lng!, a.currentLat, a.currentLng) : Infinity
+      const db = b.currentLat != null && b.currentLng != null ? haversineMeters(site.lat!, site.lng!, b.currentLat, b.currentLng) : Infinity
+      return da - db
+    })
+  }
+
+  const pickFor = (jobId: string, sortedTrucks: EquipmentOption[]) =>
+    picks[jobId] ?? { driverId: '', truckId: sortedTrucks[0]?.id ?? '', trailerId: '' }
+
+  const accept = async (job: DumpTruckJob) => {
+    const pick = picks[job.id]
+    if (!pick?.driverId || !pick?.truckId) { toast.error('Pick a driver and truck first'); return }
+    setBusy(job.id)
+    try {
+      const res = await fetch(`/api/fleet/dump-truck/jobs/${job.id}/accept`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ driverId: pick.driverId, truckId: pick.truckId, trailerId: pick.trailerId || null }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not accept deal')
+      toast.success(`${job.jobNumber} scheduled`)
+      onAccepted()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not accept deal')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div style={{ ...cardStyle, border: '1px solid var(--warn, #d99a2b)' }}>
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '.25rem' }}>Pending Broker Deals ({proposed.length})</h2>
+      <p style={{ color: 'var(--muted)', fontSize: '.8rem', marginBottom: '1rem' }}>
+        Everything else came from the broker — pick a driver and truck (closest truck to pickup is pre-selected) and accept.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {proposed.map(job => {
+          const sortedTrucks = trucksByDistance(job.pickupSiteId)
+          const pick = pickFor(job.id, sortedTrucks)
+          const pickupName = sites.find(s => s.id === job.pickupSiteId)?.name
+          const dumpName = sites.find(s => s.id === job.dumpSiteId)?.name
+          return (
+            <div key={job.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '1rem', background: 'var(--surface-2)' }}>
+              <div style={{ fontWeight: 800, fontSize: '.95rem', marginBottom: '.4rem' }}>
+                {job.jobNumber} {job.customerName ? `— ${job.customerName}` : ''}
+              </div>
+              <div style={{ color: 'var(--muted)', fontSize: '.78rem', marginBottom: '.75rem' }}>
+                {job.material ?? 'Material n/a'} · {pickupName ?? 'pickup n/a'} → {dumpName ?? 'dump n/a'}
+                {job.pricePerHour ? ` · $${job.pricePerHour}/hr` : ''}{job.pricePerTon ? ` · $${job.pricePerTon}/ton` : ''}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '.6rem', marginBottom: '.75rem' }}>
+                <Field label="Driver">
+                  <select style={inputStyle} value={pick.driverId} onChange={e => setPicks(p => ({ ...p, [job.id]: { ...pick, driverId: e.target.value } }))}>
+                    <option value="">Select…</option>
+                    {drivers.map(d => <option key={d.userId} value={d.userId}>{d.name}</option>)}
+                  </select>
+                </Field>
+                <Field label="Truck (closest first)">
+                  <select style={inputStyle} value={pick.truckId} onChange={e => setPicks(p => ({ ...p, [job.id]: { ...pick, truckId: e.target.value } }))}>
+                    <option value="">Select…</option>
+                    {sortedTrucks.map(t => <option key={t.id} value={t.id}>{t.unitNumber}{t.currentLat != null ? '' : ' (no location yet)'}</option>)}
+                  </select>
+                </Field>
+                <Field label="Trailer">
+                  <select style={inputStyle} value={pick.trailerId} onChange={e => setPicks(p => ({ ...p, [job.id]: { ...pick, trailerId: e.target.value } }))}>
+                    <option value="">None</option>
+                    {equipment.trailers.map(t => <option key={t.id} value={t.id}>{t.unitNumber}</option>)}
+                  </select>
+                </Field>
+              </div>
+              <button style={{ ...btnStyle, opacity: busy === job.id ? .5 : 1 }} disabled={busy === job.id} onClick={() => accept(job)}>
+                {busy === job.id ? 'Accepting…' : 'Accept & Assign'}
+              </button>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

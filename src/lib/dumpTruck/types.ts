@@ -162,7 +162,11 @@ export interface DumpTruckJob {
   material: string | null
   estQuantity: number | null
   quantityUnit: 'loads' | 'tons' | 'cubic_yards' | 'hours' | 'miles' | 'units'
-  status: 'draft' | 'scheduled' | 'active' | 'completed' | 'cancelled'
+  status: 'proposed' | 'draft' | 'scheduled' | 'active' | 'completed' | 'cancelled'
+  /** 'broker' when a Broker-portal user originated this deal (see proposeJob/acceptJob). */
+  source: 'dispatch' | 'broker'
+  dispatchAcceptedBy: string | null
+  dispatchAcceptedAt: string | null
 
   // Dispatch-ticket fields (2026-07-28) — mirror the paper dispatch ticket
   // (load time, order/delivery date, cosignee, ordered-by, phone, truck

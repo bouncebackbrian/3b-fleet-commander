@@ -12,7 +12,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from '@/hooks/useToast'
 import ToastContainer from '@/components/shared/ToastContainer'
-import type { DumpTruckJob } from '@/lib/dumpTruck/types'
+import type { DumpTruckJob, DumpTruckSite } from '@/lib/dumpTruck/types'
 
 const cardStyle: React.CSSProperties = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '1.25rem' }
 const inputStyle: React.CSSProperties = { padding: '.5rem .6rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', width: '100%', fontSize: '.85rem' }
@@ -22,6 +22,7 @@ type EditableField = 'brokerName' | 'pricePerHour' | 'pricePerTon' | 'fuelSurcha
 
 export default function BrokerDeskPage() {
   const [jobs, setJobs] = useState<DumpTruckJob[]>([])
+  const [sites, setSites] = useState<DumpTruckSite[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, Partial<Record<EditableField, string>>>>({})
@@ -35,6 +36,9 @@ export default function BrokerDeskPage() {
   }, [])
 
   useEffect(load, [load])
+  useEffect(() => {
+    fetch('/api/fleet/dump-truck/sites').then(r => r.json()).then(b => setSites(b.sites ?? []))
+  }, [])
 
   const draftValue = (job: DumpTruckJob, field: EditableField): string => {
     const draft = drafts[job.id]?.[field]
@@ -83,6 +87,8 @@ export default function BrokerDeskPage() {
         </p>
       </div>
 
+      <ProposeDealForm sites={sites} onProposed={load} />
+
       <div style={cardStyle}>
         {loading && <div style={{ color: 'var(--muted)', padding: '1rem 0' }}>Loading…</div>}
         {!loading && jobs.length === 0 && (
@@ -95,7 +101,7 @@ export default function BrokerDeskPage() {
               <div key={job.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '1rem', background: 'var(--surface-2)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.75rem' }}>
                   <div style={{ fontWeight: 800, fontSize: '.95rem' }}>{job.jobNumber} {job.customerName ? `— ${job.customerName}` : ''}</div>
-                  <div style={{ fontSize: '.7rem', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700 }}>{job.status}</div>
+                  <div style={{ fontSize: '.7rem', color: statusColor(job.status), textTransform: 'uppercase', fontWeight: 700 }}>{statusLabel(job.status)}</div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '.6rem', marginBottom: hasDraft ? '.75rem' : 0 }}>
                   <div>
@@ -135,6 +141,141 @@ export default function BrokerDeskPage() {
       </div>
 
       <ToastContainer />
+    </div>
+  )
+}
+
+function statusLabel(status: DumpTruckJob['status']): string {
+  if (status === 'proposed') return 'Awaiting dispatch'
+  return status
+}
+
+function statusColor(status: DumpTruckJob['status']): string {
+  if (status === 'proposed') return 'var(--warn, #d99a2b)'
+  return 'var(--muted)'
+}
+
+const emptyDeal = {
+  customerName: '', material: '', estQuantity: '', quantityUnit: 'loads' as const,
+  pickupSiteId: '', dumpSiteId: '', pricePerHour: '', pricePerTon: '', fuelSurcharge: '', materialCost: '',
+}
+
+function ProposeDealForm({ sites, onProposed }: { sites: DumpTruckSite[]; onProposed: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [deal, setDeal] = useState(emptyDeal)
+  const [submitting, setSubmitting] = useState(false)
+
+  const pickupSites = sites.filter(s => s.siteType === 'pickup' || s.siteType === 'customer')
+  const dumpSites = sites.filter(s => s.siteType === 'dump' || s.siteType === 'disposal')
+
+  const submit = async () => {
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/fleet/dump-truck/broker/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerName: deal.customerName || null,
+          material: deal.material || null,
+          estQuantity: deal.estQuantity ? Number(deal.estQuantity) : null,
+          quantityUnit: deal.quantityUnit,
+          pickupSiteId: deal.pickupSiteId || null,
+          dumpSiteId: deal.dumpSiteId || null,
+          pricePerHour: deal.pricePerHour ? Number(deal.pricePerHour) : null,
+          pricePerTon: deal.pricePerTon ? Number(deal.pricePerTon) : null,
+          fuelSurcharge: deal.fuelSurcharge ? Number(deal.fuelSurcharge) : null,
+          materialCost: deal.materialCost ? Number(deal.materialCost) : null,
+        }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not propose deal')
+      toast.success('Deal sent to dispatch')
+      setDeal(emptyDeal)
+      setOpen(false)
+      onProposed()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not propose deal')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        style={{ padding: '.7rem 1rem', borderRadius: 10, background: 'var(--primary)', color: '#04140f', fontWeight: 800, fontSize: '.85rem', alignSelf: 'flex-start' }}
+      >
+        + Propose New Deal
+      </button>
+    )
+  }
+
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.75rem' }}>
+        <h2 style={{ fontSize: '1rem', fontWeight: 800 }}>Propose New Deal</h2>
+        <button onClick={() => setOpen(false)} style={{ color: 'var(--muted)', fontSize: '.8rem' }}>Cancel</button>
+      </div>
+      <p style={{ color: 'var(--muted)', fontSize: '.8rem', marginBottom: '1rem' }}>
+        Fill in what you know — dispatch picks the driver/truck and accepts to schedule it. No re-typing needed.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '.6rem', marginBottom: '1rem' }}>
+        <div>
+          <div style={labelStyle}>Customer</div>
+          <input style={inputStyle} value={deal.customerName} onChange={e => setDeal(d => ({ ...d, customerName: e.target.value }))} />
+        </div>
+        <div>
+          <div style={labelStyle}>Material</div>
+          <input style={inputStyle} value={deal.material} onChange={e => setDeal(d => ({ ...d, material: e.target.value }))} />
+        </div>
+        <div>
+          <div style={labelStyle}>Est. Quantity</div>
+          <input style={inputStyle} type="number" step="0.01" value={deal.estQuantity} onChange={e => setDeal(d => ({ ...d, estQuantity: e.target.value }))} />
+        </div>
+        <div>
+          <div style={labelStyle}>Unit</div>
+          <select style={inputStyle} value={deal.quantityUnit} onChange={e => setDeal(d => ({ ...d, quantityUnit: e.target.value as typeof d.quantityUnit }))}>
+            {['loads', 'tons', 'cubic_yards', 'hours', 'miles', 'units'].map(u => <option key={u} value={u}>{u}</option>)}
+          </select>
+        </div>
+        <div>
+          <div style={labelStyle}>Pickup Site</div>
+          <select style={inputStyle} value={deal.pickupSiteId} onChange={e => setDeal(d => ({ ...d, pickupSiteId: e.target.value }))}>
+            <option value="">— Select —</option>
+            {pickupSites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <div style={labelStyle}>Dump Site</div>
+          <select style={inputStyle} value={deal.dumpSiteId} onChange={e => setDeal(d => ({ ...d, dumpSiteId: e.target.value }))}>
+            <option value="">— Select —</option>
+            {dumpSites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <div style={labelStyle}>Price / Hour ($)</div>
+          <input style={inputStyle} type="number" step="0.01" value={deal.pricePerHour} onChange={e => setDeal(d => ({ ...d, pricePerHour: e.target.value }))} />
+        </div>
+        <div>
+          <div style={labelStyle}>Price / Ton ($)</div>
+          <input style={inputStyle} type="number" step="0.01" value={deal.pricePerTon} onChange={e => setDeal(d => ({ ...d, pricePerTon: e.target.value }))} />
+        </div>
+        <div>
+          <div style={labelStyle}>Fuel Surcharge ($)</div>
+          <input style={inputStyle} type="number" step="0.01" value={deal.fuelSurcharge} onChange={e => setDeal(d => ({ ...d, fuelSurcharge: e.target.value }))} />
+        </div>
+        <div>
+          <div style={labelStyle}>Material Cost ($)</div>
+          <input style={inputStyle} type="number" step="0.01" value={deal.materialCost} onChange={e => setDeal(d => ({ ...d, materialCost: e.target.value }))} />
+        </div>
+      </div>
+      <button
+        onClick={submit}
+        disabled={submitting}
+        style={{ padding: '.6rem 1.2rem', borderRadius: 8, background: 'var(--primary)', color: '#04140f', fontWeight: 800, fontSize: '.85rem', opacity: submitting ? .5 : 1 }}
+      >
+        {submitting ? 'Sending…' : 'Send to Dispatch'}
+      </button>
     </div>
   )
 }

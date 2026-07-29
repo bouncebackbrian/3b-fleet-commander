@@ -37,6 +37,9 @@ function fromRow(r: any): DumpTruckJob {
     pricePerHour: r.price_per_hour != null ? Number(r.price_per_hour) : null,
     pricePerTon: r.price_per_ton != null ? Number(r.price_per_ton) : null,
     materialCost: r.material_cost != null ? Number(r.material_cost) : null,
+    source: r.source,
+    dispatchAcceptedBy: r.dispatch_accepted_by,
+    dispatchAcceptedAt: r.dispatch_accepted_at,
   }
 }
 
@@ -176,16 +179,140 @@ export async function createJob(
   return job
 }
 
-/** Jobs with a broker on file — powers the Broker portal desk (/broker). */
+/**
+ * Jobs relevant to the Broker portal desk (/broker) — either a broker name
+ * is on file (dispatch assigned an external broker to the deal) or the
+ * broker portal itself originated the deal via proposeJob(), regardless of
+ * whether a broker_name label was filled in.
+ */
 export async function listBrokerJobs(businessId: string): Promise<DumpTruckJob[]> {
   const { data, error } = await fleetServiceClient
     .from('fleet_dt_jobs')
     .select('*')
     .eq('business_id', businessId)
-    .not('broker_name', 'is', null)
+    .or('broker_name.not.is.null,source.eq.broker')
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data ?? []).map(fromRow)
+}
+
+export interface ProposeJobInput {
+  customerName?: string | null
+  brokerName?: string | null
+  material?: string | null
+  estQuantity?: number | null
+  quantityUnit?: DumpTruckJob['quantityUnit']
+  pickupSiteId?: string | null
+  dumpSiteId?: string | null
+  fuelSurcharge?: number | null
+  pricePerHour?: number | null
+  pricePerTon?: number | null
+  materialCost?: number | null
+  instructions?: string | null
+}
+
+/**
+ * A Broker-portal user originates a deal — no driver/truck yet, status
+ * 'proposed'. Dispatch picks up the deal from there via acceptJob(). Job
+ * number is server-generated (brokers don't know dispatch's numbering).
+ */
+export async function proposeJob(
+  businessId: string,
+  input: ProposeJobInput,
+  brokerUserId: string,
+  email: string | null,
+): Promise<DumpTruckJob> {
+  const jobNumber = `BRK-${Date.now().toString(36).toUpperCase()}`
+
+  const { data, error } = await fleetServiceClient
+    .from('fleet_dt_jobs')
+    .insert({
+      business_id: businessId,
+      job_number: jobNumber,
+      customer_name: input.customerName ?? null,
+      broker_name: input.brokerName ?? null,
+      material: input.material ?? null,
+      est_quantity: input.estQuantity ?? null,
+      quantity_unit: input.quantityUnit ?? 'loads',
+      pickup_site_id: input.pickupSiteId ?? null,
+      dump_site_id: input.dumpSiteId ?? null,
+      fuel_surcharge: input.fuelSurcharge ?? null,
+      price_per_hour: input.pricePerHour ?? null,
+      price_per_ton: input.pricePerTon ?? null,
+      material_cost: input.materialCost ?? null,
+      instructions: input.instructions ?? null,
+      status: 'proposed',
+      source: 'broker',
+      created_by: brokerUserId,
+    })
+    .select('*')
+    .single()
+  if (error) throw error
+
+  const job = fromRow(data)
+  audit.log({ userId: brokerUserId, email, action: 'dump_truck.job.broker_propose', resource: 'fleet_dt_jobs', resourceId: job.id, after: job })
+  return job
+}
+
+/** Every proposed (broker-originated, not yet dispatch-accepted) job — powers the dispatch "Pending Broker Deals" queue. */
+export async function listProposedJobs(businessId: string): Promise<DumpTruckJob[]> {
+  const { data, error } = await fleetServiceClient
+    .from('fleet_dt_jobs')
+    .select('*')
+    .eq('business_id', businessId)
+    .eq('status', 'proposed')
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []).map(fromRow)
+}
+
+/**
+ * Dispatch accepts a broker-proposed deal in one action: picks driver/truck,
+ * the job goes 'proposed' -> 'scheduled'. Guards against double-accept
+ * (409-equivalent thrown error) the same way team/accept guards against
+ * re-accepting an already-used invite.
+ */
+export async function acceptJob(
+  businessId: string,
+  jobId: string,
+  driverId: string,
+  truckId: string,
+  trailerId: string | null,
+  dispatcherId: string,
+  email: string | null,
+): Promise<DumpTruckJob> {
+  const { data: before, error: beforeError } = await fleetServiceClient
+    .from('fleet_dt_jobs')
+    .select('*')
+    .eq('id', jobId)
+    .eq('business_id', businessId)
+    .maybeSingle()
+  if (beforeError) throw beforeError
+  if (!before) throw new Error('Job not found')
+  if (before.status !== 'proposed') throw new Error('Job is not awaiting acceptance')
+
+  const { data, error } = await fleetServiceClient
+    .from('fleet_dt_jobs')
+    .update({
+      status: 'scheduled',
+      driver_id: driverId,
+      truck_id: truckId,
+      trailer_id: trailerId,
+      dispatch_accepted_by: dispatcherId,
+      dispatch_accepted_at: new Date().toISOString(),
+    })
+    .eq('id', jobId)
+    .eq('business_id', businessId)
+    .select('*')
+    .single()
+  if (error) throw error
+
+  const job = fromRow(data)
+  audit.log({
+    userId: dispatcherId, email, action: 'dump_truck.job.dispatch_accept', resource: 'fleet_dt_jobs', resourceId: job.id,
+    before: fromRow(before), after: job,
+  })
+  return job
 }
 
 export interface BrokerJobEditInput {
