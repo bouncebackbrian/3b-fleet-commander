@@ -176,6 +176,67 @@ export async function createJob(
   return job
 }
 
+/** Jobs with a broker on file — powers the Broker portal desk (/broker). */
+export async function listBrokerJobs(businessId: string): Promise<DumpTruckJob[]> {
+  const { data, error } = await fleetServiceClient
+    .from('fleet_dt_jobs')
+    .select('*')
+    .eq('business_id', businessId)
+    .not('broker_name', 'is', null)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []).map(fromRow)
+}
+
+export interface BrokerJobEditInput {
+  brokerName?: string | null
+  pricePerHour?: number | null
+  pricePerTon?: number | null
+  fuelSurcharge?: number | null
+  materialCost?: number | null
+}
+
+/** Broker-editable job fields only — broker name and the rate fields. Manage-level Broker portal access required (checked by the route). */
+export async function updateJobBrokerFields(
+  businessId: string,
+  jobId: string,
+  input: BrokerJobEditInput,
+  userId: string,
+  email: string | null,
+): Promise<DumpTruckJob> {
+  const { data: before, error: beforeError } = await fleetServiceClient
+    .from('fleet_dt_jobs')
+    .select('*')
+    .eq('id', jobId)
+    .eq('business_id', businessId)
+    .maybeSingle()
+  if (beforeError) throw beforeError
+  if (!before) throw new Error('Job not found')
+
+  const patch: Record<string, unknown> = {}
+  if (input.brokerName !== undefined) patch.broker_name = input.brokerName
+  if (input.pricePerHour !== undefined) patch.price_per_hour = input.pricePerHour
+  if (input.pricePerTon !== undefined) patch.price_per_ton = input.pricePerTon
+  if (input.fuelSurcharge !== undefined) patch.fuel_surcharge = input.fuelSurcharge
+  if (input.materialCost !== undefined) patch.material_cost = input.materialCost
+
+  const { data, error } = await fleetServiceClient
+    .from('fleet_dt_jobs')
+    .update(patch)
+    .eq('id', jobId)
+    .eq('business_id', businessId)
+    .select('*')
+    .single()
+  if (error) throw error
+
+  const job = fromRow(data)
+  audit.log({
+    userId, email, action: 'dump_truck.job.broker_edit', resource: 'fleet_dt_jobs', resourceId: job.id,
+    before: fromRow(before), after: job,
+  })
+  return job
+}
+
 export interface DriverJobEditInput {
   material?: string | null
   pickupSiteId?: string | null
