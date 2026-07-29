@@ -3,6 +3,7 @@
  *
  * This is the single write path for the append-only fleet_dt_events log
  * (spec §5). Recording an event may also:
+ *   - stamp fleet_dt_shifts.clock_in_at / clock_out_at (clock_in / clock_out)
  *   - open/close a fleet_dt_vehicle_custody period (truck_picked_up / truck_dropped_off)
  *   - open/close a fleet_dt_drive_segments row (depart_* / arrive_*)
  *   - create/advance a fleet_dt_load_cycles row (arrive_pickup .. depart_dump)
@@ -182,6 +183,20 @@ async function applySideEffects(
   matchedSiteId: string | null,
 ): Promise<void> {
   switch (input.eventType) {
+    case 'clock_in': {
+      await fleetServiceClient.from('fleet_dt_shifts')
+        .update({ clock_in_at: input.effectiveAt })
+        .eq('id', input.shiftId)
+      break
+    }
+
+    case 'clock_out': {
+      await fleetServiceClient.from('fleet_dt_shifts')
+        .update({ clock_out_at: input.effectiveAt })
+        .eq('id', input.shiftId)
+      break
+    }
+
     case 'truck_picked_up': {
       await fleetServiceClient.from('fleet_dt_vehicle_custody').insert({
         business_id: businessId,
