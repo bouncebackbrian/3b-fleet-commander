@@ -22,6 +22,7 @@ export default function LoadTicketSheet({ shiftId, loadCycles, onClose, onSaved 
   const [loadCycleId, setLoadCycleId] = useState(loadCycles[0]?.id ?? '')
   const [ticketType, setTicketType] = useState<TicketType>('scale')
   const [ticketNumber, setTicketNumber] = useState('')
+  const [weightTons, setWeightTons] = useState('')
   const [busy, setBusy] = useState(false)
 
   const canSave = !!file && !!loadCycleId
@@ -35,6 +36,7 @@ export default function LoadTicketSheet({ shiftId, loadCycles, onClose, onSaved 
       form.append('ticketType', ticketType)
       form.append('shiftId', shiftId)
       if (ticketNumber) form.append('ticketNumber', ticketNumber)
+      if (weightTons) form.append('weightTons', weightTons)
 
       const res = await fetch(`/api/fleet/dump-truck/load-cycles/${loadCycleId}/ticket`, { method: 'PATCH', body: form })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Could not save ticket')
@@ -84,9 +86,15 @@ export default function LoadTicketSheet({ shiftId, loadCycles, onClose, onSaved 
           ))}
         </div>
 
-        <div>
-          <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase' }}>Ticket Number</div>
-          <input style={inputStyle} value={ticketNumber} onChange={e => setTicketNumber(e.target.value)} placeholder="Optional" />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase' }}>Tag / Ticket #</div>
+            <input style={inputStyle} value={ticketNumber} onChange={e => setTicketNumber(e.target.value)} placeholder="Optional" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase' }}>Weight (tons)</div>
+            <input style={inputStyle} type="number" inputMode="decimal" step="0.01" value={weightTons} onChange={e => setWeightTons(e.target.value)} placeholder="Optional" />
+          </div>
         </div>
 
         <input ref={fileRef} type="file" accept="image/*,application/pdf" capture="environment" style={{ display: 'none' }} onChange={e => setFile(e.target.files?.[0] ?? null)} />

@@ -44,7 +44,8 @@ export type TicketType = 'scale' | 'delivery'
 
 export async function attachLoadTicket(
   businessId: string, loadCycleId: string, ticketType: TicketType,
-  docId: string, ticketNumber: string | null, userId: string, email: string | null,
+  docId: string, ticketNumber: string | null, weightTons: number | null,
+  userId: string, email: string | null,
 ): Promise<void> {
   const { data: loadCycle } = await fleetServiceClient
     .from('fleet_dt_load_cycles')
@@ -57,12 +58,13 @@ export async function attachLoadTicket(
     ? { scale_ticket_doc_id: docId }
     : { delivery_ticket_doc_id: docId }
   if (ticketNumber) update.ticket_number = ticketNumber
+  if (weightTons != null) update.weight_tons = weightTons
 
   const { error } = await fleetServiceClient.from('fleet_dt_load_cycles').update(update).eq('id', loadCycleId)
   if (error) throw error
 
   audit.log({
     userId, email, action: `dump_truck.load_cycle.ticket.${ticketType}`,
-    resource: 'fleet_dt_load_cycles', resourceId: loadCycleId, metadata: { docId, ticketNumber },
+    resource: 'fleet_dt_load_cycles', resourceId: loadCycleId, metadata: { docId, ticketNumber, weightTons },
   })
 }

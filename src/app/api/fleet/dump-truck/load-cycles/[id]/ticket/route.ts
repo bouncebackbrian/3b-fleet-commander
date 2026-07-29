@@ -40,9 +40,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }, auth.userId, auth.email)
 
     const ticketNumber = form.get('ticketNumber')
+    const weightTonsRaw = form.get('weightTons')
+    const weightTons = typeof weightTonsRaw === 'string' && weightTonsRaw !== '' ? Number(weightTonsRaw) : null
+    if (weightTons != null && !Number.isFinite(weightTons)) {
+      return NextResponse.json({ error: 'weightTons must be a number' }, { status: 400 })
+    }
     await attachLoadTicket(
       auth.businessId, id, ticketType as TicketType, upload.id,
       typeof ticketNumber === 'string' && ticketNumber ? ticketNumber : null,
+      weightTons,
       auth.userId, auth.email,
     )
 
