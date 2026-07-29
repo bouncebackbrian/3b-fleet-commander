@@ -1,14 +1,18 @@
 'use client'
 import Link from 'next/link'
+import type { WeatherData, WeatherInfo } from '@/lib/dashboard/types'
 
 interface Props {
   isOnline: boolean
   pendingCount: number
   failedCount: number
   gpsPermission: 'granted' | 'denied' | 'unavailable' | 'not_requested' | 'timeout' | null
+  wx?: WeatherInfo | null
+  weather?: WeatherData | null
+  weatherLoading?: boolean
 }
 
-export default function TopStatusBar({ isOnline, pendingCount, failedCount, gpsPermission }: Props) {
+export default function TopStatusBar({ isOnline, pendingCount, failedCount, gpsPermission, wx, weather, weatherLoading }: Props) {
   return (
     <div style={{
       height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -38,6 +42,13 @@ export default function TopStatusBar({ isOnline, pendingCount, failedCount, gpsP
           color={gpsPermission === 'granted' ? 'var(--success)' : 'var(--muted)'}
           icon="📍"
         />
+        {wx && weather && (
+          <StatusChip
+            label={`${weather.temp}°F · ${weather.windSpeed}mph`}
+            color={wx.severe ? 'var(--warn)' : 'var(--muted)'}
+            icon={weatherLoading ? '⏳' : wx.emoji}
+          />
+        )}
         <Link
           href="/driver/hours"
           style={{

@@ -1,6 +1,7 @@
 'use client'
 import { useMemo, useState } from 'react'
 import { useDumpTruckDriver } from '@/hooks/useDumpTruckDriver'
+import { useWeather } from '@/hooks/useWeather'
 import { canDispatchWithDefects } from '@/lib/dumpTruck/inspections'
 import { siteAwareActionLabel } from '@/lib/dumpTruck/actionLabels'
 import { captureGeolocation } from '@/lib/dumpTruck/events'
@@ -25,10 +26,11 @@ import SubmitDaySheet from '@/components/dumpTruck/SubmitDaySheet'
 import FuelSheet from '@/components/dumpTruck/FuelSheet'
 import LoadTicketSheet from '@/components/dumpTruck/LoadTicketSheet'
 import NewSiteSheet from '@/components/dumpTruck/NewSiteSheet'
+import FullLogSheet from '@/components/dumpTruck/FullLogSheet'
 
 type SheetKey =
   | 'clock_in' | 'odometer_pickup' | 'odometer_dropoff' | 'pretrip' | 'posttrip'
-  | 'delay' | 'note' | 'defect' | 'incident' | 'photo' | 'ticket' | 'fuel' | 'new_site' | 'submit' | null
+  | 'delay' | 'note' | 'defect' | 'incident' | 'photo' | 'ticket' | 'fuel' | 'new_site' | 'submit' | 'full_log' | null
 
 export default function DumpTruckDriverPage() {
   const {
@@ -36,6 +38,7 @@ export default function DumpTruckDriverPage() {
     activeJobId, setActiveJobId, isOnline, queueSummary,
     fireEvent, clockIn, submitDay, refetch,
   } = useDumpTruckDriver()
+  const { wx, weather, weatherLoading } = useWeather()
 
   const [sheet, setSheet] = useState<SheetKey>(null)
   const [navigateSite, setNavigateSite] = useState<DumpTruckSite | null>(null)
@@ -121,6 +124,7 @@ export default function DumpTruckDriverPage() {
   }
 
   const quickActions = [
+    { key: 'log_location', icon: '📍', label: 'Log Time/Location', enabled: !!context?.shift },
     { key: 'delay', icon: delayActive ? '⏸️' : '⏱️', label: delayActive ? 'End Delay' : 'Delay', enabled: !!context?.shift },
     { key: 'note', icon: '📝', label: 'Note', enabled: !!context?.shift },
     { key: 'photo', icon: '📷', label: 'Photo', enabled: !!context?.shift },
@@ -143,6 +147,9 @@ export default function DumpTruckDriverPage() {
         pendingCount={queueSummary.pending + queueSummary.syncing}
         failedCount={queueSummary.failed}
         gpsPermission={null}
+        wx={wx}
+        weather={weather}
+        weatherLoading={weatherLoading}
       />
 
       <div className="dt-body">
@@ -177,10 +184,16 @@ export default function DumpTruckDriverPage() {
             timeline={timeline}
             loadCount={context?.shift?.loadCount ?? 0}
             quickActions={quickActions}
+            onViewFullLog={() => setSheet('full_log')}
             onQuickAction={key => {
               if (key === 'correction') {
                 fireEvent('correction_requested', { notes: 'Driver requested a correction — see timeline for context.' })
                   .then(r => { if (r.ok) toast.success('Correction requested — dispatch will follow up') })
+                return
+              }
+              if (key === 'log_location') {
+                fireEvent('location_logged')
+                  .then(r => { if (r.ok) toast.success(r.siteLabel ? `Logged at ${r.siteLabel}` : 'Time and location logged') })
                 return
               }
               setSheet(key as SheetKey)
@@ -305,6 +318,10 @@ export default function DumpTruckDriverPage() {
 
       {sheet === 'submit' && context?.shift && (
         <SubmitDaySheet loadCount={context.shift.loadCount} onClose={() => setSheet(null)} onConfirm={submitDay} />
+      )}
+
+      {sheet === 'full_log' && (
+        <FullLogSheet timeline={timeline} onClose={() => setSheet(null)} />
       )}
 
       {navigateSite && (

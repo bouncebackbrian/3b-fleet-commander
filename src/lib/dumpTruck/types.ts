@@ -60,6 +60,7 @@ export type DumpTruckEventType =
   | 'note'
   | 'photo_captured'
   | 'ticket_captured'
+  | 'location_logged'
 
 export type LocationPermissionStatus = 'granted' | 'denied' | 'unavailable' | 'not_requested' | 'timeout'
 export type EventSyncState = 'pending' | 'syncing' | 'synced' | 'conflict' | 'failed'

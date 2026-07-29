@@ -71,7 +71,7 @@ export const PARALLEL_EVENT_TYPES: DumpTruckEventType[] = [
   'break_started', 'break_ended',
   'delay_started', 'delay_ended',
   'fuel_stop_started', 'fuel_stop_ended',
-  'note', 'photo_captured', 'ticket_captured',
+  'note', 'photo_captured', 'ticket_captured', 'location_logged',
   'correction_requested', 'event_corrected',
 ]
 

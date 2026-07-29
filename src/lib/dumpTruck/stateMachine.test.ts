@@ -64,6 +64,13 @@ describe('canFireEvent', () => {
     expect(canFireEvent('submitted', 'note')).toBe(false)
   })
 
+  it('allows location_logged as a parallel event any time the shift is open', () => {
+    expect(canFireEvent('at_pickup', 'location_logged')).toBe(true)
+    expect(canFireEvent('driving_loaded_to_dump', 'location_logged')).toBe(true)
+    expect(canFireEvent('not_clocked_in', 'location_logged')).toBe(false)
+    expect(canFireEvent('submitted', 'location_logged')).toBe(false)
+  })
+
   it('rejects an unknown event type', () => {
     expect(canFireEvent('clocked_in', 'bogus_event' as DumpTruckEventType)).toBe(false)
   })

@@ -1,18 +1,8 @@
 'use client'
 import type { TimelineEntry } from '@/hooks/useDumpTruckDriver'
+import { EVENT_LABELS } from '@/lib/dumpTruck/eventLabels'
 
-const EVENT_LABELS: Record<string, string> = {
-  clock_in: 'Clocked In', arrive_yard_for_pickup: 'Arrived at Yard', truck_picked_up: 'Truck Picked Up',
-  pretrip_started: 'Pre-Trip Started', pretrip_completed: 'Pre-Trip Complete',
-  depart_yard: 'Departed Yard', arrive_pickup: 'Arrived Pickup', loading_started: 'Loading Started',
-  loading_completed: 'Loading Complete', depart_pickup: 'Left Pickup', arrive_dump: 'Arrived Dump',
-  unloading_started: 'Unloading Started', unloading_completed: 'Dumped', depart_dump: 'Left Dump',
-  arrive_yard: 'Arrived Yard', break_started: 'Break Started', break_ended: 'Break Ended',
-  delay_started: 'Delay Started', delay_ended: 'Delay Ended', fuel_stop_started: 'Fuel Stop',
-  fuel_stop_ended: 'Fuel Stop Ended', posttrip_started: 'Post-Trip Started', posttrip_completed: 'Post-Trip Complete',
-  truck_dropped_off: 'Truck Dropped Off', clock_out: 'Clocked Out', shift_submitted: 'Day Submitted',
-  note: 'Note', photo_captured: 'Photo', ticket_captured: 'Ticket', correction_requested: 'Correction Requested',
-}
+const RECENT_COUNT = 3
 
 interface QuickAction { key: string; icon: string; label: string; enabled: boolean }
 
@@ -21,9 +11,11 @@ interface Props {
   loadCount: number
   quickActions: QuickAction[]
   onQuickAction: (key: string) => void
+  onViewFullLog: () => void
 }
 
-export default function RightRail({ timeline, loadCount, quickActions, onQuickAction }: Props) {
+export default function RightRail({ timeline, loadCount, quickActions, onQuickAction, onViewFullLog }: Props) {
+  const recent = [...timeline].reverse().slice(0, RECENT_COUNT)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', height: '100%' }}>
       <div>
@@ -58,7 +50,7 @@ export default function RightRail({ timeline, loadCount, quickActions, onQuickAc
           {timeline.length === 0 && (
             <div style={{ fontSize: '.8rem', color: 'var(--faint)', padding: '1rem 0' }}>No events yet today.</div>
           )}
-          {[...timeline].reverse().map(entry => (
+          {recent.map(entry => (
             <div key={entry.id} style={{
               display: 'flex', alignItems: 'center', gap: 8, padding: '.5rem .6rem',
               borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)',
@@ -75,12 +67,24 @@ export default function RightRail({ timeline, loadCount, quickActions, onQuickAc
             </div>
           ))}
         </div>
+        {timeline.length > 0 && (
+          <button
+            onClick={onViewFullLog}
+            style={{
+              marginTop: 8, padding: '.5rem', borderRadius: 8, background: 'var(--surface-2)',
+              border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.76rem', fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            View Full Log ({timeline.length})
+          </button>
+        )}
       </div>
     </div>
   )
 }
 
-function fmtTime(iso: string): string {
+export function fmtTime(iso: string): string {
   try {
     return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
   } catch { return iso }
