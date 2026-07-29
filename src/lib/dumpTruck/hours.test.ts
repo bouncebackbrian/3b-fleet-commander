@@ -151,6 +151,23 @@ describe('buildDailyHoursRow', () => {
     expect(row.exceptionStatus).toBe('correction_requested')
     expect(row.totalShiftHours).toBe(2) // clocked in but not out — uses `now`
   })
+
+  it('adds manual yard-travel minutes to total hours without touching clock times', () => {
+    const row = buildDailyHoursRow({
+      workDate: '2026-07-27', shiftId: 's', shiftState: 'submitted',
+      clockInAt: '2026-07-27T06:00:00Z', clockOutAt: '2026-07-27T14:00:00Z', // 8 hours clocked
+      events: [], driveSecondsByCategory: { empty: 0, loaded: 0, yard_transfer: 0, fuel: 0, maintenance: 0, other: 0 },
+      custodySeconds: 0, truckUnit: null, trailerUnit: null,
+      jobNumbers: [], customerNames: [], brokerNames: [],
+      loadsCompleted: 0, quantityHauled: 0, startOdometer: null, endOdometer: null,
+      hasOpenCorrectionRequest: false, payPolicy: DEFAULT_PAY_POLICY,
+      manualStartTravelMinutes: 15, manualEndTravelMinutes: 30,
+    })
+    expect(row.clockInAt).toBe('2026-07-27T06:00:00Z')
+    expect(row.clockOutAt).toBe('2026-07-27T14:00:00Z')
+    expect(row.manualYardTravelHours).toBe(0.75) // 45 min
+    expect(row.totalShiftHours).toBe(8.75)
+  })
 })
 
 describe('buildRangeSummary', () => {
@@ -163,6 +180,7 @@ describe('buildRangeSummary', () => {
       pretripHours: 0, posttripHours: 0, onDutyNotDrivingHours: 0,
       loadingWaitingHours: 0, unloadingWaitingHours: 0, fuelingHours: 0, delayHours: 0,
       unpaidBreakHours: 0, paidBreakHours: 0, doubleTimeHours: 0, hourlyEstimatedEarnings: 0,
+      manualYardTravelHours: 0,
     }
     const rows = [
       { ...base, workDate: '2026-07-27', shiftId: 's1', totalShiftHours: 10, regularHours: 8, overtimeHours: 2, emptyDrivingHours: 1, loadedDrivingHours: 2, vehicleCustodyHours: 9, loadsCompleted: 4, quantityHauled: 80, startOdometer: null, endOdometer: null, shiftMiles: 120, estimatedGrossEarnings: 352 },

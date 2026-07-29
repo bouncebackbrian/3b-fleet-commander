@@ -42,6 +42,7 @@ export function buildDetailCsv(rows: DailyHoursRow[], meta: ExportMeta): string 
     { header: 'Fueling Hours', value: r => r.fuelingHours },
     { header: 'Delay Hours', value: r => r.delayHours },
     { header: 'Vehicle Custody Hours', value: r => r.vehicleCustodyHours },
+    { header: 'Manual Yard Travel Hours (Driver-Entered, Not GPS-Measured)', value: r => r.manualYardTravelHours },
     { header: 'Truck/Unit', value: r => r.truckUnit ?? '' },
     { header: 'Trailer', value: r => r.trailerUnit ?? '' },
     { header: 'Jobs Worked', value: r => r.jobsWorked },

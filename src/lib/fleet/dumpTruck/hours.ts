@@ -33,7 +33,7 @@ export async function buildDriverHoursForRange(
 
   const { data: shifts, error: shiftsError } = await fleetServiceClient
     .from('fleet_dt_shifts')
-    .select('id, state, clock_in_at, clock_out_at, truck_id, trailer_id')
+    .select('id, state, clock_in_at, clock_out_at, truck_id, trailer_id, manual_start_travel_minutes, manual_end_travel_minutes')
     .eq('business_id', businessId)
     .eq('driver_id', driverId)
     .gte('clock_in_at', `${range.start}T00:00:00Z`)
@@ -120,6 +120,8 @@ export async function buildDriverHoursForRange(
       endOdometer,
       hasOpenCorrectionRequest: events.some(e => e.eventType === 'correction_requested'),
       payPolicy,
+      manualStartTravelMinutes: shift.manual_start_travel_minutes,
+      manualEndTravelMinutes: shift.manual_end_travel_minutes,
     })
   })
 

@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
       startYardSiteId: body.startYardSiteId ?? null,
       deviceId: body.deviceId,
       deviceTimezone: body.deviceTimezone ?? null,
+      manualStartTravelMinutes: body.manualStartTravelMinutes ?? null,
       clockInEvent: body.clockInEvent,
     })
     return NextResponse.json(result, { status: 201 })

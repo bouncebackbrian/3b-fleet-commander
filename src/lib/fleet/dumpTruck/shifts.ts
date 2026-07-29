@@ -46,6 +46,9 @@ export interface ClockInInput {
   startYardSiteId?: string | null
   deviceId: string
   deviceTimezone?: string | null
+  /** Manual driver-entered yard-to-first-stop travel time (minutes) — added
+   *  to total hours; see docs/DUMP_TRUCK_MODE.md manual yard-travel entry. */
+  manualStartTravelMinutes?: number | null
   clockInEvent: Omit<RecordEventInput, 'shiftId' | 'eventType'>
 }
 
@@ -77,6 +80,7 @@ export async function clockIn(
       start_yard_site_id: input.startYardSiteId ?? null,
       device_id: input.deviceId,
       device_timezone: input.deviceTimezone ?? null,
+      manual_start_travel_minutes: input.manualStartTravelMinutes ?? null,
       state: 'draft',
     })
     .select('*')
@@ -113,6 +117,9 @@ export async function submitShift(
   driverId: string,
   email: string | null,
   eventInput: Omit<RecordEventInput, 'shiftId' | 'eventType'>,
+  /** Manual driver-entered last-stop-to-yard travel time (minutes) — added
+   *  to total hours; see docs/DUMP_TRUCK_MODE.md manual yard-travel entry. */
+  manualEndTravelMinutes?: number | null,
 ): Promise<DumpTruckShift> {
   const shift = await getShiftById(shiftId)
   if (!shift || shift.driverId !== driverId) throw new DumpTruckError('Shift not found', 404)
@@ -124,7 +131,11 @@ export async function submitShift(
 
   const { error } = await fleetServiceClient
     .from('fleet_dt_shifts')
-    .update({ submitted_at: new Date().toISOString(), submitted_by: driverId })
+    .update({
+      submitted_at: new Date().toISOString(),
+      submitted_by: driverId,
+      manual_end_travel_minutes: manualEndTravelMinutes ?? null,
+    })
     .eq('id', shiftId)
   if (error) throw error
   await syncShiftState(shiftId)

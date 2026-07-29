@@ -173,6 +173,7 @@ export function useDumpTruckDriver() {
 
   const clockIn = useCallback(async (input: {
     truckId: string; trailerId?: string | null; startYardSiteId?: string | null
+    manualStartTravelMinutes?: number | null
   }): Promise<boolean> => {
     if (!isOnline) { toast.error('Clock-in requires a connection'); return false }
     try {
@@ -202,7 +203,7 @@ export function useDumpTruckDriver() {
     }
   }, [isOnline, fetchContext])
 
-  const submitDay = useCallback(async (): Promise<boolean> => {
+  const submitDay = useCallback(async (manualEndTravelMinutes?: number | null): Promise<boolean> => {
     if (!context?.shift) return false
     if (!isOnline) { toast.error('Submitting requires a connection'); return false }
     try {
@@ -217,6 +218,7 @@ export function useDumpTruckDriver() {
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, utcOffsetMinutes: -now.getTimezoneOffset(),
             geo,
           },
+          manualEndTravelMinutes: manualEndTravelMinutes ?? null,
         }),
       })
       if (!res.ok) {

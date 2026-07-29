@@ -7,7 +7,10 @@ import type { EquipmentOption } from '@/lib/fleet/dumpTruck/equipment'
 interface Props {
   sites: DumpTruckSite[]
   onClose: () => void
-  onConfirm: (input: { truckId: string; trailerId: string | null; startYardSiteId: string | null }) => Promise<boolean>
+  onConfirm: (input: {
+    truckId: string; trailerId: string | null; startYardSiteId: string | null
+    manualStartTravelMinutes: number | null
+  }) => Promise<boolean>
 }
 
 export default function ClockInSheet({ sites, onClose, onConfirm }: Props) {
@@ -15,6 +18,7 @@ export default function ClockInSheet({ sites, onClose, onConfirm }: Props) {
   const [truckId, setTruckId] = useState('')
   const [trailerId, setTrailerId] = useState('')
   const [yardSiteId, setYardSiteId] = useState('')
+  const [startTravelMinutes, setStartTravelMinutes] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -51,12 +55,26 @@ export default function ClockInSheet({ sites, onClose, onConfirm }: Props) {
           </Field>
         )}
 
+        <Field label="Yard to First Stop — Drive Time (minutes, optional)">
+          <input
+            style={inputStyle} type="number" inputMode="numeric" min="0" placeholder="e.g. 15"
+            value={startTravelMinutes} onChange={e => setStartTravelMinutes(e.target.value)}
+          />
+          <div style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
+            Only fill this in if you won&apos;t be tapping Depart Yard / Arrived Pickup for this drive — it gets
+            added straight to today&apos;s total hours.
+          </div>
+        </Field>
+
         <button
           style={{ ...primaryBtnStyle, opacity: truckId && !busy ? 1 : .5 }}
           disabled={!truckId || busy}
           onClick={async () => {
             setBusy(true)
-            const ok = await onConfirm({ truckId, trailerId: trailerId || null, startYardSiteId: yardSiteId || null })
+            const ok = await onConfirm({
+              truckId, trailerId: trailerId || null, startYardSiteId: yardSiteId || null,
+              manualStartTravelMinutes: startTravelMinutes ? Number(startTravelMinutes) : null,
+            })
             setBusy(false)
             if (ok) onClose()
           }}

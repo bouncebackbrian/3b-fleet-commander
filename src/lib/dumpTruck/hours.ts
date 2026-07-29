@@ -168,6 +168,11 @@ export interface DailyHoursRowInput {
   endOdometer: number | null
   hasOpenCorrectionRequest: boolean
   payPolicy: PayPolicy
+  /** Manual yard<->first/last-stop travel time (spec: driver-entered, since
+   *  no Maps routing API is configured yet) — added to totalShiftHours on
+   *  top of the clocked duration, never used to edit clockInAt/clockOutAt. */
+  manualStartTravelMinutes?: number | null
+  manualEndTravelMinutes?: number | null
   now?: Date
 }
 
@@ -192,6 +197,7 @@ export interface DailyHoursRow {
   unpaidBreakHours: number
   paidBreakHours: number
   vehicleCustodyHours: number
+  manualYardTravelHours: number
   truckUnit: string | null
   trailerUnit: string | null
   jobsWorked: string
@@ -212,9 +218,13 @@ export interface DailyHoursRow {
 
 export function buildDailyHoursRow(input: DailyHoursRowInput): DailyHoursRow {
   const now = input.now ?? new Date()
-  const totalShiftHours = input.clockInAt
+  const clockedHours = input.clockInAt
     ? round2((new Date(input.clockOutAt ?? now.toISOString()).getTime() - new Date(input.clockInAt).getTime()) / MS_PER_HOUR)
     : 0
+  const manualYardTravelHours = round2(
+    ((input.manualStartTravelMinutes ?? 0) + (input.manualEndTravelMinutes ?? 0)) / 60,
+  )
+  const totalShiftHours = round2(clockedHours + manualYardTravelHours)
 
   const split = splitRegularOvertime(totalShiftHours, input.payPolicy.dailyOtThresholdHours)
   const cat = buildCategoryTimeFromEvents(input.events)
@@ -256,6 +266,7 @@ export function buildDailyHoursRow(input: DailyHoursRowInput): DailyHoursRow {
     unpaidBreakHours: round2(cat.breakSeconds / 3600),
     paidBreakHours: 0,
     vehicleCustodyHours: round2(input.custodySeconds / 3600),
+    manualYardTravelHours,
     truckUnit: input.truckUnit,
     trailerUnit: input.trailerUnit,
     jobsWorked: [...new Set(input.jobNumbers)].join('; '),

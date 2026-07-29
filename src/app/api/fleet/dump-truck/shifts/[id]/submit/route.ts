@@ -20,7 +20,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'event.id and idempotencyKey are required' }, { status: 400 })
     }
 
-    const shift = await submitShift(id, auth.businessId, auth.userId, auth.email, body.event)
+    const manualEndTravelMinutes = typeof body.manualEndTravelMinutes === 'number' ? body.manualEndTravelMinutes : null
+    const shift = await submitShift(id, auth.businessId, auth.userId, auth.email, body.event, manualEndTravelMinutes)
     return NextResponse.json({ shift })
   } catch (err) {
     if (err instanceof DumpTruckError) return NextResponse.json({ error: err.message }, { status: err.status })
