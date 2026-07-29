@@ -336,6 +336,52 @@ unfinished" applies here — being explicit, and updated for Phase 3:
   fire `correction_requested` (now fireable on closed shifts too, and
   surfaced with a request form on `/driver/hours`); there is still no screen
   for dispatch/admin to review it and write a `fleet_dt_corrections` row.
+
+### 7.1 Requested end-to-end driver/dispatch flow (2026-07-29, not built)
+
+The intended full flow, as described by the person running the live trial —
+recorded precisely so a future session has a real spec instead of
+re-deriving it. Status of each piece as of tonight:
+
+1. **Driver logs in and reviews today's assigned job** — pickup/dump site,
+   material — as a step *before* clocking in. **Partially there**: this
+   info already renders in the driver cockpit's left rail whenever a job is
+   assigned, clocked in or not. **Missing**: there is no discrete "confirm
+   today's order" screen/acknowledgment gate — it's ambient info, not a
+   step the driver affirmatively confirms.
+2. **Clock In** — first mandatory step, timestamps arrival. **Built.**
+3. **Pre-trip inspection** — safety-critical/OOS defects block progress;
+   anything else does not. **Built.**
+4. **On a clean (or acceptably-defected) pre-trip, it gets sent to
+   admin/dispatch and the day starts.** **Not built.** Completing a
+   pre-trip today just writes rows to `fleet_dt_inspections`/
+   `fleet_dt_defects` — nothing notifies anyone, and there is no
+   dispatcher-facing screen to see it even on request.
+5. **Dispatch/admin, when creating a job's pickup/dump sites, capture as
+   much address/notes detail as possible, and Google Maps / Apple Maps /
+   Trucker Path launch links auto-generate from that address for the
+   driver.** **Already built** (Phase 1 `src/lib/dumpTruck/navigation.ts` +
+   `NavigateSheet`) — works today from whatever address or coordinates a
+   site has on file; no new work needed here. (Live example of the gap this
+   closes: the "3D Dayton" pickup site had only a name on file with no
+   address, so Navigate produced nothing for it — fixed tonight using the
+   real address off a Dayton Materials scale ticket photo, `20 Ricci Road,
+   Dayton, NV 89403`.)
+6. **End-of-shift post-trip report, with documentation attachable, sent to
+   admin/business/dispatch.** **Partially there**: post-trip inspection
+   (photos, defects, notes) and Submit Day already exist and write real
+   rows. **Missing**: same gap as #4 — nothing notifies anyone, and there's
+   no admin screen to review a submitted day's post-trip report.
+
+**The real remaining gap across #4 and #6 is one piece of missing
+infrastructure, not two**: a notification channel (email/SMS/push/Teams —
+undecided) plus an actual dispatcher/admin review screen for pre-trip and
+post-trip reports. Both already have real data sitting in
+`fleet_dt_inspections`/`fleet_dt_defects`/`fleet_dt_shifts` waiting to be
+surfaced — this is a "build the screen and the notify step," not a data
+model problem. Deliberately not started tonight (very late in a long live
+session, and it needs real product decisions — which channel, who receives
+it, what the review screen looks like — rather than being guessed at).
   The table and RLS policy exist and are ready for that screen.
 
 **New in Phase 3, scoped down from the full spec — read this before treating
