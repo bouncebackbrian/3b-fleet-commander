@@ -32,6 +32,17 @@ export type BusinessType = 'owner_op' | 'carrier' | 'brokerage' | 'fleet_managem
 export type MemberRole = 'owner' | 'driver' | 'dispatcher' | 'admin' | 'broker' | 'fleet_manager'
 
 /**
+ * Portal (2026-07-29): the real, authoritative, multi-valued authorization
+ * grant — a member can hold any combination of driver/dispatch/broker/admin,
+ * each at view or manage level. `role` above is kept for display only
+ * (e.g. Settings team list); UI gating should use `portals` instead.
+ * Mirrors Portal/PermissionLevel in src/lib/fleet-auth-guard.ts (server side).
+ */
+export type Portal = 'driver' | 'dispatch' | 'broker' | 'admin'
+export type PermissionLevel = 'view' | 'manage'
+export type PortalGrants = Partial<Record<Portal, PermissionLevel>>
+
+/**
  * FleetUser — the resolved identity of the current user.
  * Includes their role within their primary business context.
  */
@@ -42,6 +53,8 @@ export interface FleetUser {
   businessSlug?:  string | null   // e.g. 'star-freight-services'
   businessType?:  BusinessType | null
   role?:          MemberRole | null
+  /** Real per-portal grants — drives nav + client-side gating. See Portal note above. */
+  portals:        PortalGrants
   /** Derived: true when owner on an owner_op business → sees driver + dispatcher views */
   isOwnerOp:      boolean
   /** Derived: effective display mode for UI routing */
@@ -109,14 +122,28 @@ export async function getCurrentUser(): Promise<FleetUser | null> {
     const biz          = membership?.businesses as unknown as { type?: string; slug?: string } | null
     const businessType = (biz?.type ?? null) as BusinessType | null
     const businessSlug = biz?.slug ?? null
+    const businessId   = membership?.business_id ?? null
+
+    const portals: PortalGrants = {}
+    if (businessId) {
+      const { data: grantRows } = await createFleetClient()
+        .from('fleet_member_portal_grants')
+        .select('portal, permission_level')
+        .eq('business_id', businessId)
+        .eq('user_id', user.id)
+      for (const g of grantRows ?? []) {
+        portals[g.portal as Portal] = g.permission_level as PermissionLevel
+      }
+    }
 
     return {
       id:            user.id,
       email:         user.email ?? null,
-      businessId:    membership?.business_id ?? null,
+      businessId,
       businessSlug,
       businessType,
       role,
+      portals,
       isOwnerOp:     role === 'owner' && businessType === 'owner_op',
       displayMode:   deriveDisplayMode(role, businessType),
     }

@@ -1,23 +1,24 @@
 'use client'
 /**
- * BottomNav — Role-aware bottom navigation.
+ * BottomNav — Portal-aware bottom navigation.
  *
- * Reads userMode from localStorage ('3b-user-mode') and renders
- * only the tabs configured for that mode. Listens for '3b-mode-changed'
- * custom event so switching modes in Settings updates the nav instantly.
- *
- * Falls back to owner_operator tabs if no mode is stored.
+ * Reads the member's real portal grants (via getCurrentUser()) and the
+ * focus mode from localStorage ('3b-user-mode'), then renders only the
+ * tabs the member's actual grants allow — see userMode.ts for why this
+ * replaced a decoupled, self-selectable localStorage-only mode.
  */
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { readUserMode, getTabsForMode, type UserMode } from '@/lib/userMode'
+import { readUserMode, writeUserMode, getTabsForMode, getDefaultMode, getAvailableModes, type UserMode } from '@/lib/userMode'
+import { getCurrentUser, type Portal, type PortalGrants } from '@/lib/auth-adapter'
 
 const TAB_ICONS: Record<string, string> = {
   '/dashboard':  '🚛',
   '/trips':      '🗺️',
   '/dispatch':   '📋',
   '/loads':      '📦',
+  '/broker':     '📦',
   '/vault':      '🗄️',
   '/trailer':    '🚚',
   '/expenses':   '💰',
@@ -27,23 +28,40 @@ const TAB_ICONS: Record<string, string> = {
 
 export default function BottomNav() {
   const path = usePathname()
-  const [mode, setMode] = useState<UserMode>('owner_operator')
+  const [portals, setPortals] = useState<PortalGrants>({})
+  const [mode, setMode] = useState<UserMode | null>(null)
 
   useEffect(() => {
-    // Read initial mode
-    const stored = readUserMode()
-    if (stored) setMode(stored)
+    let cancelled = false
 
-    // Listen for mode changes from UserModeSelectorSheet
+    async function init() {
+      const user = await getCurrentUser()
+      if (cancelled) return
+      const grants = user?.portals ?? {}
+      setPortals(grants)
+
+      const available = getAvailableModes(grants)
+      const stored = readUserMode()
+      // Fall back to a real default if the stored mode is stale (e.g. a
+      // revoked portal, or leftover from the old unconstrained system).
+      const resolved = stored && available.includes(stored) ? stored : getDefaultMode(grants)
+      setMode(resolved)
+      if (resolved && resolved !== stored) writeUserMode(resolved)
+    }
+    init()
+
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<UserMode>).detail
       if (detail) setMode(detail)
     }
     window.addEventListener('3b-mode-changed', handler)
-    return () => window.removeEventListener('3b-mode-changed', handler)
+    return () => { cancelled = true; window.removeEventListener('3b-mode-changed', handler) }
   }, [])
 
-  const tabs = getTabsForMode(mode)
+  if (!mode) return null
+
+  const grantedPortals = Object.keys(portals) as Portal[]
+  const tabs = getTabsForMode(mode, grantedPortals)
 
   return (
     <nav

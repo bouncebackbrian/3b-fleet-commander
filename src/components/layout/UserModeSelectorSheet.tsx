@@ -1,15 +1,18 @@
 'use client'
 /**
- * UserModeSelectorSheet — Role picker bottom sheet.
+ * UserModeSelectorSheet — Portal focus picker bottom sheet.
  *
  * Shown on first launch (when no mode stored) and from Settings / TopBar.
+ * Options are constrained to the portals the member actually holds (see
+ * userMode.ts) — no more self-selecting into a portal you weren't granted.
  * Writes to localStorage + fires '3b-mode-changed' event → BottomNav re-renders.
  *
  * Usage:
  *   <UserModeSelectorSheet open={show} onClose={() => setShow(false)} />
  */
-import { useState } from 'react'
-import { MODE_CONFIG, writeUserMode, readUserMode, getTabsForMode, type UserMode } from '@/lib/userMode'
+import { useState, useEffect } from 'react'
+import { MODE_CONFIG, writeUserMode, readUserMode, getTabsForMode, getAvailableModes, getDefaultMode, type UserMode } from '@/lib/userMode'
+import { getCurrentUser, type Portal, type PortalGrants } from '@/lib/auth-adapter'
 
 interface Props {
   open:      boolean
@@ -17,15 +20,48 @@ interface Props {
   isFirstRun?: boolean   // hides close button, forces selection
 }
 
-const MODES: UserMode[] = ['driver', 'owner_operator', 'dispatcher', 'fleet_admin']
-
 export default function UserModeSelectorSheet({ open, onClose, isFirstRun = false }: Props) {
-  const [selected, setSelected] = useState<UserMode>(readUserMode() ?? 'owner_operator')
+  const [portals, setPortals] = useState<PortalGrants>({})
+  const [modes, setModes] = useState<UserMode[]>([])
+  const [selected, setSelected] = useState<UserMode | null>(null)
   const [saving,   setSaving]   = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    getCurrentUser().then(user => {
+      if (cancelled) return
+      const grants = user?.portals ?? {}
+      setPortals(grants)
+      const available = getAvailableModes(grants)
+      setModes(available)
+      const stored = readUserMode()
+      setSelected(stored && available.includes(stored) ? stored : getDefaultMode(grants))
+    })
+    return () => { cancelled = true }
+  }, [open])
 
   if (!open) return null
 
+  if (modes.length === 0) {
+    return (
+      <>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,.7)' }} />
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 301,
+          background: 'var(--surface)', borderRadius: '24px 24px 0 0', padding: '1.5rem',
+        }}>
+          <div style={{ fontWeight: 900, fontSize: '1.05rem', marginBottom: 6 }}>No portals granted yet</div>
+          <div style={{ fontSize: '.8rem', color: 'var(--muted)' }}>
+            Ask your business owner or admin to grant you access in Settings → Team.
+          </div>
+        </div>
+      </>
+    )
+  }
+
   function handleSave() {
+    if (!selected) return
     setSaving(true)
     writeUserMode(selected)
     setTimeout(() => {
@@ -34,8 +70,9 @@ export default function UserModeSelectorSheet({ open, onClose, isFirstRun = fals
     }, 300)
   }
 
-  const current = MODE_CONFIG[selected]
-  const tabs    = getTabsForMode(selected)
+  const current = selected ? MODE_CONFIG[selected] : null
+  const grantedPortals = Object.keys(portals) as Portal[]
+  const tabs = selected ? getTabsForMode(selected, grantedPortals) : []
 
   return (
     <>
@@ -72,7 +109,7 @@ export default function UserModeSelectorSheet({ open, onClose, isFirstRun = fals
               3B Fleet Commander
             </div>
             <div style={{ fontSize: '.74rem', color: 'var(--muted)', marginTop: 2 }}>
-              {isFirstRun ? 'Select your command role to get started' : 'Switch command role'}
+              {isFirstRun ? 'Select your focus to get started' : 'Switch focus'}
             </div>
           </div>
           {!isFirstRun && (
@@ -87,7 +124,7 @@ export default function UserModeSelectorSheet({ open, onClose, isFirstRun = fals
         <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.1rem' }}>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {MODES.map(mode => {
+            {modes.map(mode => {
               const cfg = MODE_CONFIG[mode]
               const sel = selected === mode
               return (
@@ -148,37 +185,39 @@ export default function UserModeSelectorSheet({ open, onClose, isFirstRun = fals
           </div>
 
           {/* Tab preview */}
-          <div style={{
-            marginTop: 16, padding: '.75rem 1rem',
-            borderRadius: 14, border: '1px solid var(--border)',
-            background: 'var(--surface-2)',
-          }}>
+          {current && (
             <div style={{
-              fontSize: '.65rem', fontWeight: 900, color: 'var(--muted)',
-              textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8,
+              marginTop: 16, padding: '.75rem 1rem',
+              borderRadius: 14, border: '1px solid var(--border)',
+              background: 'var(--surface-2)',
             }}>
-              Your tabs in {current.label} mode
+              <div style={{
+                fontSize: '.65rem', fontWeight: 900, color: 'var(--muted)',
+                textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 8,
+              }}>
+                Your tabs in {current.label} focus
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {tabs.map(tab => (
+                  <div key={tab.href} style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    padding: '.3rem .7rem', borderRadius: 20,
+                    background: 'var(--surface)', border: `1px solid ${current.color}40`,
+                    fontSize: '.78rem', fontWeight: 700, color: 'var(--text)',
+                  }}>
+                    <span>{tab.emoji}</span>
+                    <span>{tab.label}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{
+                marginTop: 8, fontSize: '.68rem', color: 'var(--faint)',
+                fontStyle: 'italic',
+              }}>
+                All data is shared — switching focus doesn&apos;t delete anything.
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {tabs.map(tab => (
-                <div key={tab.href} style={{
-                  display: 'flex', alignItems: 'center', gap: 5,
-                  padding: '.3rem .7rem', borderRadius: 20,
-                  background: 'var(--surface)', border: `1px solid ${current.color}40`,
-                  fontSize: '.78rem', fontWeight: 700, color: 'var(--text)',
-                }}>
-                  <span>{tab.emoji}</span>
-                  <span>{tab.label}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{
-              marginTop: 8, fontSize: '.68rem', color: 'var(--faint)',
-              fontStyle: 'italic',
-            }}>
-              All data is shared — switching modes doesn't delete anything.
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -188,18 +227,18 @@ export default function UserModeSelectorSheet({ open, onClose, isFirstRun = fals
         }}>
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || !selected}
             style={{
               width: '100%', padding: '1rem', borderRadius: 14, border: 'none',
-              background: current.color === 'var(--primary)' ? 'var(--primary)' : current.color,
+              background: current ? (current.color === 'var(--primary)' ? 'var(--primary)' : current.color) : 'var(--surface-2)',
               color: '#000', fontWeight: 900, fontSize: '1rem',
               cursor: saving ? 'default' : 'pointer',
               opacity: saving ? .7 : 1, transition: 'all .2s',
             }}
           >
             {saving ? 'Saving…' : isFirstRun
-              ? `Launch as ${current.label} ${current.emoji}`
-              : `Switch to ${current.label} ${current.emoji}`}
+              ? `Launch as ${current?.label} ${current?.emoji ?? ''}`
+              : `Switch to ${current?.label} ${current?.emoji ?? ''}`}
           </button>
           {!isFirstRun && (
             <div style={{ textAlign: 'center', marginTop: 8, fontSize: '.7rem', color: 'var(--faint)' }}>

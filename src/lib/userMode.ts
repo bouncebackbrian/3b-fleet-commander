@@ -1,18 +1,29 @@
 'use client'
 /**
- * userMode.ts — Role-based command system
+ * userMode.ts — Portal-based nav (2026-07-29)
  *
- * Controls which tabs appear in BottomNav and which features are prominent.
- * Stored in localStorage. Changeable from Settings or first-launch selector.
+ * Controls which tabs appear in BottomNav. Previously a free client-side
+ * localStorage toggle (driver|owner_operator|dispatcher|fleet_admin) totally
+ * decoupled from real permissions — a driver-role member could self-select
+ * "fleet_admin" locally and see admin tabs (server-side writes still 403'd,
+ * so not a security hole, just confusing/wrong). Now the mode is a "focus"
+ * UI preference constrained to portals the member actually holds — see
+ * fleet_member_portal_grants / src/lib/fleet-auth-guard.ts (server) and
+ * FleetUser.portals / src/lib/auth-adapter.ts (client) for the real grants.
  *
- * Modes:
- *   driver         — Cab + Route + Log (lean, driving-safe)
- *   owner_operator — All tabs: Cab + Dispatch + Route + Owner + Compliance
- *   dispatcher     — Dispatch + Loads + Route + Monitor
- *   fleet_admin    — Full access: all 5 tabs
+ * 'all' is a pseudo-mode offered whenever a member holds 2+ portals — shows
+ * the union of tabs across every portal they're granted, same idea as the
+ * old owner_operator/fleet_admin "everything" modes.
+ *
+ * Note: src/config/navConfig.ts is an earlier, unused draft of a
+ * next-gen nav system (keyed on a different DisplayMode enum). It was never
+ * wired into BottomNav — this file remains the live system. Worth
+ * reconciling/removing in a future pass, out of scope here.
  */
 
-export type UserMode = 'driver' | 'owner_operator' | 'dispatcher' | 'fleet_admin'
+import type { Portal, PortalGrants } from './auth-adapter'
+
+export type UserMode = Portal | 'all'
 
 export interface ModeConfig {
   id:          UserMode
@@ -26,34 +37,42 @@ export interface ModeConfig {
 export const MODE_CONFIG: Record<UserMode, ModeConfig> = {
   driver: {
     id:          'driver',
-    label:       'Driver Only',
+    label:       'Driver',
     emoji:       '🚛',
     tagline:     'Cab Mode — lean, driving-safe',
     description: 'Route, HOS, quick actions, incident log. Everything you need on the road — nothing extra.',
     color:       'var(--primary)',
   },
-  owner_operator: {
-    id:          'owner_operator',
-    label:       'Owner-Operator',
-    emoji:       '⚙️',
-    tagline:     'Multi-role: Driver + Dispatch + Owner',
-    description: 'Full access: drive, dispatch your own loads, track profit, manage compliance. Built for solo operators.',
-    color:       '#60c8ff',
-  },
-  dispatcher: {
-    id:          'dispatcher',
-    label:       'Dispatcher',
-    emoji:       '📋',
+  dispatch: {
+    id:          'dispatch',
+    label:       'Dispatch',
+    emoji:       '📡',
     tagline:     'Build + Send — load planning command',
     description: 'Build load packets, assign drivers, track active loads, manage documents and compliance requirements.',
     color:       '#c890ff',
   },
-  fleet_admin: {
-    id:          'fleet_admin',
-    label:       'Fleet Admin',
-    emoji:       '🏢',
-    tagline:     'Full fleet command — all modules',
-    description: 'All commands active: driver execution, dispatch, owner financials, compliance intelligence.',
+  broker: {
+    id:          'broker',
+    label:       'Broker',
+    emoji:       '📦',
+    tagline:     'Load & rate desk',
+    description: 'Broker-relevant jobs, rates, and load status.',
+    color:       '#60c8ff',
+  },
+  admin: {
+    id:          'admin',
+    label:       'Admin',
+    emoji:       '⚙️',
+    tagline:     'Full company command',
+    description: 'Company setup — sites, jobs, pay policy, team, and fleet-wide reporting.',
+    color:       '#ffd060',
+  },
+  all: {
+    id:          'all',
+    label:       'All Portals',
+    emoji:       '🗝️',
+    tagline:     'Everything you have access to',
+    description: 'Combined view across every portal you hold — nothing hidden.',
     color:       '#ffd060',
   },
 }
@@ -73,6 +92,7 @@ const ALL_TABS: NavTab[] = [
   { href: '/trips',       label: 'Route',       emoji: '🗺️', command: 'Dispatch'   },
   { href: '/dispatch',    label: 'Dispatch',    emoji: '📋', command: 'Dispatch'    },
   { href: '/loads',       label: 'Loads',       emoji: '📦', command: 'Dispatch'    },
+  { href: '/broker',      label: 'Broker',      emoji: '📦', command: 'Broker'      },
   { href: '/vault',       label: 'Vault',       emoji: '🗄️', command: 'Compliance'  },
   { href: '/trailer',     label: 'Trailer',     emoji: '🚚', command: 'Inspection'  },
   { href: '/expenses',    label: 'Owner',       emoji: '💰', command: 'Owner'       },
@@ -81,25 +101,59 @@ const ALL_TABS: NavTab[] = [
   { href: '/driver/dump-truck', label: 'Dump Truck', emoji: '🏗️', command: 'Dump Truck' },
   { href: '/driver/hours',      label: 'My Hours',   emoji: '⏱️', command: 'Dump Truck' },
   { href: '/admin/dump-truck',  label: 'DT Setup',   emoji: '🧭', command: 'Dump Truck' },
+  { href: '/account',     label: 'Team',        emoji: '👥', command: 'System'      },
   { href: '/settings',    label: 'Settings',    emoji: '⚙️', command: 'System'      },
 ]
 
-// Which tabs each mode sees (ordered for display)
-// Vault is the proof/document layer. Trailer is the operational inspection layer.
-// driver mode swaps Owner (expenses) for Trailer Intel — more relevant on the road.
-const MODE_TAB_HREFS: Record<UserMode, string[]> = {
-  driver:         ['/dashboard', '/trips', '/driver/dump-truck', '/driver/hours', '/trailer', '/maintenance', '/compliance', '/vault'],
-  owner_operator: ['/dashboard', '/dispatch', '/trips', '/driver/dump-truck', '/driver/hours', '/admin/dump-truck', '/maintenance', '/compliance', '/vault'],
-  dispatcher:     ['/dispatch', '/loads', '/trips', '/admin/dump-truck', '/maintenance', '/compliance', '/vault'],
-  fleet_admin:    ['/dashboard', '/dispatch', '/trips', '/admin/dump-truck', '/maintenance', '/compliance', '/trailer', '/vault'],
+// Which tabs each portal grants (ordered for display).
+const PORTAL_TAB_HREFS: Record<Portal, string[]> = {
+  driver:   ['/dashboard', '/trips', '/driver/dump-truck', '/driver/hours', '/trailer', '/maintenance', '/compliance', '/vault'],
+  dispatch: ['/dispatch', '/loads', '/trips', '/admin/dump-truck', '/maintenance', '/compliance', '/vault'],
+  broker:   ['/broker', '/loads', '/vault'],
+  admin:    ['/dashboard', '/admin/dump-truck', '/account', '/maintenance', '/compliance', '/settings'],
 }
 
-export function getTabsForMode(mode: UserMode): NavTab[] {
-  const hrefs = MODE_TAB_HREFS[mode]
-  return hrefs.map(h => ALL_TABS.find(t => t.href === h)!).filter(Boolean)
+function tabsForHrefs(hrefs: string[]): NavTab[] {
+  return hrefs.map(h => ALL_TABS.find(t => t.href === h)).filter((t): t is NavTab => !!t)
+}
+
+/** Union of tabs across every portal in the list, de-duplicated, in portal order. */
+export function getTabsForPortals(portals: Portal[]): NavTab[] {
+  const seen = new Set<string>()
+  const ordered: NavTab[] = []
+  for (const p of portals) {
+    for (const tab of tabsForHrefs(PORTAL_TAB_HREFS[p] ?? [])) {
+      if (!seen.has(tab.href)) { seen.add(tab.href); ordered.push(tab) }
+    }
+  }
+  return ordered
+}
+
+/** Tabs for the current focus mode, given the portals the member actually holds. */
+export function getTabsForMode(mode: UserMode, grantedPortals: Portal[]): NavTab[] {
+  if (mode === 'all') return getTabsForPortals(grantedPortals)
+  return getTabsForPortals(grantedPortals.includes(mode) ? [mode] : [])
+}
+
+/** Which modes a member may select, given their real portal grants. */
+export function getAvailableModes(portals: PortalGrants): UserMode[] {
+  const granted = Object.keys(portals) as Portal[]
+  const modes: UserMode[] = [...granted]
+  if (granted.length > 1) modes.push('all')
+  return modes
+}
+
+/** Best default mode: 'all' if 2+ portals, else the single portal, else null (no access yet). */
+export function getDefaultMode(portals: PortalGrants): UserMode | null {
+  const available = getAvailableModes(portals)
+  if (available.includes('all')) return 'all'
+  return available[0] ?? null
 }
 
 // ── localStorage persistence ──────────────────────────────────────────────────
+// Purely a "which focus am I in right now" UI preference — never the source
+// of truth for what a member is allowed to do. Server-side authorization is
+// always fleet_member_portal_grants, checked independently of this value.
 
 const LS_KEY = '3b-user-mode'
 
