@@ -23,7 +23,7 @@
  */
 
 import { createAuthClient }  from '@/lib/auth-client'       // Core_Eco — identity/session
-import { createFleetClient } from '@/lib/fleet-db-client'   // Fleet DB — membership/fleet data
+import { createFleetClient } from '@/lib/fleet-db-client'   // Fleet DB — membership/fleet data (getUserBusinesses only; see getCurrentUser doc)
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -102,39 +102,28 @@ export async function getCurrentUser(): Promise<FleetUser | null> {
     const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return null
 
-    // Fleet membership → Fleet DB
-    const { data: membership } = await createFleetClient()
-      .from('fleet_business_members')
-      .select(`
-        role,
-        business_id,
-        businesses (
-          slug,
-          type
-        )
-      `)
-      .eq('user_id', user.id)
-      .eq('active', true)
-      .limit(1)
-      .maybeSingle()
-
-    const role         = (membership?.role ?? null) as MemberRole | null
-    const biz          = membership?.businesses as unknown as { type?: string; slug?: string } | null
-    const businessType = (biz?.type ?? null) as BusinessType | null
-    const businessSlug = biz?.slug ?? null
-    const businessId   = membership?.business_id ?? null
-
-    const portals: PortalGrants = {}
-    if (businessId) {
-      const { data: grantRows } = await createFleetClient()
-        .from('fleet_member_portal_grants')
-        .select('portal, permission_level')
-        .eq('business_id', businessId)
-        .eq('user_id', user.id)
-      for (const g of grantRows ?? []) {
-        portals[g.portal as Portal] = g.permission_level as PermissionLevel
+    // Fleet membership + portal grants → via /api/fleet/me (server, service-role).
+    // Querying Fleet DB directly from the browser here (as this used to) can't
+    // work: RLS on fleet_business_members / fleet_member_portal_grants relies
+    // on auth.uid(), but the session above is issued by the separate Core_Eco
+    // Supabase project, so Fleet Postgres's own auth.uid() is always null for
+    // a browser-side call — RLS silently returns zero rows regardless of real
+    // grants. See src/app/api/fleet/me/route.ts doc for the full story.
+    const res = await fetch('/api/fleet/me', { credentials: 'include' })
+    if (!res.ok) return null
+    const { user: fleetUser } = await res.json() as { user: {
+      id: string; email: string | null; businessId: string | null; businessSlug: string | null
+      businessType: BusinessType | null; role: MemberRole | null; portals: PortalGrants
+    } | null }
+    if (!fleetUser) {
+      return {
+        id: user.id, email: user.email ?? null,
+        businessId: null, businessSlug: null, businessType: null, role: null,
+        portals: {}, isOwnerOp: false, displayMode: 'unknown',
       }
     }
+
+    const { businessId, businessSlug, businessType, role, portals } = fleetUser
 
     return {
       id:            user.id,
