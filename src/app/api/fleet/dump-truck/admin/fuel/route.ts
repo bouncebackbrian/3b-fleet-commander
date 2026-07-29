@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { requireFleetAuth, canWrite } from '@/lib/fleet-auth-guard'
+import { requireFleetAuth, canManage } from '@/lib/fleet-auth-guard'
 import { buildFuelSummaryForBusiness } from '@/lib/fleet/dumpTruck/adminFuel'
 
 export const dynamic = 'force-dynamic'
@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: NextRequest) {
   const auth = await requireFleetAuth()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canWrite(auth.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!canManage(auth.portals, 'dispatch')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const from = request.nextUrl.searchParams.get('from')
   const to = request.nextUrl.searchParams.get('to')

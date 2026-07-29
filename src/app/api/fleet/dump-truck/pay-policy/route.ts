@@ -6,14 +6,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { requireFleetAuth } from '@/lib/fleet-auth-guard'
+import { requireFleetAuth, canManage } from '@/lib/fleet-auth-guard'
 import { getPayPolicy, upsertPayPolicy } from '@/lib/fleet/dumpTruck/payPolicy'
 
 export const dynamic = 'force-dynamic'
-
-function isBusinessAdmin(role: string): boolean {
-  return role === 'owner' || role === 'admin'
-}
 
 export async function GET() {
   const auth = await requireFleetAuth()
@@ -31,7 +27,7 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   const auth = await requireFleetAuth()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!isBusinessAdmin(auth.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!canManage(auth.portals, 'admin')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   try {
     const body = await request.json()

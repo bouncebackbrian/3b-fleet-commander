@@ -3,7 +3,7 @@
  */
 
 import { NextRequest, NextResponse }              from 'next/server'
-import { requireFleetAuth, canWrite }             from '@/lib/fleet-auth-guard'
+import { requireFleetAuth, canManage }            from '@/lib/fleet-auth-guard'
 import { updateFuelEntry, deleteFuelEntry }       from '@/lib/fleet/fuel'
 
 export const dynamic = 'force-dynamic'
@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireFleetAuth()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canWrite(auth.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!canManage(auth.portals, 'dispatch')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   let body: Record<string, unknown>
@@ -30,7 +30,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireFleetAuth()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canWrite(auth.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!canManage(auth.portals, 'dispatch')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { id } = await params
   try {

@@ -186,7 +186,7 @@ export interface DriverJobEditInput {
  * Driver-editable job fields only — material and pickup/dump site.
  * Dispatch frequently changes these verbally mid-shift; drivers need to
  * correct the record themselves rather than wait for an admin. Any active
- * business member may call this (not gated by canWrite) — same "record
+ * business member may call this (not gated by canManage) — same "record
  * physical reality" rationale as site GPS pinning. Callers should also log
  * a visible timeline note so dispatch sees what changed and by whom.
  */

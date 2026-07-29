@@ -3,7 +3,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { requireFleetAuth, canWrite } from '@/lib/fleet-auth-guard'
+import { requireFleetAuth, canManage } from '@/lib/fleet-auth-guard'
 import { listSites, createSite } from '@/lib/fleet/dumpTruck/sites'
 
 export const dynamic = 'force-dynamic'
@@ -13,7 +13,7 @@ export async function GET() {
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
-    const includeGateInfo = canWrite(auth.role)
+    const includeGateInfo = canManage(auth.portals, 'dispatch')
     const sites = await listSites(auth.businessId, { includeGateInfo })
     return NextResponse.json({ sites })
   } catch (err) {
@@ -22,7 +22,7 @@ export async function GET() {
   }
 }
 
-// Open to any active business member, not just canWrite() roles — a driver
+// Open to any active business member, not just canManage() roles — a driver
 // who ends up at a new pickup/dump site with nothing on file yet needs to
 // be able to add it themselves rather than wait on dispatch (same reasoning
 // as the location-pin endpoint). Every field here can already be created by

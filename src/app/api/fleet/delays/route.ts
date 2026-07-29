@@ -3,7 +3,7 @@
  */
 
 import { NextRequest, NextResponse }    from 'next/server'
-import { requireFleetAuth, canWrite }   from '@/lib/fleet-auth-guard'
+import { requireFleetAuth, canManage }  from '@/lib/fleet-auth-guard'
 import { getDelays, createDelay }       from '@/lib/fleet/delays'
 
 export const dynamic = 'force-dynamic'
@@ -24,7 +24,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const auth = await requireFleetAuth()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canWrite(auth.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!canManage(auth.portals, 'dispatch')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   try {
     const body = await request.json()

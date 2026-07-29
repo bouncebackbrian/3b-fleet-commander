@@ -4,7 +4,7 @@
  * Only material, pickupSiteId, dumpSiteId can be changed here — dispatch
  * frequently changes these verbally mid-shift and the driver needs to
  * correct the record themselves. Open to any active business member (not
- * gated by canWrite), same as site GPS pinning — the driver is recording
+ * gated by canManage), same as site GPS pinning — the driver is recording
  * physical reality, not editing dispatch-ticket business fields.
  */
 

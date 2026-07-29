@@ -10,7 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { requireFleetAuth, canWrite } from '@/lib/fleet-auth-guard'
+import { requireFleetAuth, canManage } from '@/lib/fleet-auth-guard'
 import { resolveRange, type RangeType } from '@/lib/dumpTruck/hours'
 import { buildBusinessHoursForRange } from '@/lib/fleet/dumpTruck/adminHours'
 
@@ -21,7 +21,7 @@ const VALID_RANGES: RangeType[] = ['current_week', 'previous_week', 'current_pay
 export async function GET(request: NextRequest) {
   const auth = await requireFleetAuth()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canWrite(auth.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!canManage(auth.portals, 'dispatch')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const rangeParam = request.nextUrl.searchParams.get('range') ?? 'current_week'
   if (!VALID_RANGES.includes(rangeParam as RangeType)) {

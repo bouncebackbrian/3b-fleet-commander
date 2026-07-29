@@ -3,7 +3,7 @@
  * coordinates from the caller's current position.
  *
  * Deliberately open to any active business member, not gated behind
- * canWrite() like other site edits — a driver who physically finds a
+ * canManage() like other site edits — a driver who physically finds a
  * remote site with no clean street address needs to record that fact
  * themselves, on site.
  */
