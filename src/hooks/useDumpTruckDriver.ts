@@ -25,6 +25,10 @@ import {
   enqueueEvent, getRetryableNow, markSyncing, markSynced, markFailed,
   summarizeQueue, getOrCreateDeviceId, readQueue, type QueueSummary,
 } from '@/lib/dumpTruck/offlineQueue'
+import {
+  enqueueFuelEntry, getRetryableFuelEntriesNow, markFuelSyncing, markFuelSynced, markFuelFailed,
+  summarizeFuelQueue, type FuelQueueSummary,
+} from '@/lib/dumpTruck/offlineFuelQueue'
 import type { DumpTruckEvent, DumpTruckEventType, DumpTruckSite, DumpTruckJob } from '@/lib/dumpTruck/types'
 
 export interface TimelineEntry {
@@ -56,9 +60,11 @@ export function useDumpTruckDriver() {
   const [loading, setLoading] = useState(true)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [queueSummary, setQueueSummary] = useState<QueueSummary>({ pending: 0, syncing: 0, failed: 0, total: 0 })
+  const [fuelQueueSummary, setFuelQueueSummary] = useState<FuelQueueSummary>({ pending: 0, syncing: 0, failed: 0, total: 0 })
   const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const refreshQueueSummary = useCallback(() => setQueueSummary(summarizeQueue()), [])
+  const refreshFuelQueueSummary = useCallback(() => { summarizeFuelQueue().then(setFuelQueueSummary) }, [])
 
   const fetchContext = useCallback(async () => {
     try {
@@ -107,16 +113,46 @@ export function useDumpTruckDriver() {
     if (anySynced) fetchContext()
   }, [fetchContext, refreshQueueSummary])
 
+  // ── Offline fuel-entry queue flush loop (photo receipts — IndexedDB, see offlineFuelQueue.ts) ──
+  const flushFuelQueue = useCallback(async () => {
+    if (!navigator.onLine) return
+    const retryable = await getRetryableFuelEntriesNow()
+    if (!retryable.length) return
+
+    let anySynced = false
+    for (const item of retryable) {
+      await markFuelSyncing(item.id)
+      refreshFuelQueueSummary()
+      try {
+        const form = new FormData()
+        for (const [key, value] of Object.entries(item.fields)) form.append(key, value)
+        if (item.fileBlob) form.append('file', item.fileBlob, item.fileName ?? 'receipt.jpg')
+        const res = await fetch('/api/fleet/dump-truck/fuel', { method: 'POST', body: form })
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          throw new Error(body.error ?? `HTTP ${res.status}`)
+        }
+        await markFuelSynced(item.id)
+        anySynced = true
+      } catch (err) {
+        await markFuelFailed(item.id, err instanceof Error ? err.message : 'sync failed')
+      }
+      refreshFuelQueueSummary()
+    }
+    if (anySynced) fetchContext()
+  }, [fetchContext, refreshFuelQueueSummary])
+
   useEffect(() => {
     refreshQueueSummary()
-    syncTimerRef.current = setInterval(flushQueue, SYNC_INTERVAL_MS)
-    const onOnline = () => flushQueue()
+    refreshFuelQueueSummary()
+    syncTimerRef.current = setInterval(() => { flushQueue(); flushFuelQueue() }, SYNC_INTERVAL_MS)
+    const onOnline = () => { flushQueue(); flushFuelQueue() }
     window.addEventListener('online', onOnline)
     return () => {
       if (syncTimerRef.current) clearInterval(syncTimerRef.current)
       window.removeEventListener('online', onOnline)
     }
-  }, [flushQueue, refreshQueueSummary])
+  }, [flushQueue, flushFuelQueue, refreshQueueSummary, refreshFuelQueueSummary])
 
   // ── Derived state ────────────────────────────────────────────────────────
   const queuedForShift = context?.shift
@@ -241,12 +277,24 @@ export function useDumpTruckDriver() {
     }
   }, [context, isOnline, fetchContext])
 
+  /**
+   * Queue a fuel entry (with its optional receipt photo) durably, then try an
+   * immediate sync. Used instead of a direct fetch so a fuel stop at a
+   * no-signal site still saves the timestamp/odometer/photo locally and
+   * uploads automatically once connectivity returns.
+   */
+  const queueFuelEntry = useCallback(async (fields: Record<string, string>, file: File | null): Promise<void> => {
+    await enqueueFuelEntry(fields, file)
+    refreshFuelQueueSummary()
+    flushFuelQueue()
+  }, [refreshFuelQueueSummary, flushFuelQueue])
+
   return {
     loading, context, flowState, primaryAction, timeline,
     activeJobId, setActiveJobId,
-    isOnline, queueSummary,
+    isOnline, queueSummary, fuelQueueSummary,
     driverName: context?.driverName ?? null, businessName: context?.businessName ?? null,
-    fireEvent, clockIn, submitDay, refetch: fetchContext,
+    fireEvent, clockIn, submitDay, queueFuelEntry, refetch: fetchContext,
   }
 }
 

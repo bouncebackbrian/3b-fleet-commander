@@ -27,17 +27,18 @@ import FuelSheet from '@/components/dumpTruck/FuelSheet'
 import LoadTicketSheet from '@/components/dumpTruck/LoadTicketSheet'
 import NewSiteSheet from '@/components/dumpTruck/NewSiteSheet'
 import FullLogSheet from '@/components/dumpTruck/FullLogSheet'
+import EditJobSheet from '@/components/dumpTruck/EditJobSheet'
 
 type SheetKey =
   | 'clock_in' | 'odometer_pickup' | 'odometer_dropoff' | 'pretrip' | 'posttrip'
-  | 'delay' | 'note' | 'defect' | 'incident' | 'photo' | 'ticket' | 'fuel' | 'new_site' | 'submit' | 'full_log' | null
+  | 'delay' | 'note' | 'defect' | 'incident' | 'photo' | 'ticket' | 'fuel' | 'new_site' | 'submit' | 'full_log' | 'edit_job' | null
 
 export default function DumpTruckDriverPage() {
   const {
     loading, context, flowState, primaryAction, timeline,
-    activeJobId, setActiveJobId, isOnline, queueSummary,
+    activeJobId, setActiveJobId, isOnline, queueSummary, fuelQueueSummary,
     driverName, businessName,
-    fireEvent, clockIn, submitDay, refetch,
+    fireEvent, clockIn, submitDay, queueFuelEntry, refetch,
   } = useDumpTruckDriver()
   const { wx, weather, weatherLoading } = useWeather()
 
@@ -145,8 +146,8 @@ export default function DumpTruckDriverPage() {
     <div className="dt-shell">
       <TopStatusBar
         isOnline={isOnline}
-        pendingCount={queueSummary.pending + queueSummary.syncing}
-        failedCount={queueSummary.failed}
+        pendingCount={queueSummary.pending + queueSummary.syncing + fuelQueueSummary.pending + fuelQueueSummary.syncing}
+        failedCount={queueSummary.failed + fuelQueueSummary.failed}
         gpsPermission={null}
         wx={wx}
         weather={weather}
@@ -169,6 +170,7 @@ export default function DumpTruckDriverPage() {
             loadCount={context?.shift?.loadCount ?? 0}
             onNavigate={setNavigateSite}
             onPinLocation={handlePinLocation}
+            onEditJob={() => setSheet('edit_job')}
           />
         </div>
 
@@ -290,8 +292,10 @@ export default function DumpTruckDriverPage() {
           shiftId={context.shift.id}
           vehicleId={context.shift.truckId}
           jobId={activeJobId}
+          isOnline={isOnline}
           onClose={() => setSheet(null)}
           onSaved={refetch}
+          onQueueOffline={queueFuelEntry}
         />
       )}
 
@@ -325,6 +329,15 @@ export default function DumpTruckDriverPage() {
 
       {sheet === 'full_log' && (
         <FullLogSheet timeline={timeline} onClose={() => setSheet(null)} />
+      )}
+
+      {sheet === 'edit_job' && activeJob && (
+        <EditJobSheet
+          job={activeJob}
+          sites={context?.sites ?? []}
+          onClose={() => setSheet(null)}
+          onSaved={summary => { fireEvent('note', { notes: summary }); refetch() }}
+        />
       )}
 
       {navigateSite && (

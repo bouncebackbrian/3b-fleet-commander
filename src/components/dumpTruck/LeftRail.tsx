@@ -16,10 +16,11 @@ interface Props {
   loadCount: number
   onNavigate: (site: DumpTruckSite) => void
   onPinLocation: (site: DumpTruckSite) => void
+  onEditJob: () => void
 }
 
 export default function LeftRail({
-  flowState, clockInAt, truckUnit, trailerUnit, jobs, activeJobId, onChangeJob, sites, loadCount, onNavigate, onPinLocation,
+  flowState, clockInAt, truckUnit, trailerUnit, jobs, activeJobId, onChangeJob, sites, loadCount, onNavigate, onPinLocation, onEditJob,
 }: Props) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -43,7 +44,18 @@ export default function LeftRail({
 
       {jobs.length > 0 && (
         <div>
-          <div style={fieldLabelStyle}>Job</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={fieldLabelStyle}>Job</div>
+            <button
+              onClick={onEditJob}
+              style={{
+                fontSize: '.68rem', fontWeight: 700, padding: '.15rem .5rem', borderRadius: 6,
+                background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--primary)',
+              }}
+            >
+              ✏️ Edit
+            </button>
+          </div>
           {jobs.length === 1 ? (
             <div style={fieldValueStyle}>{jobs[0].jobNumber}</div>
           ) : (

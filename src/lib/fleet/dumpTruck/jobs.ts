@@ -167,3 +167,55 @@ export async function createJob(
   audit.log({ userId, email, action: 'dump_truck.job.create', resource: 'fleet_dt_jobs', resourceId: job.id, after: job })
   return job
 }
+
+export interface DriverJobEditInput {
+  material?: string | null
+  pickupSiteId?: string | null
+  dumpSiteId?: string | null
+}
+
+/**
+ * Driver-editable job fields only — material and pickup/dump site.
+ * Dispatch frequently changes these verbally mid-shift; drivers need to
+ * correct the record themselves rather than wait for an admin. Any active
+ * business member may call this (not gated by canWrite) — same "record
+ * physical reality" rationale as site GPS pinning. Callers should also log
+ * a visible timeline note so dispatch sees what changed and by whom.
+ */
+export async function updateJobDriverFields(
+  businessId: string,
+  jobId: string,
+  input: DriverJobEditInput,
+  userId: string,
+  email: string | null,
+): Promise<DumpTruckJob> {
+  const { data: before, error: beforeError } = await fleetServiceClient
+    .from('fleet_dt_jobs')
+    .select('*')
+    .eq('id', jobId)
+    .eq('business_id', businessId)
+    .maybeSingle()
+  if (beforeError) throw beforeError
+  if (!before) throw new Error('Job not found')
+
+  const patch: Record<string, unknown> = {}
+  if (input.material !== undefined) patch.material = input.material
+  if (input.pickupSiteId !== undefined) patch.pickup_site_id = input.pickupSiteId
+  if (input.dumpSiteId !== undefined) patch.dump_site_id = input.dumpSiteId
+
+  const { data, error } = await fleetServiceClient
+    .from('fleet_dt_jobs')
+    .update(patch)
+    .eq('id', jobId)
+    .eq('business_id', businessId)
+    .select('*')
+    .single()
+  if (error) throw error
+
+  const job = fromRow(data)
+  audit.log({
+    userId, email, action: 'dump_truck.job.driver_edit', resource: 'fleet_dt_jobs', resourceId: job.id,
+    before: fromRow(before), after: job,
+  })
+  return job
+}

@@ -7,6 +7,7 @@ import type { EquipmentOption } from '@/lib/fleet/dumpTruck/equipment'
 import type { DriverOption } from '@/lib/fleet/dumpTruck/jobs'
 import AdminActivityLogPanel from '@/components/dumpTruck/AdminActivityLogPanel'
 import AdminPayrollHoursPanel from '@/components/dumpTruck/AdminPayrollHoursPanel'
+import AdminFuelPanel from '@/components/dumpTruck/AdminFuelPanel'
 
 const SITE_TYPES: SiteType[] = ['yard', 'pickup', 'dump', 'customer', 'fuel', 'maintenance', 'scale', 'disposal', 'parking', 'other']
 
@@ -44,6 +45,7 @@ export default function DumpTruckAdminPage() {
       <JobsPanel jobs={jobs} sites={sites} equipment={equipment} drivers={drivers} onCreated={reload} />
       <PayPolicyPanel />
       <AdminPayrollHoursPanel drivers={drivers} />
+      <AdminFuelPanel />
       <AdminActivityLogPanel drivers={drivers} />
 
       <ToastContainer />

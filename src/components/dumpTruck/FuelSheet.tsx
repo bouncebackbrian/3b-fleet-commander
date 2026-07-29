@@ -7,6 +7,14 @@
  * OCR results populate the form for driver review; nothing is saved until
  * the driver confirms (spec: "OCR suggestions must be reviewed rather than
  * silently trusted").
+ *
+ * Receipt photo + odometer are required (2026-07-29 follow-up — tax-audit
+ * record quality, and odometer is what powers the MPG averages on the
+ * dispatch portal). When offline (or the live save fails mid-flight), the
+ * entry and photo are queued durably via useDumpTruckDriver's
+ * queueFuelEntry — see offlineFuelQueue.ts — and uploaded automatically
+ * once connectivity returns, same "never lose a stamp" guarantee as the
+ * primary event queue.
  */
 import { useRef, useState } from 'react'
 import Sheet, { inputStyle, primaryBtnStyle } from './Sheet'
@@ -33,13 +41,15 @@ interface Props {
   shiftId: string
   vehicleId: string
   jobId: string | null
+  isOnline: boolean
   onClose: () => void
   onSaved: () => void
+  onQueueOffline: (fields: Record<string, string>, file: File | null) => Promise<void>
 }
 
 const FUEL_TYPES = ['diesel', 'gasoline', 'def', 'reefer', 'other']
 
-export default function FuelSheet({ shiftId, vehicleId, jobId, onClose, onSaved }: Props) {
+export default function FuelSheet({ shiftId, vehicleId, jobId, isOnline, onClose, onSaved, onQueueOffline }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
   const [scanning, setScanning] = useState(false)
@@ -83,47 +93,56 @@ export default function FuelSheet({ shiftId, vehicleId, jobId, onClose, onSaved 
     }
   }
 
-  const canSave = vehicleId && totalCost.trim() && Number(totalCost) > 0
+  const canSave = !!vehicleId && !!file && !!odometer.trim() && totalCost.trim() && Number(totalCost) > 0
 
   const submit = async () => {
     if (!canSave) return
     setSaving(true)
     try {
       const geo = await captureGeolocation()
-      const form = new FormData()
-      if (file) form.append('file', file)
-      form.append('shiftId', shiftId)
-      form.append('vehicleId', vehicleId)
-      if (jobId) form.append('jobId', jobId)
-      form.append('vendorName', vendorName)
-      form.append('purchasedAt', new Date().toISOString())
-      if (geo.lat != null) { form.append('lat', String(geo.lat)); form.append('lng', String(geo.lng)) }
-      if (odometer) form.append('odometer', odometer)
-      form.append('fuelType', fuelType)
-      if (gallons) form.append('gallons', gallons)
-      if (pricePerGallon) form.append('pricePerGallon', pricePerGallon)
-      form.append('totalCost', totalCost)
-      form.append('fullTank', String(fullTank))
-      if (notes) form.append('notes', notes)
-      if (ocr) {
-        if (ocr.vendor) form.append('ocrMerchant', ocr.vendor)
-        if (ocr.date) form.append('ocrDate', ocr.date)
-        if (ocr.fuelGallons != null) form.append('ocrGallons', String(ocr.fuelGallons))
-        if (ocr.fuelPricePerGal != null) form.append('ocrPricePerGallon', String(ocr.fuelPricePerGal))
-        if (ocr.amount != null) form.append('ocrTotal', String(ocr.amount))
-        const addr = [ocr.address, ocr.city, ocr.state].filter(Boolean).join(', ')
-        if (addr) form.append('ocrAddress', addr)
-        if (ocr.confidence) form.append('ocrConfidence', ocr.confidence)
+      const fields: Record<string, string> = {
+        shiftId, vehicleId, vendorName, purchasedAt: new Date().toISOString(),
+        odometer, fuelType, totalCost, fullTank: String(fullTank), driverVerified: 'true',
       }
-      form.append('driverVerified', 'true')
+      if (jobId) fields.jobId = jobId
+      if (geo.lat != null) { fields.lat = String(geo.lat); fields.lng = String(geo.lng) }
+      if (gallons) fields.gallons = gallons
+      if (pricePerGallon) fields.pricePerGallon = pricePerGallon
+      if (notes) fields.notes = notes
+      if (ocr) {
+        if (ocr.vendor) fields.ocrMerchant = ocr.vendor
+        if (ocr.date) fields.ocrDate = ocr.date
+        if (ocr.fuelGallons != null) fields.ocrGallons = String(ocr.fuelGallons)
+        if (ocr.fuelPricePerGal != null) fields.ocrPricePerGallon = String(ocr.fuelPricePerGal)
+        if (ocr.amount != null) fields.ocrTotal = String(ocr.amount)
+        const addr = [ocr.address, ocr.city, ocr.state].filter(Boolean).join(', ')
+        if (addr) fields.ocrAddress = addr
+        if (ocr.confidence) fields.ocrConfidence = ocr.confidence
+      }
 
-      const res = await fetch('/api/fleet/dump-truck/fuel', { method: 'POST', body: form })
-      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not save fuel entry')
-      const result = await res.json()
+      if (!isOnline) {
+        await onQueueOffline(fields, file)
+        toast.success('No signal — fuel entry and receipt saved, will upload automatically')
+        onSaved()
+        onClose()
+        return
+      }
 
-      if (result.flags?.decreasingOdometer) toast.warn('Odometer is lower than the last fuel entry — flagged for review')
-      if (result.flags?.unrealisticJump) toast.warn('Mileage jump looks unusually large — flagged for review')
-      toast.success('Fuel entry saved')
+      try {
+        const form = new FormData()
+        for (const [key, value] of Object.entries(fields)) form.append(key, value)
+        if (file) form.append('file', file)
+        const res = await fetch('/api/fleet/dump-truck/fuel', { method: 'POST', body: form })
+        if (!res.ok) throw new Error((await res.json()).error ?? 'Could not save fuel entry')
+        const result = await res.json()
+        if (result.flags?.decreasingOdometer) toast.warn('Odometer is lower than the last fuel entry — flagged for review')
+        if (result.flags?.unrealisticJump) toast.warn('Mileage jump looks unusually large — flagged for review')
+        toast.success('Fuel entry saved')
+      } catch {
+        // Signal dropped mid-save — durably queue rather than lose the entry.
+        await onQueueOffline(fields, file)
+        toast.warn('Could not reach the server — fuel entry and receipt saved, will upload automatically')
+      }
       onSaved()
       onClose()
     } catch (err) {
@@ -136,13 +155,21 @@ export default function FuelSheet({ shiftId, vehicleId, jobId, onClose, onSaved 
   return (
     <Sheet title="Add Fuel" onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '.9rem' }}>
+        {!isOnline && (
+          <div style={{
+            fontSize: '.72rem', fontWeight: 700, padding: '.5rem .6rem', borderRadius: 8, textAlign: 'center',
+            background: 'rgba(245,194,0,.12)', color: 'var(--warn)',
+          }}>
+            📴 No signal — this will save on the truck and upload automatically once you're back in range.
+          </div>
+        )}
         <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleFile} />
         <button
-          style={{ ...inputStyle, minHeight: 100, fontWeight: 700 }}
+          style={{ ...inputStyle, minHeight: 100, fontWeight: 700, border: !file ? '1px solid var(--warn)' : undefined }}
           onClick={() => fileRef.current?.click()}
           disabled={scanning}
         >
-          {scanning ? '🔍 Reading receipt…' : file ? `📷 ${file.name} — tap to rescan` : '📷 Scan Receipt (optional but recommended)'}
+          {scanning ? '🔍 Reading receipt…' : file ? `📷 ${file.name} — tap to rescan` : '📷 Take Receipt Photo *  — required for tax records'}
         </button>
 
         {ocr?.confidence && (
@@ -157,7 +184,7 @@ export default function FuelSheet({ shiftId, vehicleId, jobId, onClose, onSaved 
 
         <Row>
           <Field label="Vendor / Station"><input style={inputStyle} value={vendorName} onChange={e => setVendorName(e.target.value)} /></Field>
-          <Field label="Odometer"><input style={inputStyle} type="number" inputMode="numeric" value={odometer} onChange={e => setOdometer(e.target.value)} /></Field>
+          <Field label="Odometer *"><input style={inputStyle} type="number" inputMode="numeric" value={odometer} onChange={e => setOdometer(e.target.value)} placeholder="required for MPG tracking" /></Field>
         </Row>
         <Row>
           <Field label="Fuel Type">
@@ -181,8 +208,13 @@ export default function FuelSheet({ shiftId, vehicleId, jobId, onClose, onSaved 
         </Field>
         <Field label="Notes"><textarea style={{ ...inputStyle, minHeight: 60 }} value={notes} onChange={e => setNotes(e.target.value)} /></Field>
 
+        {!canSave && (
+          <div style={{ fontSize: '.72rem', color: 'var(--muted)', textAlign: 'center' }}>
+            Receipt photo, odometer, and total cost are required — for tax-audit records.
+          </div>
+        )}
         <button style={{ ...primaryBtnStyle, opacity: canSave && !saving ? 1 : .5 }} disabled={!canSave || saving} onClick={submit}>
-          {saving ? 'Saving…' : 'Save Fuel Entry'}
+          {saving ? 'Saving…' : isOnline ? 'Save Fuel Entry' : 'Save Offline — Upload Later'}
         </button>
       </div>
     </Sheet>
