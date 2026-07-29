@@ -180,12 +180,16 @@ export interface PayPolicy {
   baseHourlyRate: number
   dailyOtThresholdHours: number
   otMultiplier: number
+  /** 2026-07-29: a driver can be paid hourly (default) or per-mile — see getPayPolicyForDriver. */
+  payType: 'hourly' | 'per_mile'
+  ratePerMile?: number | null
 }
 
 export const DEFAULT_PAY_POLICY: PayPolicy = {
   baseHourlyRate: 32.00,
   dailyOtThresholdHours: 8.00,
   otMultiplier: 1.50,
+  payType: 'hourly',
 }
 
 /** Single hourly-rate + daily-OT estimate only — see module doc for scope. */
@@ -193,6 +197,18 @@ export function estimateHourlyGrossPay(split: HoursSplit, policy: PayPolicy): nu
   const regularPay = split.regularHours * policy.baseHourlyRate
   const otPay = split.overtimeHours * policy.baseHourlyRate * policy.otMultiplier
   return round2(regularPay + otPay)
+}
+
+/**
+ * Estimated gross pay for the day, honoring the driver's pay type.
+ * per_mile drivers are paid on shiftMiles * ratePerMile (0 if miles unknown
+ * — never fabricated); hourly drivers use the existing hourly+OT estimate.
+ */
+export function estimateGrossPay(split: HoursSplit, policy: PayPolicy, shiftMiles: number | null): number {
+  if (policy.payType === 'per_mile') {
+    return round2((shiftMiles ?? 0) * (policy.ratePerMile ?? 0))
+  }
+  return estimateHourlyGrossPay(split, policy)
 }
 
 function round2(n: number): number {
@@ -299,7 +315,7 @@ export function buildDailyHoursRow(input: DailyHoursRowInput): DailyHoursRow {
       ? input.endOdometer - input.startOdometer
       : null
 
-  const hourlyEstimatedEarnings = estimateHourlyGrossPay(split, input.payPolicy)
+  const hourlyEstimatedEarnings = estimateGrossPay(split, input.payPolicy, shiftMiles)
 
   return {
     workDate: input.workDate,

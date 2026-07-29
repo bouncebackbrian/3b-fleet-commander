@@ -16,7 +16,7 @@ import {
   type DateRange, type PayPolicy,
 } from '@/lib/dumpTruck/hours'
 import type { DriveSegmentCategory, DumpTruckEventType } from '@/lib/dumpTruck/types'
-import { getPayPolicy } from './payPolicy'
+import { getPayPolicyForDriver } from './payPolicy'
 
 function utcDateString(iso: string): string {
   return iso.slice(0, 10)
@@ -29,7 +29,7 @@ const EMPTY_CATEGORY_SECONDS: Record<DriveSegmentCategory, number> = {
 export async function buildDriverHoursForRange(
   businessId: string, driverId: string, range: DateRange,
 ): Promise<{ rows: DailyHoursRow[]; summary: RangeSummary; payPolicy: PayPolicy; isDefaultPayPolicy: boolean }> {
-  const payPolicy = await getPayPolicy(businessId)
+  const payPolicy = await getPayPolicyForDriver(businessId, driverId)
 
   const { data: shifts, error: shiftsError } = await fleetServiceClient
     .from('fleet_dt_shifts')

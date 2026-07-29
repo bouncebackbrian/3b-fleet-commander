@@ -43,7 +43,7 @@ export default function DumpTruckAdminPage() {
 
       <SitesPanel sites={sites} onCreated={reload} />
       <JobsPanel jobs={jobs} sites={sites} equipment={equipment} drivers={drivers} onCreated={reload} />
-      <PayPolicyPanel />
+      <PayPolicyPanel drivers={drivers} />
       <AdminPayrollHoursPanel drivers={drivers} />
       <AdminFuelPanel />
       <AdminActivityLogPanel drivers={drivers} />
@@ -254,22 +254,52 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return <div><div style={labelStyle}>{label}</div>{children}</div>
 }
 
-function PayPolicyPanel() {
-  const [baseHourlyRate, setBaseHourlyRate] = useState('32.00')
-  const [dailyOtThresholdHours, setDailyOtThresholdHours] = useState('8.00')
-  const [otMultiplier, setOtMultiplier] = useState('1.50')
+interface PayPolicyState {
+  baseHourlyRate: string; dailyOtThresholdHours: string; otMultiplier: string
+  payType: 'hourly' | 'per_mile'; ratePerMile: string
+}
+
+const EMPTY_PAY_POLICY: PayPolicyState = { baseHourlyRate: '32.00', dailyOtThresholdHours: '8.00', otMultiplier: '1.50', payType: 'hourly', ratePerMile: '0.65' }
+
+function PayPolicyFields({ state, onChange }: { state: PayPolicyState; onChange: (s: PayPolicyState) => void }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '.75rem' }}>
+      <Field label="Pay Type">
+        <select style={inputStyle} value={state.payType} onChange={e => onChange({ ...state, payType: e.target.value as 'hourly' | 'per_mile' })}>
+          <option value="hourly">Hourly + Daily OT</option>
+          <option value="per_mile">Per-Mile</option>
+        </select>
+      </Field>
+      {state.payType === 'per_mile' ? (
+        <Field label="Rate Per Mile ($)"><input style={inputStyle} type="number" step="0.01" value={state.ratePerMile} onChange={e => onChange({ ...state, ratePerMile: e.target.value })} /></Field>
+      ) : (
+        <>
+          <Field label="Base Hourly Rate ($)"><input style={inputStyle} type="number" step="0.01" value={state.baseHourlyRate} onChange={e => onChange({ ...state, baseHourlyRate: e.target.value })} /></Field>
+          <Field label="Daily OT Threshold (hrs)"><input style={inputStyle} type="number" step="0.25" value={state.dailyOtThresholdHours} onChange={e => onChange({ ...state, dailyOtThresholdHours: e.target.value })} /></Field>
+          <Field label="OT Multiplier"><input style={inputStyle} type="number" step="0.05" value={state.otMultiplier} onChange={e => onChange({ ...state, otMultiplier: e.target.value })} /></Field>
+        </>
+      )}
+    </div>
+  )
+}
+
+function PayPolicyPanel({ drivers }: { drivers: DriverOption[] }) {
+  const [state, setState] = useState<PayPolicyState>(EMPTY_PAY_POLICY)
   const [isDefault, setIsDefault] = useState(true)
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
+  const load = () => {
     fetch('/api/fleet/dump-truck/pay-policy').then(r => r.json()).then(b => {
       if (!b.policy) return
-      setBaseHourlyRate(String(b.policy.baseHourlyRate))
-      setDailyOtThresholdHours(String(b.policy.dailyOtThresholdHours))
-      setOtMultiplier(String(b.policy.otMultiplier))
+      setState({
+        baseHourlyRate: String(b.policy.baseHourlyRate), dailyOtThresholdHours: String(b.policy.dailyOtThresholdHours),
+        otMultiplier: String(b.policy.otMultiplier), payType: b.policy.payType ?? 'hourly',
+        ratePerMile: b.policy.ratePerMile != null ? String(b.policy.ratePerMile) : '0.65',
+      })
       setIsDefault(!!b.policy.isDefault)
     })
-  }, [])
+  }
+  useEffect(load, [])
 
   const save = async () => {
     setBusy(true)
@@ -277,9 +307,9 @@ function PayPolicyPanel() {
       const res = await fetch('/api/fleet/dump-truck/pay-policy', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          baseHourlyRate: Number(baseHourlyRate),
-          dailyOtThresholdHours: Number(dailyOtThresholdHours),
-          otMultiplier: Number(otMultiplier),
+          baseHourlyRate: Number(state.baseHourlyRate), dailyOtThresholdHours: Number(state.dailyOtThresholdHours),
+          otMultiplier: Number(state.otMultiplier), payType: state.payType,
+          ratePerMile: state.payType === 'per_mile' ? Number(state.ratePerMile) : null,
         }),
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Could not save pay policy')
@@ -296,17 +326,127 @@ function PayPolicyPanel() {
     <div style={cardStyle}>
       <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '.5rem' }}>Driver Hours — Estimated Pay Policy</h2>
       <p style={{ fontSize: '.8rem', color: 'var(--muted)', marginBottom: '1rem' }}>
-        Powers the &quot;Estimated Earnings&quot; figures on the driver hours portal only — a single hourly
-        rate with daily overtime. This is <strong>not</strong> a full payroll engine: per-load/per-mile/
-        per-ton/detention rates, weekly overtime, double-time, and payroll approval are not implemented.
+        Business default — powers the &quot;Estimated Earnings&quot; figures on the driver hours portal for any
+        driver without their own override below. Hourly + daily-OT or a flat per-mile rate. This is{' '}
+        <strong>not</strong> a full payroll engine: per-load/per-ton/detention rates, weekly overtime,
+        double-time, and payroll approval are not implemented.
         {isDefault && ' Currently using the built-in default (not yet saved for this business).'}
       </p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '.75rem', marginBottom: '1rem' }}>
-        <Field label="Base Hourly Rate ($)"><input style={inputStyle} type="number" step="0.01" value={baseHourlyRate} onChange={e => setBaseHourlyRate(e.target.value)} /></Field>
-        <Field label="Daily OT Threshold (hrs)"><input style={inputStyle} type="number" step="0.25" value={dailyOtThresholdHours} onChange={e => setDailyOtThresholdHours(e.target.value)} /></Field>
-        <Field label="OT Multiplier"><input style={inputStyle} type="number" step="0.05" value={otMultiplier} onChange={e => setOtMultiplier(e.target.value)} /></Field>
+      <PayPolicyFields state={state} onChange={setState} />
+      <button style={{ ...btnStyle, opacity: busy ? .5 : 1, marginTop: '1rem' }} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save Default Pay Policy'}</button>
+
+      <DriverPayOverridesPanel drivers={drivers} />
+    </div>
+  )
+}
+
+interface DriverPayRow {
+  userId: string; name: string
+  override: { payType: 'hourly' | 'per_mile'; baseHourlyRate: number; dailyOtThresholdHours: number; otMultiplier: number; ratePerMile: number | null } | null
+}
+
+function DriverPayOverridesPanel({ drivers }: { drivers: DriverOption[] }) {
+  const [rows, setRows] = useState<DriverPayRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editState, setEditState] = useState<PayPolicyState>(EMPTY_PAY_POLICY)
+  const [busy, setBusy] = useState(false)
+
+  const load = () => {
+    setLoading(true)
+    fetch('/api/fleet/dump-truck/pay-policy/drivers').then(r => r.json()).then(b => setRows(b.drivers ?? [])).finally(() => setLoading(false))
+  }
+  useEffect(load, [])
+
+  const startEdit = (row: DriverPayRow) => {
+    setEditingId(row.userId)
+    setEditState(row.override ? {
+      baseHourlyRate: String(row.override.baseHourlyRate), dailyOtThresholdHours: String(row.override.dailyOtThresholdHours),
+      otMultiplier: String(row.override.otMultiplier), payType: row.override.payType,
+      ratePerMile: row.override.ratePerMile != null ? String(row.override.ratePerMile) : '0.65',
+    } : EMPTY_PAY_POLICY)
+  }
+
+  const saveOverride = async (driverId: string) => {
+    setBusy(true)
+    try {
+      const res = await fetch('/api/fleet/dump-truck/pay-policy', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          driverId,
+          baseHourlyRate: Number(editState.baseHourlyRate), dailyOtThresholdHours: Number(editState.dailyOtThresholdHours),
+          otMultiplier: Number(editState.otMultiplier), payType: editState.payType,
+          ratePerMile: editState.payType === 'per_mile' ? Number(editState.ratePerMile) : null,
+        }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not save override')
+      toast.success('Driver pay override saved')
+      setEditingId(null)
+      load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not save override')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const removeOverride = async (driverId: string) => {
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/fleet/dump-truck/pay-policy?driverId=${driverId}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not remove override')
+      toast.success('Reverted to business default')
+      load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not remove override')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+      <h3 style={{ fontSize: '.95rem', fontWeight: 800, marginBottom: '.4rem' }}>Per-Driver Pay Overrides</h3>
+      <p style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: '.75rem' }}>
+        Some drivers can be hourly while others are paid per-mile — set an override here for any driver who
+        shouldn&apos;t use the business default above.
+      </p>
+      {loading && <div style={{ color: 'var(--muted)', fontSize: '.8rem' }}>Loading…</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {rows.map(row => (
+          <div key={row.userId} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '.6rem .75rem', background: 'var(--surface-2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '.85rem' }}>{row.name}</div>
+                <div style={{ fontSize: '.72rem', color: 'var(--muted)' }}>
+                  {row.override
+                    ? row.override.payType === 'per_mile' ? `Per-mile — $${row.override.ratePerMile}/mi` : `Hourly — $${row.override.baseHourlyRate}/hr`
+                    : 'Using business default'}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {row.override && (
+                  <button onClick={() => removeOverride(row.userId)} disabled={busy} style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--error)', padding: '.3rem .6rem', borderRadius: 6, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                    Remove
+                  </button>
+                )}
+                <button onClick={() => startEdit(row)} disabled={busy} style={{ fontSize: '.72rem', fontWeight: 700, padding: '.3rem .6rem', borderRadius: 6, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--primary)' }}>
+                  {row.override ? 'Edit' : 'Set Override'}
+                </button>
+              </div>
+            </div>
+            {editingId === row.userId && (
+              <div style={{ marginTop: '.75rem', paddingTop: '.75rem', borderTop: '1px solid var(--border)' }}>
+                <PayPolicyFields state={editState} onChange={setEditState} />
+                <div style={{ display: 'flex', gap: 8, marginTop: '.6rem' }}>
+                  <button style={{ ...btnStyle, opacity: busy ? .5 : 1 }} disabled={busy} onClick={() => saveOverride(row.userId)}>{busy ? 'Saving…' : 'Save'}</button>
+                  <button style={{ ...btnStyle, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }} onClick={() => setEditingId(null)}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
       </div>
-      <button style={{ ...btnStyle, opacity: busy ? .5 : 1 }} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save Pay Policy'}</button>
     </div>
   )
 }

@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   getWeekRange, getPreviousWeekRange, resolveRange,
   sumPairedDurationSeconds, buildCategoryTimeFromEvents, bucketDelaySecondsByReason,
-  splitRegularOvertime, estimateHourlyGrossPay, DEFAULT_PAY_POLICY,
-  buildDailyHoursRow, buildRangeSummary, type TimedEvent,
+  splitRegularOvertime, estimateHourlyGrossPay, estimateGrossPay, DEFAULT_PAY_POLICY,
+  buildDailyHoursRow, buildRangeSummary, type TimedEvent, type PayPolicy,
 } from './hours'
 
 describe('getWeekRange', () => {
@@ -136,6 +136,25 @@ describe('splitRegularOvertime / estimateHourlyGrossPay', () => {
     const pay = estimateHourlyGrossPay(split, DEFAULT_PAY_POLICY)
     // 8 * 32 + 2 * 32 * 1.5 = 256 + 96 = 352
     expect(pay).toBe(352)
+  })
+})
+
+describe('estimateGrossPay — per-mile vs hourly', () => {
+  it('uses the hourly+OT estimate for payType hourly', () => {
+    const split = splitRegularOvertime(10, 8)
+    expect(estimateGrossPay(split, DEFAULT_PAY_POLICY, 120)).toBe(352) // miles ignored
+  })
+
+  it('uses shiftMiles * ratePerMile for payType per_mile', () => {
+    const split = splitRegularOvertime(10, 8)
+    const policy: PayPolicy = { ...DEFAULT_PAY_POLICY, payType: 'per_mile', ratePerMile: 0.65 }
+    expect(estimateGrossPay(split, policy, 120)).toBe(78) // 120 * 0.65
+  })
+
+  it('never fabricates per-mile pay when miles are unknown', () => {
+    const split = splitRegularOvertime(10, 8)
+    const policy: PayPolicy = { ...DEFAULT_PAY_POLICY, payType: 'per_mile', ratePerMile: 0.65 }
+    expect(estimateGrossPay(split, policy, null)).toBe(0)
   })
 })
 

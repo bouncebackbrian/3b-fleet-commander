@@ -101,6 +101,7 @@ const ALL_TABS: NavTab[] = [
   { href: '/driver/dump-truck', label: 'Dump Truck', emoji: '🏗️', command: 'Dump Truck' },
   { href: '/driver/hours',      label: 'My Hours',   emoji: '⏱️', command: 'Dump Truck' },
   { href: '/admin/dump-truck',  label: 'DT Setup',   emoji: '🧭', command: 'Dump Truck' },
+  { href: '/admin/equipment',   label: 'Equipment',  emoji: '🚛', command: 'Equipment'   },
   { href: '/account',     label: 'Team',        emoji: '👥', command: 'System'      },
   { href: '/settings',    label: 'Settings',    emoji: '⚙️', command: 'System'      },
 ]
@@ -108,9 +109,9 @@ const ALL_TABS: NavTab[] = [
 // Which tabs each portal grants (ordered for display).
 const PORTAL_TAB_HREFS: Record<Portal, string[]> = {
   driver:   ['/dashboard', '/trips', '/driver/dump-truck', '/driver/hours', '/trailer', '/maintenance', '/compliance', '/vault'],
-  dispatch: ['/dispatch', '/loads', '/trips', '/admin/dump-truck', '/maintenance', '/compliance', '/vault'],
+  dispatch: ['/dispatch', '/loads', '/trips', '/admin/dump-truck', '/admin/equipment', '/maintenance', '/compliance', '/vault'],
   broker:   ['/broker', '/loads', '/vault'],
-  admin:    ['/dashboard', '/admin/dump-truck', '/account', '/maintenance', '/compliance', '/settings'],
+  admin:    ['/dashboard', '/admin/dump-truck', '/admin/equipment', '/account', '/maintenance', '/compliance', '/settings'],
 }
 
 function tabsForHrefs(hrefs: string[]): NavTab[] {
@@ -133,6 +134,31 @@ export function getTabsForPortals(portals: Portal[]): NavTab[] {
 export function getTabsForMode(mode: UserMode, grantedPortals: Portal[]): NavTab[] {
   if (mode === 'all') return getTabsForPortals(grantedPortals)
   return getTabsForPortals(grantedPortals.includes(mode) ? [mode] : [])
+}
+
+// ── Primary vs overflow ("More") tabs ─────────────────────────────────────────
+// The Driver portal collects 8 tabs (Cab, Route, Dump Truck, Hours, Trailer,
+// Maintenance, Compliance, Vault) — too many for a bottom-nav bar. Only the
+// 3 a driver taps constantly stay in the bar; the rest move behind a "More"
+// sheet (still one tap away). Only defined for portals that actually need
+// it — everything else (and the combined 'all' focus) shows its full set.
+
+const PRIMARY_TAB_HREFS_BY_PORTAL: Partial<Record<Portal, string[]>> = {
+  driver: ['/dashboard', '/driver/dump-truck', '/driver/hours'],
+}
+
+export function getPrimaryTabsForMode(mode: UserMode, grantedPortals: Portal[]): NavTab[] {
+  const full = getTabsForMode(mode, grantedPortals)
+  const primaryHrefs = mode === 'all' ? undefined : PRIMARY_TAB_HREFS_BY_PORTAL[mode]
+  if (!primaryHrefs) return full
+  return full.filter(t => primaryHrefs.includes(t.href))
+}
+
+export function getOverflowTabsForMode(mode: UserMode, grantedPortals: Portal[]): NavTab[] {
+  const full = getTabsForMode(mode, grantedPortals)
+  const primaryHrefs = mode === 'all' ? undefined : PRIMARY_TAB_HREFS_BY_PORTAL[mode]
+  if (!primaryHrefs) return []
+  return full.filter(t => !primaryHrefs.includes(t.href))
 }
 
 /** Which modes a member may select, given their real portal grants. */
