@@ -13,7 +13,7 @@ import { hasBlockingDefect, validateInspectionSubmission } from '@/lib/dumpTruck
 import type { InspectionItemInput, InspectionTemplateItem, InspectionType } from '@/lib/dumpTruck/types'
 import { recordEvent, type RecordEventGeoInput } from './events'
 import { getShiftById } from './shifts'
-import { DumpTruckError } from './shared'
+import { DumpTruckError, getShiftFlowState } from './shared'
 
 export async function getActiveTemplate(
   businessId: string, inspectionType: InspectionType,
@@ -62,15 +62,59 @@ export async function startInspection(
   }
   if (!shift.truckId) throw new DumpTruckError('Shift has no truck assigned', 400)
 
+  // Resume an already-started, not-yet-completed inspection of this type
+  // instead of re-firing pretrip_started/posttrip_started (a primary-sequence
+  // event, only valid once per shift) and inserting a duplicate row. This is
+  // the normal case whenever the checklist sheet gets reopened after already
+  // being started — closed early, tab backgrounded, page reloaded — and
+  // previously threw a hard "not valid from the current shift state" error
+  // that closed the sheet immediately, stranding the driver on the pre-trip
+  // step with no way back in.
+  const { data: existing } = await fleetServiceClient
+    .from('fleet_dt_inspections')
+    .select('id, template_version_id')
+    .eq('shift_id', input.shiftId)
+    .eq('inspection_type', input.inspectionType)
+    .neq('status', 'completed')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (existing) {
+    const { data: versionRow } = await fleetServiceClient
+      .from('fleet_dt_inspection_template_versions')
+      .select('items')
+      .eq('id', existing.template_version_id)
+      .single()
+    return {
+      inspectionId: existing.id,
+      templateVersionId: existing.template_version_id,
+      items: (versionRow?.items ?? []) as InspectionTemplateItem[],
+    }
+  }
+
+  // pretrip_started/posttrip_started is a primary-sequence event already
+  // fired by the driver tapping "Start Pre-Trip"/"Start Post-Trip"
+  // (truck_picked_up -> pretrip_in_progress / at_yard_end ->
+  // posttrip_in_progress) BEFORE the checklist screen ever opens — that tap
+  // goes through the generic event flow, not this function. Re-firing it
+  // here was the actual bug: it's only ever valid once per shift, so this
+  // call failed unconditionally on every single pre-trip/post-trip, and the
+  // client closed the sheet immediately on any error — stranding the driver
+  // with no way to open the checklist at all. This function's only job is
+  // the checklist's own metadata row; confirm the state transition already
+  // happened as a sanity check instead of trying to redo it.
+  const flowState = await getShiftFlowState(input.shiftId)
+  const expectedState = input.inspectionType === 'pretrip' ? 'pretrip_in_progress' : 'posttrip_in_progress'
+  if (flowState !== expectedState) {
+    throw new DumpTruckError(
+      `Cannot start ${input.inspectionType} inspection — shift is in state "${flowState}", expected "${expectedState}"`,
+      409,
+    )
+  }
+
   const template = await getActiveTemplate(businessId, input.inspectionType)
   if (!template) throw new DumpTruckError(`No ${input.inspectionType} template configured`, 500)
-
-  await recordEvent(businessId, driverId, email, {
-    id: input.id, idempotencyKey: input.idempotencyKey, shiftId: input.shiftId,
-    eventType: input.inspectionType === 'pretrip' ? 'pretrip_started' : 'posttrip_started',
-    deviceCapturedAt: input.deviceCapturedAt, effectiveAt: input.effectiveAt,
-    timezone: input.timezone, utcOffsetMinutes: input.utcOffsetMinutes, geo: input.geo,
-  })
 
   const { data, error } = await fleetServiceClient
     .from('fleet_dt_inspections')
