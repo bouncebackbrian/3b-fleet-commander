@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { useDumpTruckDriver } from '@/hooks/useDumpTruckDriver'
 import { canDispatchWithDefects } from '@/lib/dumpTruck/inspections'
 import { siteAwareActionLabel } from '@/lib/dumpTruck/actionLabels'
+import { captureGeolocation } from '@/lib/dumpTruck/events'
 import type { DumpTruckSite } from '@/lib/dumpTruck/types'
 import { toast } from '@/hooks/useToast'
 import ToastContainer from '@/components/shared/ToastContainer'
@@ -99,6 +100,25 @@ export default function DumpTruckDriverPage() {
     if (result.ok) toast.success(result.siteLabel ? `Saved at ${result.siteLabel}` : 'Saved')
   }
 
+  const handlePinLocation = async (site: DumpTruckSite) => {
+    const geo = await captureGeolocation()
+    if (geo.lat == null || geo.lng == null) {
+      toast.error('Could not get your GPS location — check location permissions and try again')
+      return
+    }
+    try {
+      const res = await fetch(`/api/fleet/dump-truck/sites/${site.id}/location`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lat: geo.lat, lng: geo.lng }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not save location')
+      toast.success(`Pinned ${site.name} to your current location`)
+      refetch()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not save location')
+    }
+  }
+
   const quickActions = [
     { key: 'delay', icon: delayActive ? '⏸️' : '⏱️', label: delayActive ? 'End Delay' : 'Delay', enabled: !!context?.shift },
     { key: 'note', icon: '📝', label: 'Note', enabled: !!context?.shift },
@@ -136,6 +156,7 @@ export default function DumpTruckDriverPage() {
             sites={context?.sites ?? []}
             loadCount={context?.shift?.loadCount ?? 0}
             onNavigate={setNavigateSite}
+            onPinLocation={handlePinLocation}
           />
         </div>
 

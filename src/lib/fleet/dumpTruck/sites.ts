@@ -9,6 +9,7 @@
 
 import { fleetServiceClient } from '@/lib/fleet-service-client'
 import { audit } from '@/lib/fleet/audit'
+import { DumpTruckError } from './shared'
 import type { DumpTruckSite, SiteType, PreferredNavPoint } from '@/lib/dumpTruck/types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -136,5 +137,36 @@ export async function createSite(
   if (error) throw error
   const site = fromRow(data)
   audit.log({ userId, email, action: 'dump_truck.site.create', resource: 'fleet_dt_sites', resourceId: site.id, after: site })
+  return site
+}
+
+/**
+ * Pin a site's GPS coordinates from wherever the caller is standing right
+ * now. Deliberately narrow — only lat/lng, callable by any active business
+ * member (not gated to admin/dispatcher like createSite) — a driver who
+ * physically finds a remote site with no clean street address needs to be
+ * able to record that fact themselves, on site, without waiting on
+ * dispatch. Does not touch address/gate/contact fields.
+ */
+export async function updateSiteLocation(
+  businessId: string, siteId: string, lat: number, lng: number,
+  userId: string, email: string | null,
+): Promise<DumpTruckSite> {
+  const { data: existing } = await fleetServiceClient
+    .from('fleet_dt_sites')
+    .select('id, business_id')
+    .eq('id', siteId)
+    .maybeSingle()
+  if (!existing || existing.business_id !== businessId) throw new DumpTruckError('Site not found', 404)
+
+  const { data, error } = await fleetServiceClient
+    .from('fleet_dt_sites')
+    .update({ lat, lng })
+    .eq('id', siteId)
+    .select('*')
+    .single()
+  if (error) throw error
+  const site = fromRow(data)
+  audit.log({ userId, email, action: 'dump_truck.site.pin_location', resource: 'fleet_dt_sites', resourceId: site.id, after: { lat, lng } })
   return site
 }

@@ -15,10 +15,11 @@ interface Props {
   sites: DumpTruckSite[]
   loadCount: number
   onNavigate: (site: DumpTruckSite) => void
+  onPinLocation: (site: DumpTruckSite) => void
 }
 
 export default function LeftRail({
-  flowState, clockInAt, truckUnit, trailerUnit, jobs, activeJobId, onChangeJob, sites, loadCount, onNavigate,
+  flowState, clockInAt, truckUnit, trailerUnit, jobs, activeJobId, onChangeJob, sites, loadCount, onNavigate, onPinLocation,
 }: Props) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -63,27 +64,42 @@ export default function LeftRail({
       {activeJob?.customerName && <Field label="Customer" value={activeJob.customerName} />}
       {activeJob?.brokerName && <Field label="Broker" value={activeJob.brokerName} />}
       {activeJob?.material && <Field label="Material" value={activeJob.material} />}
-      {pickupSite && <SiteField label="Pickup Site" site={pickupSite} onNavigate={onNavigate} />}
-      {dumpSite && <SiteField label="Dump Site" site={dumpSite} onNavigate={onNavigate} />}
+      {pickupSite && <SiteField label="Pickup Site" site={pickupSite} onNavigate={onNavigate} onPinLocation={onPinLocation} />}
+      {dumpSite && <SiteField label="Dump Site" site={dumpSite} onNavigate={onNavigate} onPinLocation={onPinLocation} />}
     </div>
   )
 }
 
-function SiteField({ label, site, onNavigate }: { label: string; site: DumpTruckSite; onNavigate: (s: DumpTruckSite) => void }) {
+function SiteField({ label, site, onNavigate, onPinLocation }: {
+  label: string; site: DumpTruckSite; onNavigate: (s: DumpTruckSite) => void; onPinLocation: (s: DumpTruckSite) => void
+}) {
   return (
     <div>
       <div style={fieldLabelStyle}>{label}</div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <div style={fieldValueStyle}>{site.name}</div>
-        <button
-          onClick={() => onNavigate(site)}
-          style={{
-            fontSize: '.72rem', fontWeight: 700, padding: '.3rem .55rem', borderRadius: 6,
-            background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--primary)', flexShrink: 0,
-          }}
-        >
-          🧭 Navigate
-        </button>
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          <button
+            onClick={() => onPinLocation(site)}
+            title={site.lat != null ? 'Update this site’s GPS pin to your current location' : 'No GPS coordinates on file yet — tap to pin your current location'}
+            style={{
+              fontSize: '.72rem', fontWeight: 700, padding: '.3rem .55rem', borderRadius: 6,
+              background: 'var(--surface-2)', border: '1px solid var(--border)',
+              color: site.lat != null ? 'var(--muted)' : 'var(--warn)',
+            }}
+          >
+            📍 {site.lat != null ? 'Update Pin' : 'Pin Location'}
+          </button>
+          <button
+            onClick={() => onNavigate(site)}
+            style={{
+              fontSize: '.72rem', fontWeight: 700, padding: '.3rem .55rem', borderRadius: 6,
+              background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--primary)',
+            }}
+          >
+            🧭 Navigate
+          </button>
+        </div>
       </div>
     </div>
   )
