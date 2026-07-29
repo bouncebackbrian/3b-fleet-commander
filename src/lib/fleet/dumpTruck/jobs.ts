@@ -15,6 +15,7 @@ function fromRow(r: any): DumpTruckJob {
     poNumber: r.po_number,
     customerName: r.customer_name,
     brokerName: r.broker_name,
+    brokerId: r.broker_id,
     driverId: r.driver_id,
     truckId: r.truck_id,
     trailerId: r.trailer_id,
@@ -105,6 +106,7 @@ export interface CreateJobInput {
   poNumber?: string | null
   customerName?: string | null
   brokerName?: string | null
+  brokerId?: string | null
   driverId?: string | null
   truckId?: string | null
   trailerId?: string | null
@@ -145,6 +147,7 @@ export async function createJob(
       po_number: input.poNumber ?? null,
       customer_name: input.customerName ?? null,
       broker_name: input.brokerName ?? null,
+      broker_id: input.brokerId ?? null,
       driver_id: input.driverId ?? null,
       truck_id: input.truckId ?? null,
       trailer_id: input.trailerId ?? null,
@@ -199,6 +202,7 @@ export async function listBrokerJobs(businessId: string): Promise<DumpTruckJob[]
 export interface ProposeJobInput {
   customerName?: string | null
   brokerName?: string | null
+  brokerId?: string | null
   material?: string | null
   estQuantity?: number | null
   quantityUnit?: DumpTruckJob['quantityUnit']
@@ -231,6 +235,7 @@ export async function proposeJob(
       job_number: jobNumber,
       customer_name: input.customerName ?? null,
       broker_name: input.brokerName ?? null,
+      broker_id: input.brokerId ?? null,
       material: input.material ?? null,
       est_quantity: input.estQuantity ?? null,
       quantity_unit: input.quantityUnit ?? 'loads',

@@ -5,6 +5,7 @@ import LoadBadge from '@/components/ui/LoadBadge'
 import KpiCard from '@/components/ui/KpiCard'
 import { SAMPLE_LOADS } from '@/lib/store'
 import type { Load } from '@/types'
+import { downloadBrandedCsv, downloadBrandedPdf, type ExportTable } from '@/lib/reports/clientExport'
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 const fmtM = (n: number) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -40,8 +41,8 @@ Can you verify and advise on the difference?
 Thanks`
 }
 
-function exportCSV(loads: Load[]) {
-  const hdr = ['Date', 'Load #', 'Trailer', 'Dispatcher', 'Move', 'Disp mi', 'Actual mi', 'Paid mi', 'Missing mi', 'CPM', 'Expected', 'Settlement', 'Gap', 'Fuel', 'Net', 'Verdict', 'Verified']
+function settlementAuditTable(loads: Load[]): ExportTable {
+  const columns = ['Date', 'Load #', 'Trailer', 'Dispatcher', 'Move', 'Disp mi', 'Actual mi', 'Paid mi', 'Missing mi', 'CPM', 'Expected', 'Settlement', 'Gap', 'Fuel', 'Net', 'Verdict', 'Verified']
   const rows = loads.map(l => {
     const expected = l.dispatchMiles * l.cpmRate
     const gap = Math.max(expected - l.settlementPay, 0)
@@ -51,13 +52,8 @@ function exportCSV(loads: Load[]) {
       l.dispatchMiles, l.actualMiles, l.paidMiles, missing, l.cpmRate,
       expected.toFixed(2), l.settlementPay.toFixed(2), gap.toFixed(2),
       l.fuelCost.toFixed(2), net.toFixed(2), verdict(l), l.settlementVerified ? 'Yes' : 'No']
-      .map(v => `"${String(v).replace(/"/g, '""')}"`)
-      .join(',')
   })
-  const a = document.createElement('a')
-  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent([hdr.join(','), ...rows].join('\n'))
-  a.download = `settlement-audit-${new Date().toISOString().slice(0, 10)}.csv`
-  a.click()
+  return { title: 'Settlement Audit', rangeLabel: `Generated: ${new Date().toISOString()}`, columns, rows }
 }
 
 type Filter = 'ALL' | 'SHORT' | 'MISSING DATA' | 'UNVERIFIED'
@@ -186,10 +182,14 @@ export default function Audit() {
               {f.label}{f.count !== undefined ? ` (${f.count})` : ''}
             </button>
           ))}
-          <div style={{ marginLeft: 'auto' }}>
-            <button onClick={() => exportCSV(loads)}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <button onClick={() => downloadBrandedCsv(settlementAuditTable(loads), `settlement-audit-${new Date().toISOString().slice(0, 10)}`)}
               style={{ padding: '.45rem .9rem', borderRadius: 10, fontSize: 'var(--text-xs)', fontWeight: 600, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--muted)' }}>
               Export CSV
+            </button>
+            <button onClick={() => downloadBrandedPdf(settlementAuditTable(loads), `settlement-audit-${new Date().toISOString().slice(0, 10)}`)}
+              style={{ padding: '.45rem .9rem', borderRadius: 10, fontSize: 'var(--text-xs)', fontWeight: 600, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--muted)' }}>
+              📄 Export PDF
             </button>
           </div>
         </div>

@@ -9,6 +9,7 @@ import { haversineMeters } from '@/lib/dumpTruck/geofence'
 import AdminActivityLogPanel from '@/components/dumpTruck/AdminActivityLogPanel'
 import AdminPayrollHoursPanel from '@/components/dumpTruck/AdminPayrollHoursPanel'
 import AdminFuelPanel from '@/components/dumpTruck/AdminFuelPanel'
+import BrokerPicker, { type BrokerOption } from '@/components/dumpTruck/BrokerPicker'
 
 const SITE_TYPES: SiteType[] = ['yard', 'pickup', 'dump', 'customer', 'fuel', 'maintenance', 'scale', 'disposal', 'parking', 'other']
 
@@ -22,12 +23,14 @@ export default function DumpTruckAdminPage() {
   const [jobs, setJobs] = useState<DumpTruckJob[]>([])
   const [equipment, setEquipment] = useState<{ trucks: EquipmentOption[]; trailers: EquipmentOption[] }>({ trucks: [], trailers: [] })
   const [drivers, setDrivers] = useState<DriverOption[]>([])
+  const [brokers, setBrokers] = useState<BrokerOption[]>([])
 
   const reload = () => {
     fetch('/api/fleet/dump-truck/sites').then(r => r.json()).then(b => setSites(b.sites ?? []))
     fetch('/api/fleet/dump-truck/jobs').then(r => r.json()).then(b => setJobs(b.jobs ?? []))
     fetch('/api/fleet/dump-truck/equipment').then(r => r.json()).then(setEquipment)
     fetch('/api/fleet/dump-truck/drivers').then(r => r.json()).then(b => setDrivers(b.drivers ?? []))
+    fetch('/api/fleet/dump-truck/brokers').then(r => r.json()).then(b => setBrokers(b.brokers ?? []))
   }
   useEffect(reload, [])
 
@@ -44,7 +47,7 @@ export default function DumpTruckAdminPage() {
 
       <SitesPanel sites={sites} onCreated={reload} />
       <PendingDealsPanel jobs={jobs} sites={sites} equipment={equipment} drivers={drivers} onAccepted={reload} />
-      <JobsPanel jobs={jobs} sites={sites} equipment={equipment} drivers={drivers} onCreated={reload} />
+      <JobsPanel jobs={jobs} sites={sites} equipment={equipment} drivers={drivers} brokers={brokers} onBrokersChanged={reload} onCreated={reload} />
       <PayPolicyPanel drivers={drivers} />
       <AdminPayrollHoursPanel drivers={drivers} />
       <AdminFuelPanel />
@@ -227,14 +230,16 @@ function PendingDealsPanel({ jobs, sites, equipment, drivers, onAccepted }: {
   )
 }
 
-function JobsPanel({ jobs, sites, equipment, drivers, onCreated }: {
+function JobsPanel({ jobs, sites, equipment, drivers, brokers, onBrokersChanged, onCreated }: {
   jobs: DumpTruckJob[]; sites: DumpTruckSite[]
   equipment: { trucks: EquipmentOption[]; trailers: EquipmentOption[] }
   drivers: DriverOption[]
+  brokers: BrokerOption[]
+  onBrokersChanged: () => void
   onCreated: () => void
 }) {
   const emptyForm = {
-    jobNumber: '', poNumber: '', customerName: '', brokerName: '', driverId: '', truckId: '', trailerId: '',
+    jobNumber: '', poNumber: '', customerName: '', brokerId: '', brokerName: '', driverId: '', truckId: '', trailerId: '',
     pickupSiteId: '', dumpSiteId: '', material: '',
     loadTime: '', orderDate: '', deliveryDate: '', cosigneeName: '', orderedBy: '', contactPhone: '',
     truckType: '', directions: '', travelTimeMinutes: '', fuelSurcharge: '', pricePerHour: '', pricePerTon: '', materialCost: '',
@@ -251,6 +256,7 @@ function JobsPanel({ jobs, sites, equipment, drivers, onCreated }: {
         body: JSON.stringify({
           ...form,
           status: 'scheduled',
+          brokerId: form.brokerId || null,
           loadTime: form.loadTime || null,
           orderDate: form.orderDate || null,
           deliveryDate: form.deliveryDate || null,
@@ -283,7 +289,14 @@ function JobsPanel({ jobs, sites, equipment, drivers, onCreated }: {
         <Field label="Job Number"><input style={inputStyle} value={form.jobNumber} onChange={e => setForm({ ...form, jobNumber: e.target.value })} /></Field>
         <Field label="PO Number"><input style={inputStyle} value={form.poNumber} onChange={e => setForm({ ...form, poNumber: e.target.value })} /></Field>
         <Field label="Customer"><input style={inputStyle} value={form.customerName} onChange={e => setForm({ ...form, customerName: e.target.value })} /></Field>
-        <Field label="Broker"><input style={inputStyle} value={form.brokerName} onChange={e => setForm({ ...form, brokerName: e.target.value })} /></Field>
+        <Field label="Broker">
+          <BrokerPicker
+            brokers={brokers}
+            brokerId={form.brokerId || null}
+            onChange={(brokerId, brokerName) => setForm({ ...form, brokerId: brokerId ?? '', brokerName })}
+            onBrokerCreated={onBrokersChanged}
+          />
+        </Field>
         <Field label="Material"><input style={inputStyle} value={form.material} onChange={e => setForm({ ...form, material: e.target.value })} /></Field>
         <Field label="Driver">
           <select style={inputStyle} value={form.driverId} onChange={e => setForm({ ...form, driverId: e.target.value })}>

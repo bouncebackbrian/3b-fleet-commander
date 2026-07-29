@@ -154,6 +154,8 @@ export interface DumpTruckJob {
   poNumber: string | null
   customerName: string | null
   brokerName: string | null
+  /** FK into fleet_brokers — null for legacy jobs still only carrying the free-text brokerName. */
+  brokerId: string | null
   driverId: string | null
   truckId: string | null
   trailerId: string | null

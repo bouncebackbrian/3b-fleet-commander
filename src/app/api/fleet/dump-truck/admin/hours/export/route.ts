@@ -15,8 +15,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireFleetAuth, canManage } from '@/lib/fleet-auth-guard'
 import { resolveRange, type RangeType } from '@/lib/dumpTruck/hours'
 import { buildBusinessHoursForRange } from '@/lib/fleet/dumpTruck/adminHours'
-import { buildAdminPayrollDetailCsv, buildAdminPayrollSummaryCsv, recordExportAudit } from '@/lib/fleet/dumpTruck/exports'
+import {
+  buildAdminPayrollDetailCsv, buildAdminPayrollSummaryCsv,
+  buildAdminPayrollDetailTable, buildAdminPayrollSummaryTable, recordExportAudit,
+} from '@/lib/fleet/dumpTruck/exports'
 import { getBusinessMeta } from '@/lib/fleet/dumpTruck/shared'
+import { listPayrollPayments } from '@/lib/fleet/dumpTruck/payroll'
+import { renderReportTablePdf } from '@/lib/reports/pdf'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +34,7 @@ export async function GET(request: NextRequest) {
 
   const rangeParam = request.nextUrl.searchParams.get('range') ?? 'current_week'
   const exportType = request.nextUrl.searchParams.get('type') === 'summary' ? 'summary' : 'detail'
+  const format = request.nextUrl.searchParams.get('format') === 'pdf' ? 'pdf' : 'csv'
   if (!VALID_RANGES.includes(rangeParam as RangeType)) {
     return NextResponse.json({ error: `range must be one of ${VALID_RANGES.join(', ')}` }, { status: 400 })
   }
@@ -43,16 +49,19 @@ export async function GET(request: NextRequest) {
 
   try {
     const range = resolveRange(rangeType, new Date(), from && to ? { start: from, end: to } : undefined)
-    const [{ rows, driverSummaries }, businessMeta] = await Promise.all([
+    const [{ rows, driverSummaries }, businessMeta, payments] = await Promise.all([
       buildBusinessHoursForRange(auth.businessId, range, driverId || null),
       getBusinessMeta(auth.businessId),
+      listPayrollPayments(auth.businessId, range),
     ])
+    const paymentByDriver = new Map(payments.map(p => [p.driverId, p]))
+    const driverSummariesWithPayment = driverSummaries.map(s => {
+      const p = paymentByDriver.get(s.driverId)
+      return { ...s, checkNumber: p?.checkNumber, amountPaid: p?.amountPaid, paidAt: p?.paidAt }
+    })
 
     const generatedAt = new Date().toISOString()
     const meta = { ...businessMeta, generatedAt, rangeType, range }
-    const csv = exportType === 'summary'
-      ? buildAdminPayrollSummaryCsv(driverSummaries, meta)
-      : buildAdminPayrollDetailCsv(rows, meta)
 
     // Audit trail: one row per driver actually included in the export.
     await Promise.all(
@@ -62,12 +71,27 @@ export async function GET(request: NextRequest) {
       })),
     )
 
-    const filename = `dispatch-payroll-hours-${exportType}-${range.start}-to-${range.end}.csv`
+    const filename = `dispatch-payroll-hours-${exportType}-${range.start}-to-${range.end}`
+
+    if (format === 'pdf') {
+      const table = exportType === 'summary' ? buildAdminPayrollSummaryTable(driverSummariesWithPayment, meta) : buildAdminPayrollDetailTable(rows, meta)
+      const pdf = await renderReportTablePdf(auth.businessId, businessMeta.businessName, businessMeta.threebBizId, table)
+      return new NextResponse(new Uint8Array(pdf), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="${filename}.pdf"`,
+          'Cache-Control': 'no-store',
+        },
+      })
+    }
+
+    const csv = exportType === 'summary' ? buildAdminPayrollSummaryCsv(driverSummariesWithPayment, meta) : buildAdminPayrollDetailCsv(rows, meta)
     return new NextResponse(csv, {
       status: 200,
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Disposition': `attachment; filename="${filename}.csv"`,
         'Cache-Control': 'no-store',
       },
     })

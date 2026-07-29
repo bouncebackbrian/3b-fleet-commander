@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import ExpenseScanSheet from '@/components/expenses/ExpenseScanSheet'
+import { downloadBrandedCsv, downloadBrandedPdf, type ExportTable } from '@/lib/reports/clientExport'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Expense = {
@@ -60,25 +61,13 @@ function money(n: number) {
   return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-function exportCSV(expenses: Expense[]) {
-  const header = 'Date,Category,Amount,Deductible %,Deductible $,Description,Location,Load #'
+function expensesTable(expenses: Expense[]): ExportTable {
+  const columns = ['Date', 'Category', 'Amount', 'Deductible %', 'Deductible $', 'Description', 'Location', 'Load #']
   const rows = expenses.map(e => {
     const deductAmt = (e.amount * e.deductPct / 100).toFixed(2)
-    return [
-      e.date, cat(e.category).label, e.amount.toFixed(2),
-      `${e.deductPct}%`, deductAmt,
-      `"${e.description.replace(/"/g, '""')}"`,
-      `"${e.location.replace(/"/g, '""')}"`,
-      e.loadNumber,
-    ].join(',')
+    return [e.date, cat(e.category).label, e.amount.toFixed(2), `${e.deductPct}%`, deductAmt, e.description, e.location, e.loadNumber]
   })
-  const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv' })
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href     = url
-  a.download = `expenses-${today()}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
+  return { title: 'Expenses', rangeLabel: `Generated: ${new Date().toISOString()}`, columns, rows }
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -373,14 +362,22 @@ export default function ExpensesPage() {
           )}
 
           {/* Export */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.65rem' }}>
-            <button onClick={() => exportCSV(visible)} disabled={visible.length === 0}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '.65rem' }}>
+            <button onClick={() => downloadBrandedCsv(expensesTable(visible), `expenses-${today()}`)} disabled={visible.length === 0}
               style={{ ...S.btnPri, textAlign: 'center', padding: '.75rem', fontSize: 'var(--text-xs)', opacity: visible.length === 0 ? .5 : 1 }}>
-              📥 Export CSV
+              📥 CSV
             </button>
-            <button onClick={() => exportCSV(expenses)} disabled={expenses.length === 0}
+            <button onClick={() => downloadBrandedPdf(expensesTable(visible), `expenses-${today()}`)} disabled={visible.length === 0}
+              style={{ ...S.btn, textAlign: 'center', padding: '.75rem', fontSize: 'var(--text-xs)', opacity: visible.length === 0 ? .5 : 1 }}>
+              📄 PDF
+            </button>
+            <button onClick={() => downloadBrandedCsv(expensesTable(expenses), `expenses-all-time-${today()}`)} disabled={expenses.length === 0}
               style={{ ...S.btn, textAlign: 'center', padding: '.75rem', fontSize: 'var(--text-xs)', opacity: expenses.length === 0 ? .5 : 1 }}>
               📥 All-time CSV
+            </button>
+            <button onClick={() => downloadBrandedPdf(expensesTable(expenses), `expenses-all-time-${today()}`)} disabled={expenses.length === 0}
+              style={{ ...S.btn, textAlign: 'center', padding: '.75rem', fontSize: 'var(--text-xs)', opacity: expenses.length === 0 ? .5 : 1 }}>
+              📄 All-time PDF
             </button>
           </div>
 

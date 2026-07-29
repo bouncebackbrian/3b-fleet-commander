@@ -21,3 +21,15 @@ export function buildCsv<T>(rows: T[], columns: CsvColumn<T>[]): string {
   const lines = rows.map(row => columns.map(c => escapeCsvField(c.value(row))).join(','))
   return [header, ...lines].join('\r\n') + '\r\n'
 }
+
+/** Same column defs, as a plain matrix — feeds the PDF report table (src/lib/reports/pdf.tsx) with zero duplicated report logic. */
+export function toTableMatrix<T>(rows: T[], columns: CsvColumn<T>[]): { headers: string[]; body: (string | number)[][] } {
+  return {
+    headers: columns.map(c => c.header),
+    body: rows.map(row => columns.map(c => {
+      const v = c.value(row)
+      if (v === null || v === undefined) return ''
+      return typeof v === 'boolean' ? String(v) : v
+    })),
+  }
+}

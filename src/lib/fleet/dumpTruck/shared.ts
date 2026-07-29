@@ -23,26 +23,25 @@ export interface DriverBusinessMeta {
 }
 
 /**
- * Driver + tenant identity fields used to header CSV exports (spec §10).
+ * Driver + tenant identity fields used to header CSV/PDF exports (spec §10).
  *
  * SCHEMA NOTE (2026-07-28): the live `profiles` table has a single
  * `full_name` column, not `first_name`/`last_name`, and the live
- * `businesses` table has `name`, not `company_name` — and no
- * `three_b_biz_id` column at all yet. `threebBizId` is therefore always
- * null here; it is not fabricated. See docs/SCHEMA_RECONCILIATION.md for
- * the tracked follow-up to add a real 3B Business ID column.
+ * `businesses` table has `name`, not `company_name`. `three_b_biz_id`
+ * (2026-07-29: now a live column, previously it wasn't — see
+ * docs/SCHEMA_RECONCILIATION.md) is read for real below.
  */
 export async function getDriverBusinessMeta(businessId: string, driverId: string): Promise<DriverBusinessMeta> {
   const [{ data: profile }, { data: business }] = await Promise.all([
     fleetServiceClient.from('profiles').select('full_name, three_b_id').eq('id', driverId).maybeSingle(),
-    fleetServiceClient.from('businesses').select('name').eq('id', businessId).maybeSingle(),
+    fleetServiceClient.from('businesses').select('name, three_b_biz_id').eq('id', businessId).maybeSingle(),
   ])
 
   return {
     driverName: profile?.full_name || 'Unnamed Driver',
     threebId: profile?.three_b_id ?? null,
     businessName: business?.name ?? 'Unknown Business',
-    threebBizId: null, // no 3B Business ID column exists in production yet — see docs/SCHEMA_RECONCILIATION.md
+    threebBizId: business?.three_b_biz_id ?? null,
   }
 }
 
@@ -51,12 +50,12 @@ export interface BusinessMeta {
   threebBizId: string | null
 }
 
-/** Business-only identity fields — used to header dispatch-wide (multi-driver) CSV exports. */
+/** Business-only identity fields — used to header dispatch-wide (multi-driver) CSV/PDF exports. */
 export async function getBusinessMeta(businessId: string): Promise<BusinessMeta> {
-  const { data: business } = await fleetServiceClient.from('businesses').select('name').eq('id', businessId).maybeSingle()
+  const { data: business } = await fleetServiceClient.from('businesses').select('name, three_b_biz_id').eq('id', businessId).maybeSingle()
   return {
     businessName: business?.name ?? 'Unknown Business',
-    threebBizId: null, // no 3B Business ID column exists in production yet — see docs/SCHEMA_RECONCILIATION.md
+    threebBizId: business?.three_b_biz_id ?? null,
   }
 }
 

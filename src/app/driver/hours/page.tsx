@@ -57,12 +57,19 @@ interface RangeSummary {
   estimatedGrossEarnings: number
 }
 
+interface PayrollPayment {
+  checkNumber: string | null
+  amountPaid: number | null
+  paidAt: string | null
+}
+
 interface HoursResponse {
   range: { start: string; end: string }
   rangeType: RangeType
   rows: DailyHoursRow[]
   summary: RangeSummary
   isDefaultPayPolicy: boolean
+  payment: PayrollPayment | null
 }
 
 const RANGE_OPTIONS: { key: RangeType; label: string }[] = [
@@ -103,8 +110,8 @@ export default function DriverHoursPage() {
 
   useEffect(() => { load() }, [load])
 
-  const exportUrl = (type: 'detail' | 'summary') => {
-    const params = new URLSearchParams({ range: rangeType, type })
+  const exportUrl = (type: 'detail' | 'summary', format: 'csv' | 'pdf' = 'csv') => {
+    const params = new URLSearchParams({ range: rangeType, type, format })
     if (rangeType === 'custom') { params.set('from', customFrom); params.set('to', customTo) }
     return `/api/fleet/dump-truck/hours/export?${params}`
   }
@@ -189,9 +196,23 @@ export default function DriverHoursPage() {
               <Stat label="Miles" value={String(data.summary.totalMiles)} />
               <Stat label="Est. Earnings" value={`$${data.summary.estimatedGrossEarnings.toFixed(2)}`} highlight />
             </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: '1.25rem' }}>
-              <button onClick={() => window.open(exportUrl('detail'), '_blank')} style={exportBtnStyle}>⬇️ Export My Records (Detail CSV)</button>
-              <button onClick={() => window.open(exportUrl('summary'), '_blank')} style={exportBtnStyle}>⬇️ Export Summary CSV</button>
+
+            {data.payment && (data.payment.checkNumber || data.payment.amountPaid != null) && (
+              <div style={{ marginTop: '1.25rem', padding: '.85rem 1rem', borderRadius: 10, background: 'rgba(0,232,176,.06)', border: '1px solid rgba(0,232,176,.2)' }}>
+                <div style={{ fontSize: '.65rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', marginBottom: 6 }}>Paid</div>
+                <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', fontSize: '.85rem' }}>
+                  {data.payment.checkNumber && <div><span style={{ color: 'var(--muted)' }}>Check #</span> <strong>{data.payment.checkNumber}</strong></div>}
+                  {data.payment.amountPaid != null && <div><span style={{ color: 'var(--muted)' }}>Amount</span> <strong>${data.payment.amountPaid.toFixed(2)}</strong></div>}
+                  {data.payment.paidAt && <div><span style={{ color: 'var(--muted)' }}>Date</span> <strong>{data.payment.paidAt}</strong></div>}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, marginTop: '1.25rem', flexWrap: 'wrap' }}>
+              <button onClick={() => window.open(exportUrl('detail'), '_blank')} style={exportBtnStyle}>⬇️ Detail CSV</button>
+              <button onClick={() => window.open(exportUrl('detail', 'pdf'), '_blank')} style={exportBtnStyle}>📄 Detail PDF</button>
+              <button onClick={() => window.open(exportUrl('summary'), '_blank')} style={exportBtnStyle}>⬇️ Summary CSV</button>
+              <button onClick={() => window.open(exportUrl('summary', 'pdf'), '_blank')} style={exportBtnStyle}>📄 Summary PDF</button>
             </div>
           </div>
 

@@ -7,6 +7,7 @@ import { createAuthClient } from '@/lib/auth-client'
 import { logTimelineEvent } from '@/lib/timeline'
 import { readUserMode, MODE_CONFIG, type UserMode } from '@/lib/userMode'
 import UserModeSelectorSheet from '@/components/layout/UserModeSelectorSheet'
+import { getCurrentUser } from '@/lib/auth-adapter'
 
 // ── Compliance doc types ───────────────────────────────────────────────────────
 type LicenseScan = {
@@ -124,13 +125,14 @@ const badge = (text: string, color = 'teal') => (
   </div>
 )
 
-type Tab = 'personal' | 'vehicle' | 'pay' | 'fuel' | 'compliance' | 'system'
+type Tab = 'personal' | 'vehicle' | 'pay' | 'fuel' | 'compliance' | 'business' | 'system'
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'personal',   label: 'Personal',   icon: '👤' },
   { id: 'vehicle',    label: 'Vehicle',    icon: '🚛' },
   { id: 'pay',        label: 'Pay & CPM',  icon: '💵' },
   { id: 'fuel',       label: 'Fuel',       icon: '⛽' },
   { id: 'compliance', label: 'Compliance', icon: '📋' },
+  { id: 'business',   label: 'Business',   icon: '🏢' },
   { id: 'system',     label: 'System',     icon: '⚙️' },
 ]
 
@@ -141,6 +143,7 @@ export default function Settings() {
   const [userMode,    setUserMode]    = useState<UserMode | null>(null)
   const [showModeSelector, setShowModeSelector] = useState(false)
   const [tab,         setTab]         = useState<Tab>('personal')
+  const [canManageBusiness, setCanManageBusiness] = useState(false)
   const [s,           setS]           = useState<AppSettings>(DEFAULT_SETTINGS)
   const [profile,     setProfile]     = useState<Profile>(EMPTY_PROFILE)
   const [saved,       setSaved]       = useState(false)
@@ -201,6 +204,10 @@ export default function Settings() {
       }, { onConflict: 'user_id' })
     } catch { /* offline or unauthenticated — local record is sufficient */ }
   }
+
+  useEffect(() => {
+    getCurrentUser().then(user => setCanManageBusiness(user?.portals.admin === 'manage'))
+  }, [])
 
   useEffect(() => {
     setS(loadSettings())
@@ -533,7 +540,7 @@ export default function Settings() {
 
         {/* ── Tab bar ─────────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', gap: '.4rem', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '.35rem' }}>
-          {TABS.filter(t => !(s.driverMode && t.id === 'pay')).map(t => (
+          {TABS.filter(t => !(s.driverMode && t.id === 'pay') && !(t.id === 'business' && !canManageBusiness)).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               flex: 1, padding: '.55rem .5rem', borderRadius: 10, border: 'none', cursor: 'pointer',
               fontWeight: 700, fontSize: 'clamp(.65rem,2vw,.8rem)',
@@ -1519,6 +1526,8 @@ export default function Settings() {
           </div>
         )}
 
+        {tab === 'business' && <BusinessProfileTab />}
+
       </main>
 
       {/* ── Hidden file inputs — no capture= so iOS shows: Take Photo / Library / Browse ── */}
@@ -1532,6 +1541,166 @@ export default function Settings() {
         onClose={() => { setShowModeSelector(false); setUserMode(readUserMode()) }}
       />
     </>
+  )
+}
+
+// ── Business Profile tab (2026-07-29) ──────────────────────────────────────────
+// Company info + logo for branded report exports. Admin-portal manage-level
+// only — gated both by hiding the tab (above) and by the PATCH/upload routes
+// themselves rejecting non-manage callers.
+interface BusinessProfileState {
+  name: string
+  dotNumber: string
+  mcNumber: string
+  ein: string
+  insuranceCarrier: string
+  insurancePolicyNumber: string
+  insuranceExpiry: string
+}
+const EMPTY_BUSINESS_PROFILE: BusinessProfileState = {
+  name: '', dotNumber: '', mcNumber: '', ein: '', insuranceCarrier: '', insurancePolicyNumber: '', insuranceExpiry: '',
+}
+
+function BusinessProfileTab() {
+  const [profile, setProfile] = useState<BusinessProfileState>(EMPTY_BUSINESS_PROFILE)
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const logoInputRef = useRef<HTMLInputElement>(null)
+
+  const load = useCallback(() => {
+    setLoading(true)
+    fetch('/api/fleet/business/profile')
+      .then(r => r.json())
+      .then(b => {
+        if (b.profile) {
+          setProfile({
+            name: b.profile.name ?? '',
+            dotNumber: b.profile.dotNumber ?? '',
+            mcNumber: b.profile.mcNumber ?? '',
+            ein: b.profile.ein ?? '',
+            insuranceCarrier: b.profile.insuranceCarrier ?? '',
+            insurancePolicyNumber: b.profile.insurancePolicyNumber ?? '',
+            insuranceExpiry: b.profile.insuranceExpiry ?? '',
+          })
+        }
+        setLogoUrl(b.logoUrl ?? null)
+      })
+      .finally(() => setLoading(false))
+  }, [])
+  useEffect(load, [load])
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/fleet/business/profile', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: profile.name || undefined,
+          dotNumber: profile.dotNumber || null,
+          mcNumber: profile.mcNumber || null,
+          ein: profile.ein || null,
+          insuranceCarrier: profile.insuranceCarrier || null,
+          insurancePolicyNumber: profile.insurancePolicyNumber || null,
+          insuranceExpiry: profile.insuranceExpiry || null,
+        }),
+      })
+      if (res.ok) { setSaved(true); setTimeout(() => setSaved(false), 2000) }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const uploadLogo = async (file: File) => {
+    setUploadingLogo(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/fleet/business/logo', { method: 'POST', body: fd })
+      if (res.ok) load()
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
+  if (loading) return <div style={{ color: 'var(--muted)' }}>Loading…</div>
+
+  return (
+    <div style={{ display: 'grid', gap: '1rem' }}>
+      <div style={card}>
+        {secHead('Business Logo')}
+        <div style={{ fontSize: '.72rem', color: 'var(--muted)', marginBottom: 4 }}>
+          Appears on every branded PDF report (CSV exports show your business name and 3B Business ID only —
+          a CSV can&apos;t contain an image).
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 72, height: 72, borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            {logoUrl ? <img src={logoUrl} alt="Business logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <span style={{ fontSize: '1.5rem' }}>🏢</span>}
+          </div>
+          <button
+            onClick={() => logoInputRef.current?.click()}
+            disabled={uploadingLogo}
+            style={{ padding: '.6rem 1.1rem', borderRadius: 9, border: '1px solid var(--border)', background: 'none', color: 'var(--primary)', fontWeight: 700, fontSize: '.78rem', opacity: uploadingLogo ? .5 : 1 }}
+          >
+            {uploadingLogo ? 'Uploading…' : logoUrl ? 'Replace Logo' : 'Upload Logo'}
+          </button>
+          <input
+            ref={logoInputRef} type="file" accept="image/png,image/jpeg" style={{ display: 'none' }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) uploadLogo(f) }}
+          />
+        </div>
+      </div>
+
+      <div style={card}>
+        {secHead('Company Info')}
+        <div>
+          <label style={lbl}>Business Name</label>
+          <input style={inp} value={profile.name} onChange={e => setProfile(p => ({ ...p, name: e.target.value }))} />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.75rem' }}>
+          <div>
+            <label style={lbl}>DOT Number</label>
+            <input style={inp} value={profile.dotNumber} onChange={e => setProfile(p => ({ ...p, dotNumber: e.target.value }))} />
+          </div>
+          <div>
+            <label style={lbl}>MC Number</label>
+            <input style={inp} value={profile.mcNumber} onChange={e => setProfile(p => ({ ...p, mcNumber: e.target.value }))} />
+          </div>
+        </div>
+        <div>
+          <label style={lbl}>EIN</label>
+          <input style={inp} value={profile.ein} onChange={e => setProfile(p => ({ ...p, ein: e.target.value }))} />
+        </div>
+      </div>
+
+      <div style={card}>
+        {secHead('Insurance')}
+        <div>
+          <label style={lbl}>Carrier</label>
+          <input style={inp} value={profile.insuranceCarrier} onChange={e => setProfile(p => ({ ...p, insuranceCarrier: e.target.value }))} />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.75rem' }}>
+          <div>
+            <label style={lbl}>Policy Number</label>
+            <input style={inp} value={profile.insurancePolicyNumber} onChange={e => setProfile(p => ({ ...p, insurancePolicyNumber: e.target.value }))} />
+          </div>
+          <div>
+            <label style={lbl}>Expiry</label>
+            <input style={inp} type="date" value={profile.insuranceExpiry} onChange={e => setProfile(p => ({ ...p, insuranceExpiry: e.target.value }))} />
+          </div>
+        </div>
+      </div>
+
+      <button
+        onClick={save}
+        disabled={saving}
+        style={{ padding: '.75rem 1.4rem', borderRadius: 10, border: 'none', background: saved ? 'var(--success)' : 'var(--primary)', color: '#061210', fontWeight: 800, fontSize: '.85rem', opacity: saving ? .5 : 1, justifySelf: 'start' }}
+      >
+        {saved ? '✓ Saved!' : saving ? 'Saving…' : 'Save Business Profile'}
+      </button>
+    </div>
   )
 }
 

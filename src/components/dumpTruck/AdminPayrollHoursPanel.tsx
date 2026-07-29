@@ -30,6 +30,12 @@ interface BusinessSummary {
   estimatedGrossEarnings: number
 }
 
+interface PaymentDraft {
+  checkNumber: string
+  amountPaid: string
+  paidAt: string
+}
+
 type RangeChoice = 'current_week' | 'previous_week' | 'custom'
 
 const cardStyle: React.CSSProperties = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '1.25rem' }
@@ -47,6 +53,8 @@ export default function AdminPayrollHoursPanel({ drivers }: { drivers: DriverOpt
   const [businessSummary, setBusinessSummary] = useState<BusinessSummary | null>(null)
   const [rangeLabel, setRangeLabel] = useState<{ start: string; end: string } | null>(null)
   const [loading, setLoading] = useState(false)
+  const [payments, setPayments] = useState<Record<string, PaymentDraft>>({})
+  const [savingPayment, setSavingPayment] = useState<string | null>(null)
 
   const buildParams = useCallback(() => {
     const params = new URLSearchParams({ range })
@@ -70,9 +78,50 @@ export default function AdminPayrollHoursPanel({ drivers }: { drivers: DriverOpt
 
   useEffect(load, [load])
 
-  const download = (type: 'detail' | 'summary') => {
+  const loadPayments = useCallback(() => {
+    if (range === 'custom' && (!customFrom || !customTo)) return
+    const params = new URLSearchParams({ range })
+    if (range === 'custom') { params.set('from', customFrom); params.set('to', customTo) }
+    fetch(`/api/fleet/dump-truck/admin/payroll/payments?${params.toString()}`)
+      .then(r => r.json())
+      .then(b => {
+        const drafts: Record<string, PaymentDraft> = {}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const p of (b.payments ?? []) as any[]) {
+          drafts[p.driverId] = {
+            checkNumber: p.checkNumber ?? '', amountPaid: p.amountPaid != null ? String(p.amountPaid) : '', paidAt: p.paidAt ?? '',
+          }
+        }
+        setPayments(drafts)
+      })
+  }, [range, customFrom, customTo])
+
+  useEffect(loadPayments, [loadPayments])
+
+  const paymentFor = (driverId: string): PaymentDraft => payments[driverId] ?? { checkNumber: '', amountPaid: '', paidAt: '' }
+
+  const savePayment = async (driverId: string) => {
+    const draft = paymentFor(driverId)
+    setSavingPayment(driverId)
+    try {
+      await fetch('/api/fleet/dump-truck/admin/payroll/payments', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          driverId, range, from: range === 'custom' ? customFrom : undefined, to: range === 'custom' ? customTo : undefined,
+          checkNumber: draft.checkNumber || null,
+          amountPaid: draft.amountPaid ? Number(draft.amountPaid) : null,
+          paidAt: draft.paidAt || null,
+        }),
+      })
+    } finally {
+      setSavingPayment(null)
+    }
+  }
+
+  const download = (type: 'detail' | 'summary', format: 'csv' | 'pdf' = 'csv') => {
     const params = buildParams()
     params.set('type', type)
+    params.set('format', format)
     window.open(`/api/fleet/dump-truck/admin/hours/export?${params.toString()}`, '_blank')
   }
 
@@ -122,8 +171,10 @@ export default function AdminPayrollHoursPanel({ drivers }: { drivers: DriverOpt
       )}
 
       <div style={{ display: 'flex', gap: '.75rem', marginBottom: '1.25rem' }}>
-        <button style={btnStyle} onClick={() => download('detail')}>⬇ Download Detail CSV</button>
-        <button style={btnSecondaryStyle} onClick={() => download('summary')}>⬇ Download Summary CSV</button>
+        <button style={btnStyle} onClick={() => download('detail')}>⬇ Detail CSV</button>
+        <button style={btnSecondaryStyle} onClick={() => download('detail', 'pdf')}>📄 Detail PDF</button>
+        <button style={btnSecondaryStyle} onClick={() => download('summary')}>⬇ Summary CSV</button>
+        <button style={btnSecondaryStyle} onClick={() => download('summary', 'pdf')}>📄 Summary PDF</button>
       </div>
 
       {businessSummary && (
@@ -158,30 +209,69 @@ export default function AdminPayrollHoursPanel({ drivers }: { drivers: DriverOpt
               <th>Loads</th>
               <th>Miles</th>
               <th>Est. Gross</th>
+              <th>Check #</th>
+              <th>Amount Paid</th>
+              <th>Paid Date</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={11} style={{ padding: '1rem 0', color: 'var(--muted)' }}>Loading…</td></tr>
+              <tr><td colSpan={15} style={{ padding: '1rem 0', color: 'var(--muted)' }}>Loading…</td></tr>
             )}
             {!loading && driverSummaries.length === 0 && (
-              <tr><td colSpan={11} style={{ padding: '1rem 0', color: 'var(--faint)' }}>No shifts in this range.</td></tr>
+              <tr><td colSpan={15} style={{ padding: '1rem 0', color: 'var(--faint)' }}>No shifts in this range.</td></tr>
             )}
-            {driverSummaries.map(s => (
-              <tr key={s.driverId} style={{ borderTop: '1px solid var(--border)' }}>
-                <td style={{ padding: '.4rem .5rem .4rem 0', fontWeight: 700 }}>{s.driverName}</td>
-                <td>{s.daysWorked}</td>
-                <td>{s.totalRegularHours}</td>
-                <td>{s.totalOvertimeHours}</td>
-                <td>{s.totalFuelingHours}</td>
-                <td>{s.totalTrafficDelayHours}</td>
-                <td>{s.totalMechanicalDelayHours}</td>
-                <td>{s.totalOtherDelayHours}</td>
-                <td>{s.totalLoads}</td>
-                <td>{s.totalMiles}</td>
-                <td>${s.estimatedGrossEarnings.toFixed(2)}</td>
-              </tr>
-            ))}
+            {driverSummaries.map(s => {
+              const draft = paymentFor(s.driverId)
+              return (
+                <tr key={s.driverId} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: '.4rem .5rem .4rem 0', fontWeight: 700 }}>{s.driverName}</td>
+                  <td>{s.daysWorked}</td>
+                  <td>{s.totalRegularHours}</td>
+                  <td>{s.totalOvertimeHours}</td>
+                  <td>{s.totalFuelingHours}</td>
+                  <td>{s.totalTrafficDelayHours}</td>
+                  <td>{s.totalMechanicalDelayHours}</td>
+                  <td>{s.totalOtherDelayHours}</td>
+                  <td>{s.totalLoads}</td>
+                  <td>{s.totalMiles}</td>
+                  <td>${s.estimatedGrossEarnings.toFixed(2)}</td>
+                  <td>
+                    <input
+                      style={{ ...inputStyle, padding: '.3rem .4rem', fontSize: '.78rem', minWidth: 80 }}
+                      value={draft.checkNumber}
+                      onChange={e => setPayments(p => ({ ...p, [s.driverId]: { ...draft, checkNumber: e.target.value } }))}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      style={{ ...inputStyle, padding: '.3rem .4rem', fontSize: '.78rem', minWidth: 90 }}
+                      type="number" step="0.01"
+                      value={draft.amountPaid}
+                      onChange={e => setPayments(p => ({ ...p, [s.driverId]: { ...draft, amountPaid: e.target.value } }))}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      style={{ ...inputStyle, padding: '.3rem .4rem', fontSize: '.78rem', minWidth: 130 }}
+                      type="date"
+                      value={draft.paidAt}
+                      onChange={e => setPayments(p => ({ ...p, [s.driverId]: { ...draft, paidAt: e.target.value } }))}
+                    />
+                  </td>
+                  <td>
+                    <button
+                      onClick={() => savePayment(s.driverId)}
+                      disabled={savingPayment === s.driverId}
+                      style={{ padding: '.3rem .6rem', borderRadius: 6, background: 'var(--primary)', color: '#04140f', fontWeight: 800, fontSize: '.72rem', opacity: savingPayment === s.driverId ? .5 : 1 }}
+                    >
+                      {savingPayment === s.driverId ? '…' : 'Save'}
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>

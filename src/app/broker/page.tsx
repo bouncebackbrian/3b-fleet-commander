@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { toast } from '@/hooks/useToast'
 import ToastContainer from '@/components/shared/ToastContainer'
 import type { DumpTruckJob, DumpTruckSite } from '@/lib/dumpTruck/types'
+import BrokerPicker, { type BrokerOption } from '@/components/dumpTruck/BrokerPicker'
 
 const cardStyle: React.CSSProperties = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '1.25rem' }
 const inputStyle: React.CSSProperties = { padding: '.5rem .6rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', width: '100%', fontSize: '.85rem' }
@@ -23,6 +24,7 @@ type EditableField = 'brokerName' | 'pricePerHour' | 'pricePerTon' | 'fuelSurcha
 export default function BrokerDeskPage() {
   const [jobs, setJobs] = useState<DumpTruckJob[]>([])
   const [sites, setSites] = useState<DumpTruckSite[]>([])
+  const [brokers, setBrokers] = useState<BrokerOption[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, Partial<Record<EditableField, string>>>>({})
@@ -39,6 +41,10 @@ export default function BrokerDeskPage() {
   useEffect(() => {
     fetch('/api/fleet/dump-truck/sites').then(r => r.json()).then(b => setSites(b.sites ?? []))
   }, [])
+  const loadBrokers = useCallback(() => {
+    fetch('/api/fleet/dump-truck/brokers').then(r => r.json()).then(b => setBrokers(b.brokers ?? []))
+  }, [])
+  useEffect(loadBrokers, [loadBrokers])
 
   const draftValue = (job: DumpTruckJob, field: EditableField): string => {
     const draft = drafts[job.id]?.[field]
@@ -87,7 +93,7 @@ export default function BrokerDeskPage() {
         </p>
       </div>
 
-      <ProposeDealForm sites={sites} onProposed={load} />
+      <ProposeDealForm sites={sites} brokers={brokers} onBrokersChanged={loadBrokers} onProposed={load} />
 
       <div style={cardStyle}>
         {loading && <div style={{ color: 'var(--muted)', padding: '1rem 0' }}>Loading…</div>}
@@ -156,11 +162,13 @@ function statusColor(status: DumpTruckJob['status']): string {
 }
 
 const emptyDeal = {
-  customerName: '', material: '', estQuantity: '', quantityUnit: 'loads' as const,
+  customerName: '', brokerId: '', material: '', estQuantity: '', quantityUnit: 'loads' as const,
   pickupSiteId: '', dumpSiteId: '', pricePerHour: '', pricePerTon: '', fuelSurcharge: '', materialCost: '',
 }
 
-function ProposeDealForm({ sites, onProposed }: { sites: DumpTruckSite[]; onProposed: () => void }) {
+function ProposeDealForm({ sites, brokers, onBrokersChanged, onProposed }: {
+  sites: DumpTruckSite[]; brokers: BrokerOption[]; onBrokersChanged: () => void; onProposed: () => void
+}) {
   const [open, setOpen] = useState(false)
   const [deal, setDeal] = useState(emptyDeal)
   const [submitting, setSubmitting] = useState(false)
@@ -176,6 +184,7 @@ function ProposeDealForm({ sites, onProposed }: { sites: DumpTruckSite[]; onProp
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customerName: deal.customerName || null,
+          brokerId: deal.brokerId || null,
           material: deal.material || null,
           estQuantity: deal.estQuantity ? Number(deal.estQuantity) : null,
           quantityUnit: deal.quantityUnit,
@@ -223,6 +232,15 @@ function ProposeDealForm({ sites, onProposed }: { sites: DumpTruckSite[]; onProp
         <div>
           <div style={labelStyle}>Customer</div>
           <input style={inputStyle} value={deal.customerName} onChange={e => setDeal(d => ({ ...d, customerName: e.target.value }))} />
+        </div>
+        <div>
+          <div style={labelStyle}>Broker</div>
+          <BrokerPicker
+            brokers={brokers}
+            brokerId={deal.brokerId || null}
+            onChange={brokerId => setDeal(d => ({ ...d, brokerId: brokerId ?? '' }))}
+            onBrokerCreated={onBrokersChanged}
+          />
         </div>
         <div>
           <div style={labelStyle}>Material</div>

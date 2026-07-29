@@ -13,6 +13,7 @@
     "@anthropic-ai/sdk": "^0.54.0",
     "@ducanh2912/next-pwa": "^10.2.9",
     "@microsoft/clarity": "^1.0.2",
+    "@react-pdf/renderer": "^4.5.1",
     "@stripe/stripe-js": "^9.7.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.43.0",

@@ -1,9 +1,15 @@
 /**
- * fleet/dumpTruck/exports.ts — Driver Personal Records CSV (spec §10)
+ * fleet/dumpTruck/exports.ts — Driver Personal Records CSV + PDF (spec §10)
+ *
+ * Each report's column list is factored into its own `xColumns()` function
+ * so the CSV builder and the PDF table builder share one definition —
+ * `format=pdf` on the export routes never risks drifting out of sync with
+ * the CSV.
  */
 
 import { fleetServiceClient } from '@/lib/fleet-service-client'
-import { buildCsv, type CsvColumn } from '@/lib/dumpTruck/csv'
+import { buildCsv, toTableMatrix, type CsvColumn } from '@/lib/dumpTruck/csv'
+import { buildReportHeaderLines } from '@/lib/reports/branding'
 import type { DailyHoursRow, RangeSummary, RangeType, DateRange } from '@/lib/dumpTruck/hours'
 
 interface ExportMeta {
@@ -14,10 +20,22 @@ interface ExportMeta {
   generatedAt: string
   rangeType: RangeType
   range: DateRange
+  /** This pay period's disbursement record, if dispatch has entered one (src/lib/fleet/dumpTruck/payroll.ts). */
+  checkNumber?: string | null
+  amountPaid?: number | null
+  paidAt?: string | null
 }
 
-export function buildDetailCsv(rows: DailyHoursRow[], meta: ExportMeta): string {
-  const columns: CsvColumn<DailyHoursRow>[] = [
+export interface ReportTable {
+  title: string
+  metaLine: string
+  disclaimers: string[]
+  headers: string[]
+  body: (string | number)[][]
+}
+
+function detailColumns(meta: ExportMeta): CsvColumn<DailyHoursRow>[] {
+  return [
     { header: 'Driver Name', value: () => meta.driverName },
     { header: '3B ID', value: () => meta.threebId ?? '' },
     { header: 'Business Name', value: () => meta.businessName },
@@ -63,17 +81,34 @@ export function buildDetailCsv(rows: DailyHoursRow[], meta: ExportMeta): string 
     { header: 'Payroll Approval Status', value: () => 'not_implemented' },
     { header: 'Exception/Correction Status', value: r => r.exceptionStatus },
   ]
-
-  const header = `# 3B Fleet Commander — Driver Personal Records (Detail)\r\n` +
-    `# Generated: ${meta.generatedAt}  Range: ${meta.rangeType} (${meta.range.start} to ${meta.range.end})\r\n` +
-    `# All earnings figures are ESTIMATES ONLY, calculated from a single hourly-rate + daily-overtime policy.\r\n` +
-    `# They are NOT payroll-approved wages. Approved company payroll records control if values differ.\r\n\r\n`
-
-  return header + buildCsv(rows, columns)
 }
 
-export function buildSummaryCsv(summary: RangeSummary, meta: ExportMeta): string {
-  const columns: CsvColumn<RangeSummary>[] = [
+const DETAIL_DISCLAIMERS = [
+  'All earnings figures are ESTIMATES ONLY, calculated from a single hourly-rate + daily-overtime policy.',
+  'They are NOT payroll-approved wages. Approved company payroll records control if values differ.',
+]
+
+export function buildDetailCsv(rows: DailyHoursRow[], meta: ExportMeta): string {
+  const header = buildReportHeaderLines({
+    businessName: meta.businessName, threeBBizId: meta.threebBizId,
+    title: `Driver Personal Records (Detail) — ${meta.driverName}${meta.threebId ? ` (${meta.threebId})` : ''}`,
+    generatedAt: meta.generatedAt, rangeLabel: `Range: ${meta.rangeType} (${meta.range.start} to ${meta.range.end})`,
+    disclaimers: DETAIL_DISCLAIMERS,
+  })
+  return header + buildCsv(rows, detailColumns(meta))
+}
+
+export function buildDetailTable(rows: DailyHoursRow[], meta: ExportMeta): ReportTable {
+  const { headers, body } = toTableMatrix(rows, detailColumns(meta))
+  return {
+    title: `Driver Personal Records (Detail) — ${meta.driverName}${meta.threebId ? ` (${meta.threebId})` : ''}`,
+    metaLine: `Generated: ${meta.generatedAt}  Range: ${meta.rangeType} (${meta.range.start} to ${meta.range.end})`,
+    disclaimers: DETAIL_DISCLAIMERS, headers, body,
+  }
+}
+
+function summaryColumns(meta: ExportMeta): CsvColumn<RangeSummary>[] {
+  return [
     { header: 'Driver Name', value: () => meta.driverName },
     { header: '3B ID', value: () => meta.threebId ?? '' },
     { header: 'Business Name', value: () => meta.businessName },
@@ -96,13 +131,31 @@ export function buildSummaryCsv(summary: RangeSummary, meta: ExportMeta): string
     { header: 'Total Other Delay Hours', value: r => r.totalOtherDelayHours },
     { header: 'Estimated Gross Earnings (Estimated — Not Payroll-Approved)', value: r => r.estimatedGrossEarnings },
     { header: 'Payroll-Approved Gross Earnings', value: r => r.payrollApprovedGrossEarnings ?? 'N/A — payroll approval not implemented' },
+    { header: 'Check Number', value: () => meta.checkNumber ?? '' },
+    { header: 'Amount Paid', value: () => meta.amountPaid ?? '' },
+    { header: 'Paid Date', value: () => meta.paidAt ?? '' },
   ]
+}
 
-  const header = `# 3B Fleet Commander — Driver Personal Records (Weekly Summary)\r\n` +
-    `# Generated: ${meta.generatedAt}  Range: ${meta.rangeType} (${meta.range.start} to ${meta.range.end})\r\n` +
-    `# Estimated earnings only — not a pay stub or final wage statement.\r\n\r\n`
+const SUMMARY_DISCLAIMERS = ['Estimated earnings only — not a pay stub or final wage statement.']
 
-  return header + buildCsv([summary], columns)
+export function buildSummaryCsv(summary: RangeSummary, meta: ExportMeta): string {
+  const header = buildReportHeaderLines({
+    businessName: meta.businessName, threeBBizId: meta.threebBizId,
+    title: `Driver Personal Records (Weekly Summary) — ${meta.driverName}${meta.threebId ? ` (${meta.threebId})` : ''}`,
+    generatedAt: meta.generatedAt, rangeLabel: `Range: ${meta.rangeType} (${meta.range.start} to ${meta.range.end})`,
+    disclaimers: SUMMARY_DISCLAIMERS,
+  })
+  return header + buildCsv([summary], summaryColumns(meta))
+}
+
+export function buildSummaryTable(summary: RangeSummary, meta: ExportMeta): ReportTable {
+  const { headers, body } = toTableMatrix([summary], summaryColumns(meta))
+  return {
+    title: `Driver Personal Records (Weekly Summary) — ${meta.driverName}${meta.threebId ? ` (${meta.threebId})` : ''}`,
+    metaLine: `Generated: ${meta.generatedAt}  Range: ${meta.rangeType} (${meta.range.start} to ${meta.range.end})`,
+    disclaimers: SUMMARY_DISCLAIMERS, headers, body,
+  }
 }
 
 // ── Dispatch/admin payroll export — all drivers, one CSV (spec follow-up) ────
@@ -121,8 +174,8 @@ export interface DriverHoursRow extends DailyHoursRow {
   threebId: string | null
 }
 
-export function buildAdminPayrollDetailCsv(rows: DriverHoursRow[], meta: AdminPayrollMeta): string {
-  const columns: CsvColumn<DriverHoursRow>[] = [
+function adminDetailColumns(meta: AdminPayrollMeta): CsvColumn<DriverHoursRow>[] {
+  return [
     { header: 'Business Name', value: () => meta.businessName },
     { header: '3B Business ID', value: () => meta.threebBizId ?? '' },
     { header: 'Driver Name', value: r => r.driverName },
@@ -166,23 +219,38 @@ export function buildAdminPayrollDetailCsv(rows: DriverHoursRow[], meta: AdminPa
     { header: 'Submission Status', value: r => r.submissionStatus },
     { header: 'Exception/Correction Status', value: r => r.exceptionStatus },
   ]
+}
 
-  const header = `# 3B Fleet Commander — Dispatch Payroll Hours Export (Detail, All Drivers)\r\n` +
-    `# Generated: ${meta.generatedAt}  Range: ${meta.rangeType} (${meta.range.start} to ${meta.range.end}) — week is Monday–Sunday\r\n` +
-    `# All earnings figures are ESTIMATES ONLY, calculated from a single hourly-rate + daily-overtime policy.\r\n` +
-    `# They are NOT payroll-approved wages. Approved company payroll records control if values differ.\r\n\r\n`
+export function buildAdminPayrollDetailCsv(rows: DriverHoursRow[], meta: AdminPayrollMeta): string {
+  const header = buildReportHeaderLines({
+    businessName: meta.businessName, threeBBizId: meta.threebBizId,
+    title: 'Dispatch Payroll Hours Export (Detail, All Drivers)',
+    generatedAt: meta.generatedAt, rangeLabel: `Range: ${meta.rangeType} (${meta.range.start} to ${meta.range.end}) — week is Monday–Sunday`,
+    disclaimers: DETAIL_DISCLAIMERS,
+  })
+  return header + buildCsv(rows, adminDetailColumns(meta))
+}
 
-  return header + buildCsv(rows, columns)
+export function buildAdminPayrollDetailTable(rows: DriverHoursRow[], meta: AdminPayrollMeta): ReportTable {
+  const { headers, body } = toTableMatrix(rows, adminDetailColumns(meta))
+  return {
+    title: 'Dispatch Payroll Hours Export (Detail, All Drivers)',
+    metaLine: `Generated: ${meta.generatedAt}  Range: ${meta.rangeType} (${meta.range.start} to ${meta.range.end}) — week is Monday–Sunday`,
+    disclaimers: DETAIL_DISCLAIMERS, headers, body,
+  }
 }
 
 export interface DriverRangeSummary extends RangeSummary {
   driverId: string
   driverName: string
   threebId: string | null
+  checkNumber?: string | null
+  amountPaid?: number | null
+  paidAt?: string | null
 }
 
-export function buildAdminPayrollSummaryCsv(rows: DriverRangeSummary[], meta: AdminPayrollMeta): string {
-  const columns: CsvColumn<DriverRangeSummary>[] = [
+function adminSummaryColumns(meta: AdminPayrollMeta): CsvColumn<DriverRangeSummary>[] {
+  return [
     { header: 'Business Name', value: () => meta.businessName },
     { header: '3B Business ID', value: () => meta.threebBizId ?? '' },
     { header: 'Driver Name', value: r => r.driverName },
@@ -201,13 +269,29 @@ export function buildAdminPayrollSummaryCsv(rows: DriverRangeSummary[], meta: Ad
     { header: 'Total Mechanical Delay Hours', value: r => r.totalMechanicalDelayHours },
     { header: 'Total Other Delay Hours', value: r => r.totalOtherDelayHours },
     { header: 'Estimated Gross Earnings (Estimated — Not Payroll-Approved)', value: r => r.estimatedGrossEarnings },
+    { header: 'Check Number', value: r => r.checkNumber ?? '' },
+    { header: 'Amount Paid', value: r => r.amountPaid ?? '' },
+    { header: 'Paid Date', value: r => r.paidAt ?? '' },
   ]
+}
 
-  const header = `# 3B Fleet Commander — Dispatch Payroll Hours Export (Weekly Summary, All Drivers)\r\n` +
-    `# Generated: ${meta.generatedAt}  Range: ${meta.rangeType} (${meta.range.start} to ${meta.range.end}) — week is Monday–Sunday\r\n` +
-    `# Estimated earnings only — not a pay stub or final wage statement.\r\n\r\n`
+export function buildAdminPayrollSummaryCsv(rows: DriverRangeSummary[], meta: AdminPayrollMeta): string {
+  const header = buildReportHeaderLines({
+    businessName: meta.businessName, threeBBizId: meta.threebBizId,
+    title: 'Dispatch Payroll Hours Export (Weekly Summary, All Drivers)',
+    generatedAt: meta.generatedAt, rangeLabel: `Range: ${meta.rangeType} (${meta.range.start} to ${meta.range.end}) — week is Monday–Sunday`,
+    disclaimers: SUMMARY_DISCLAIMERS,
+  })
+  return header + buildCsv(rows, adminSummaryColumns(meta))
+}
 
-  return header + buildCsv(rows, columns)
+export function buildAdminPayrollSummaryTable(rows: DriverRangeSummary[], meta: AdminPayrollMeta): ReportTable {
+  const { headers, body } = toTableMatrix(rows, adminSummaryColumns(meta))
+  return {
+    title: 'Dispatch Payroll Hours Export (Weekly Summary, All Drivers)',
+    metaLine: `Generated: ${meta.generatedAt}  Range: ${meta.rangeType} (${meta.range.start} to ${meta.range.end}) — week is Monday–Sunday`,
+    disclaimers: SUMMARY_DISCLAIMERS, headers, body,
+  }
 }
 
 export async function recordExportAudit(input: {
