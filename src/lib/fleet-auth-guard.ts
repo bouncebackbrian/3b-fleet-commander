@@ -86,3 +86,18 @@ export function hasPortal(portals: PortalGrants, portal: Portal): boolean {
 export function canManage(portals: PortalGrants, portal: Portal): boolean {
   return portals[portal] === 'manage'
 }
+
+/**
+ * Best-effort legacy role label from a set of portal grants — used only to
+ * populate fleet_business_members.role / fleet_team_invites.role, which are
+ * display-only now (see module doc). Never used for authorization.
+ */
+export function derivePrimaryRoleLabel(grants: { portal: Portal; permissionLevel: PermissionLevel }[]): string {
+  const has = (p: Portal, level: PermissionLevel = 'manage') =>
+    grants.some(g => g.portal === p && (level === 'view' || g.permissionLevel === 'manage'))
+  if (has('admin')) return 'admin'
+  if (has('dispatch')) return 'dispatcher'
+  if (has('broker') && !has('dispatch')) return 'broker'
+  if (has('driver')) return 'driver'
+  return 'driver'
+}

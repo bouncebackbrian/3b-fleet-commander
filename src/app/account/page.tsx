@@ -244,16 +244,76 @@ function NotificationSettings() {
 }
 
 // ── Team tab ──────────────────────────────────────────────────────────────────
+// Portal grants (2026-07-29) replaced the single-role picker — a member can
+// hold any combination of Driver/Dispatch/Broker/Admin, each at view or
+// manage level, instead of being forced into one role. `role` on
+// members/invites is now just a display-only label (see fleet-auth-guard.ts
+// derivePrimaryRoleLabel) — never sent to authorize anything.
 
-const ROLE_OPTIONS = ['driver', 'dispatcher', 'admin', 'broker', 'fleet_manager'] as const
-type InviteRole    = typeof ROLE_OPTIONS[number]
+const PORTALS = ['driver', 'dispatch', 'broker', 'admin'] as const
+type PortalId = typeof PORTALS[number]
+type PermissionLevel = 'view' | 'manage'
 
-const ROLE_LABEL: Record<InviteRole, string> = {
+const PORTAL_META: Record<PortalId, { label: string; emoji: string }> = {
+  driver:   { label: 'Driver',   emoji: '🚛' },
+  dispatch: { label: 'Dispatch', emoji: '📡' },
+  broker:   { label: 'Broker',   emoji: '📦' },
+  admin:    { label: 'Admin',    emoji: '⚙️' },
+}
+
+interface PortalGrant { portal: PortalId; permissionLevel: PermissionLevel }
+
+const ROLE_LABEL: Record<string, string> = {
   driver:        '🚛 Driver',
   dispatcher:    '📡 Dispatcher',
   admin:         '⚙️ Admin',
   broker:        '📦 Broker',
   fleet_manager: '🗂 Fleet Manager',
+  owner:         '👑 Owner',
+}
+
+/** Compact per-portal chip row — tap cycles None → View → Manage. Read-only when !editable. */
+function PortalGrantChips({ grants, editable, onChange }: {
+  grants: PortalGrant[]
+  editable: boolean
+  onChange?: (grants: PortalGrant[]) => void
+}) {
+  const levelOf = (p: PortalId) => grants.find(g => g.portal === p)?.permissionLevel ?? null
+
+  const cycle = (p: PortalId) => {
+    if (!editable || !onChange) return
+    const current = levelOf(p)
+    const next: PermissionLevel | null = current === null ? 'view' : current === 'view' ? 'manage' : null
+    const rest = grants.filter(g => g.portal !== p)
+    onChange(next ? [...rest, { portal: p, permissionLevel: next }] : rest)
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+      {PORTALS.map(p => {
+        const level = levelOf(p)
+        const meta = PORTAL_META[p]
+        return (
+          <button
+            key={p}
+            onClick={() => cycle(p)}
+            disabled={!editable}
+            title={editable ? 'Tap to cycle: none → view → manage' : undefined}
+            style={{
+              fontSize: '.6rem', fontWeight: 700, padding: '.2rem .45rem', borderRadius: 6,
+              border: `1px solid ${level ? 'rgba(0,232,176,.35)' : 'var(--border)'}`,
+              background: level === 'manage' ? 'rgba(0,232,176,.14)' : level === 'view' ? 'rgba(0,232,176,.06)' : 'var(--surface)',
+              color: level ? 'var(--primary)' : 'var(--faint)',
+              cursor: editable ? 'pointer' : 'default',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {meta.emoji} {meta.label}{level ? ` · ${level === 'manage' ? 'Manage' : 'View'}` : ''}
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
 interface TeamMember {
@@ -262,6 +322,7 @@ interface TeamMember {
   email:   string | null
   role:    string
   isSelf:  boolean
+  portalGrants: PortalGrant[]
 }
 
 interface PendingInvite {
@@ -277,7 +338,7 @@ function TeamTab({ businessId }: { businessId: string | null }) {
   const [callerRole, setCallerRole] = useState<string | null>(null)
   const [loading,    setLoading]    = useState(true)
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole,  setInviteRole]  = useState<InviteRole>('driver')
+  const [inviteGrants, setInviteGrants] = useState<PortalGrant[]>([{ portal: 'driver', permissionLevel: 'manage' }])
   const [inviting,    setInviting]    = useState(false)
   const [inviteResult, setInviteResult] = useState<{ url?: string; error?: string } | null>(null)
   const [msg,         setMsg]          = useState<string | null>(null)
@@ -300,12 +361,12 @@ function TeamTab({ businessId }: { businessId: string | null }) {
   useEffect(() => { load() }, [load])
 
   async function handleInvite() {
-    if (!businessId || !inviteEmail) return
+    if (!businessId || !inviteEmail || !inviteGrants.length) return
     setInviting(true); setInviteResult(null)
     try {
       const res  = await fetch('/api/team/invite', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ businessId, email: inviteEmail, role: inviteRole }),
+        body: JSON.stringify({ businessId, email: inviteEmail, portalGrants: inviteGrants }),
       })
       const data = await res.json()
       if (res.ok) {
@@ -320,13 +381,14 @@ function TeamTab({ businessId }: { businessId: string | null }) {
     } finally { setInviting(false) }
   }
 
-  async function handleRoleChange(memberId: string, role: string) {
+  async function handleGrantsChange(memberId: string, portalGrants: PortalGrant[]) {
     if (!businessId) return
+    setMembers(ms => ms.map(m => m.id === memberId ? { ...m, portalGrants } : m))
     await fetch('/api/team/members', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ businessId, memberId, role }),
+      body: JSON.stringify({ businessId, memberId, portalGrants }),
     })
-    setMsg('Role updated'); setTimeout(() => setMsg(null), 3000)
+    setMsg('Access updated'); setTimeout(() => setMsg(null), 3000)
     load()
   }
 
@@ -378,19 +440,11 @@ function TeamTab({ businessId }: { businessId: string | null }) {
                   {m.isSelf && <span style={{ marginLeft: 6, fontSize: '.55rem', color: 'var(--primary)' }}>you</span>}
                 </div>
               </div>
-              {isAdmin && !m.isSelf ? (
-                <select
-                  value={m.role}
-                  onChange={e => handleRoleChange(m.id, e.target.value)}
-                  style={{ ...inp, fontSize: '.62rem', padding: '.25rem .4rem' }}
-                >
-                  {ROLE_OPTIONS.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-                </select>
-              ) : (
-                <span style={{ fontSize: '.62rem', fontWeight: 700, color: 'var(--muted)', padding: '.2rem .45rem', borderRadius: 6, background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                  {ROLE_LABEL[m.role as InviteRole] ?? m.role}
-                </span>
-              )}
+              <PortalGrantChips
+                grants={m.portalGrants}
+                editable={isAdmin && !m.isSelf}
+                onChange={grants => handleGrantsChange(m.id, grants)}
+              />
               {isAdmin && !m.isSelf && (
                 <button onClick={() => handleRemove(m.id)} style={{ fontSize: '.6rem', color: 'var(--error)', background: 'none', border: 'none', cursor: 'pointer', padding: '.2rem .35rem', borderRadius: 5 }}>
                   Remove
@@ -411,7 +465,7 @@ function TeamTab({ businessId }: { businessId: string | null }) {
               <div style={{ flex: 1 }}>
                 <span style={{ fontSize: '.63rem', color: 'var(--fg)' }}>{inv.email}</span>
                 <span style={{ marginLeft: 8, fontSize: '.57rem', color: 'var(--muted)' }}>
-                  {ROLE_LABEL[inv.role as InviteRole] ?? inv.role} · expires {new Date(inv.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                  {ROLE_LABEL[inv.role] ?? inv.role} · expires {new Date(inv.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
                 </span>
               </div>
               <button onClick={() => handleRevokeInvite(inv.id)} style={{ fontSize: '.58rem', color: 'var(--error)', background: 'none', border: 'none', cursor: 'pointer' }}>
@@ -426,21 +480,20 @@ function TeamTab({ businessId }: { businessId: string | null }) {
       {isAdmin && (
         <div style={{ padding: '.75rem', borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--border)', display: 'grid', gap: '.5rem' }}>
           <div style={{ fontSize: '.58rem', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.08em' }}>Invite a team member</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '.4rem' }}>
-            <input
-              value={inviteEmail}
-              onChange={e => setInviteEmail(e.target.value)}
-              placeholder="Email address"
-              type="email"
-              style={{ ...inp, width: '100%', boxSizing: 'border-box' }}
-            />
-            <select value={inviteRole} onChange={e => setInviteRole(e.target.value as InviteRole)} style={{ ...inp }}>
-              {ROLE_OPTIONS.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-            </select>
+          <input
+            value={inviteEmail}
+            onChange={e => setInviteEmail(e.target.value)}
+            placeholder="Email address"
+            type="email"
+            style={{ ...inp, width: '100%', boxSizing: 'border-box' }}
+          />
+          <div>
+            <div style={{ fontSize: '.56rem', fontWeight: 700, color: 'var(--faint)', marginBottom: 3 }}>Portal access</div>
+            <PortalGrantChips grants={inviteGrants} editable onChange={setInviteGrants} />
           </div>
           <button
             onClick={handleInvite}
-            disabled={inviting || !inviteEmail}
+            disabled={inviting || !inviteEmail || !inviteGrants.length}
             style={{ padding: '.4rem', borderRadius: 8, fontSize: '.66rem', fontWeight: 800, background: 'var(--primary)', color: 'var(--surface)', border: 'none', cursor: inviting ? 'wait' : 'pointer', opacity: !inviteEmail ? 0.5 : 1 }}
           >
             {inviting ? 'Sending…' : 'Send Invite'}
