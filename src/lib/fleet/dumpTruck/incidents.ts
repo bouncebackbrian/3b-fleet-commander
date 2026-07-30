@@ -167,6 +167,8 @@ export interface DefectRow {
   reportedBy: string | null
   resolvedBy: string | null
   resolvedAt: string | null
+  /** Stamped when status moves to 'acknowledged' — used as "service person arrived" (paired with resolvedAt as "left/done"). */
+  acknowledgedAt: string | null
   resolutionNotes: string | null
   createdAt: string
   photoDocumentId: string | null
@@ -180,7 +182,7 @@ function defectFromRow(r: any, photoDocumentId: string | null): DefectRow {
   return {
     id: r.id, truckId: r.truck_id, trailerId: r.trailer_id, description: r.description,
     severity: r.severity, status: r.status, reportedBy: r.reported_by, resolvedBy: r.resolved_by,
-    resolvedAt: r.resolved_at, resolutionNotes: r.resolution_notes, createdAt: r.created_at,
+    resolvedAt: r.resolved_at, acknowledgedAt: r.acknowledged_at, resolutionNotes: r.resolution_notes, createdAt: r.created_at,
     photoDocumentId, lat: r.lat, lng: r.lng, assignedTo: r.assigned_to,
   }
 }
@@ -221,6 +223,9 @@ export async function resolveDefect(
   const patch: Record<string, unknown> = {}
   if (input.status) {
     patch.status = input.status
+    if (input.status === 'acknowledged') {
+      patch.acknowledged_at = new Date().toISOString()
+    }
     if (input.status === 'resolved') {
       patch.resolved_by = userId
       patch.resolved_at = new Date().toISOString()

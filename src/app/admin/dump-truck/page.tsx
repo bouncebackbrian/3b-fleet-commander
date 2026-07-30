@@ -74,6 +74,7 @@ interface DefectDTO {
   reportedBy: string | null
   resolvedBy: string | null
   resolvedAt: string | null
+  acknowledgedAt: string | null
   resolutionNotes: string | null
   createdAt: string
   photoDocumentId: string | null
@@ -235,6 +236,12 @@ function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: Equipme
               <div style={{ display: 'flex', gap: '.75rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '.78rem', color: 'var(--muted)' }}>
                 <span>⏱ Downtime: <strong style={{ color: 'var(--text)' }}>{formatDowntime(downtimeMs)}</strong>{!d.resolvedAt && ' (running)'}</span>
                 <span>Status: <strong style={{ color: 'var(--text)' }}>{d.status}</strong></span>
+                {d.acknowledgedAt && (
+                  <span>🚗 Arrived: <strong style={{ color: 'var(--text)' }}>{new Date(d.acknowledgedAt).toLocaleString()}</strong></span>
+                )}
+                {d.resolvedAt && (
+                  <span>✅ Left/Done: <strong style={{ color: 'var(--text)' }}>{new Date(d.resolvedAt).toLocaleString()}</strong></span>
+                )}
                 {d.photoDocumentId && (
                   <button onClick={() => viewPhoto(d.photoDocumentId!)} style={{ color: 'var(--primary)', fontWeight: 700 }}>📷 View Photo</button>
                 )}
@@ -283,9 +290,9 @@ function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: Equipme
                 ) : (
                   <div style={{ display: 'flex', gap: 6, marginTop: '.6rem' }}>
                     {d.status === 'open' && (
-                      <button onClick={() => act(d.id, 'acknowledged')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '.78rem', fontWeight: 700 }}>Acknowledge</button>
+                      <button onClick={() => act(d.id, 'acknowledged')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '.78rem', fontWeight: 700 }}>🚗 Mark Arrived</button>
                     )}
-                    <button onClick={() => setResolvingId(d.id)} style={{ ...btnStyle, padding: '.4rem .8rem', fontSize: '.78rem' }}>Mark Resolved</button>
+                    <button onClick={() => setResolvingId(d.id)} style={{ ...btnStyle, padding: '.4rem .8rem', fontSize: '.78rem' }}>✅ Mark Left / Done</button>
                     <button onClick={() => act(d.id, 'deferred')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.78rem', fontWeight: 700 }}>Defer</button>
                   </div>
                 )
