@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { toast } from '@/hooks/useToast'
 import ToastContainer from '@/components/shared/ToastContainer'
 import type { DumpTruckSite, DumpTruckJob, SiteType } from '@/lib/dumpTruck/types'
@@ -64,6 +64,57 @@ function SitesPanel({ sites, onCreated }: { sites: DumpTruckSite[]; onCreated: (
     lat: '', lng: '', geofenceRadiusM: '300',
   })
   const [busy, setBusy] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiText, setAiText] = useState('')
+  const [aiBusy, setAiBusy] = useState(false)
+  const aiFileRef = useRef<HTMLInputElement>(null)
+
+  const applyAiResult = (r: { name: string | null; lat: number | null; lng: number | null; addressLine1: string | null; city: string | null; state: string | null; postalCode: string | null }) => {
+    setForm(f => ({
+      ...f,
+      name: r.name ?? f.name,
+      addressLine1: r.addressLine1 ?? f.addressLine1,
+      city: r.city ?? f.city,
+      state: r.state ?? f.state,
+      postalCode: r.postalCode ?? f.postalCode,
+      lat: r.lat != null ? String(r.lat) : f.lat,
+      lng: r.lng != null ? String(r.lng) : f.lng,
+    }))
+  }
+
+  const aiFillFromFile = async (file: File) => {
+    setAiBusy(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/fleet/dump-truck/scan-site', { method: 'POST', body: fd })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not read screenshot')
+      applyAiResult(await res.json())
+      toast.success('Fields filled — review before saving')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not read screenshot')
+    } finally {
+      setAiBusy(false)
+    }
+  }
+
+  const aiFillFromText = async () => {
+    if (!aiText.trim()) return
+    setAiBusy(true)
+    try {
+      const fd = new FormData()
+      fd.append('text', aiText.trim())
+      const res = await fetch('/api/fleet/dump-truck/scan-site', { method: 'POST', body: fd })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not parse location')
+      applyAiResult(await res.json())
+      toast.success('Fields filled — review before saving')
+      setAiText('')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not parse location')
+    } finally {
+      setAiBusy(false)
+    }
+  }
 
   const submit = async () => {
     if (!form.name) { toast.error('Site name is required'); return }
@@ -92,6 +143,54 @@ function SitesPanel({ sites, onCreated }: { sites: DumpTruckSite[]; onCreated: (
   return (
     <div style={cardStyle}>
       <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '1rem' }}>Sites ({sites.length})</h2>
+
+      {!aiOpen ? (
+        <button
+          onClick={() => setAiOpen(true)}
+          style={{ marginBottom: '1rem', padding: '.55rem .9rem', borderRadius: 9, border: '1px dashed rgba(0,232,176,.4)', background: 'rgba(0,232,176,.06)', color: 'var(--primary)', fontWeight: 700, fontSize: '.8rem' }}
+        >
+          ✨ AI Fill from Screenshot or Location
+        </button>
+      ) : (
+        <div style={{ marginBottom: '1rem', padding: '.85rem', borderRadius: 10, border: '1px solid rgba(0,232,176,.25)', background: 'rgba(0,232,176,.04)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.6rem' }}>
+            <div style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--primary)' }}>✨ AI Fill</div>
+            <button onClick={() => setAiOpen(false)} style={{ color: 'var(--muted)', fontSize: '.75rem' }}>✕</button>
+          </div>
+          <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginBottom: '.6rem' }}>
+            Screenshot a maps app pin (Apple/Google Maps), or type/paste coordinates or a description — fills the
+            fields below for you to review before saving.
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button
+              onClick={() => aiFileRef.current?.click()}
+              disabled={aiBusy}
+              style={{ padding: '.5rem .8rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontWeight: 700, fontSize: '.78rem', opacity: aiBusy ? .5 : 1 }}
+            >
+              📷 Upload Screenshot
+            </button>
+            <input
+              ref={aiFileRef} type="file" accept="image/*" style={{ display: 'none' }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) aiFillFromFile(f) }}
+            />
+            <input
+              style={{ ...inputStyle, flex: 1, minWidth: 220 }}
+              placeholder="39.073470, -119.940673  or  corner of Heaven Hill Way & Conestoga Dr, Carson City NV"
+              value={aiText}
+              onChange={e => setAiText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') aiFillFromText() }}
+              disabled={aiBusy}
+            />
+            <button
+              onClick={aiFillFromText}
+              disabled={aiBusy || !aiText.trim()}
+              style={{ padding: '.5rem .9rem', borderRadius: 8, background: 'var(--primary)', color: '#04140f', fontWeight: 800, fontSize: '.78rem', opacity: aiBusy || !aiText.trim() ? .5 : 1 }}
+            >
+              {aiBusy ? 'Working…' : 'Fill'}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '.75rem', marginBottom: '1rem' }}>
         <Field label="Name"><input style={inputStyle} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></Field>
