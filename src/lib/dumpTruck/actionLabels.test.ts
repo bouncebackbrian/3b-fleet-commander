@@ -31,6 +31,20 @@ describe('siteAwareActionLabel', () => {
       .toBe('Start Loading')
   })
 
+  it('names the material on loading_started/loading_completed when known', () => {
+    expect(siteAwareActionLabel('loading_started', 'Start Loading', { material: 'Road Grindings' }))
+      .toBe('Load Road Grindings')
+    expect(siteAwareActionLabel('loading_completed', 'Loading Complete', { material: 'Road Grindings' }))
+      .toBe('Road Grindings Loaded')
+  })
+
+  it('names the material on unloading_started/unloading_completed when known', () => {
+    expect(siteAwareActionLabel('unloading_started', 'Start Unloading', { material: 'Road Grindings' }))
+      .toBe('Drop Road Grindings')
+    expect(siteAwareActionLabel('unloading_completed', 'Dumped', { material: 'Road Grindings' }))
+      .toBe('Road Grindings Dropped')
+  })
+
   it('falls back to the default label for a null event type', () => {
     expect(siteAwareActionLabel(null, 'Complete Pre-Trip', { pickupSiteName: '3D Dayton' }))
       .toBe('Complete Pre-Trip')

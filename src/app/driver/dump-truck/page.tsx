@@ -60,7 +60,7 @@ export default function DumpTruckDriverPage() {
   const dumpSite = context?.sites.find(s => s.id === activeJob?.dumpSiteId)
   const yardSite = context?.sites.find(s => s.siteType === 'yard')
 
-  const siteLabelCtx = { pickupSiteName: pickupSite?.name, dumpSiteName: dumpSite?.name, yardSiteName: yardSite?.name }
+  const siteLabelCtx = { pickupSiteName: pickupSite?.name, dumpSiteName: dumpSite?.name, yardSiteName: yardSite?.name, material: activeJob?.material }
   const displayAction = {
     ...primaryAction,
     label: siteAwareActionLabel(primaryAction.eventType, primaryAction.label, siteLabelCtx),
@@ -191,6 +191,7 @@ export default function DumpTruckDriverPage() {
             timeline={timeline}
             loadCount={context?.shift?.loadCount ?? 0}
             quickActions={quickActions}
+            labelCtx={siteLabelCtx}
             onViewFullLog={() => setSheet('full_log')}
             onQuickAction={key => {
               if (key === 'correction') {
@@ -330,7 +331,7 @@ export default function DumpTruckDriverPage() {
       )}
 
       {sheet === 'full_log' && (
-        <FullLogSheet timeline={timeline} onClose={() => setSheet(null)} />
+        <FullLogSheet timeline={timeline} labelCtx={siteLabelCtx} onClose={() => setSheet(null)} />
       )}
 
       {sheet === 'dispatch_ticket' && activeJob && (

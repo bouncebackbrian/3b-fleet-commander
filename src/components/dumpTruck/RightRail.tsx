@@ -1,5 +1,6 @@
 'use client'
 import type { TimelineEntry } from '@/hooks/useDumpTruckDriver'
+import type { SiteAwareLabelContext } from '@/lib/dumpTruck/actionLabels'
 import LogEntryRow from './LogEntryRow'
 
 const RECENT_COUNT = 3
@@ -12,9 +13,10 @@ interface Props {
   quickActions: QuickAction[]
   onQuickAction: (key: string) => void
   onViewFullLog: () => void
+  labelCtx?: SiteAwareLabelContext
 }
 
-export default function RightRail({ timeline, loadCount, quickActions, onQuickAction, onViewFullLog }: Props) {
+export default function RightRail({ timeline, loadCount, quickActions, onQuickAction, onViewFullLog, labelCtx }: Props) {
   const recent = [...timeline].reverse().slice(0, RECENT_COUNT)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', height: '100%' }}>
@@ -50,7 +52,7 @@ export default function RightRail({ timeline, loadCount, quickActions, onQuickAc
           {timeline.length === 0 && (
             <div style={{ fontSize: '.8rem', color: 'var(--faint)', padding: '1rem 0' }}>No events yet today.</div>
           )}
-          {recent.map(entry => <LogEntryRow key={entry.id} entry={entry} />)}
+          {recent.map(entry => <LogEntryRow key={entry.id} entry={entry} labelCtx={labelCtx} />)}
         </div>
         {timeline.length > 0 && (
           <button

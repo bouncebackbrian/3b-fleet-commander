@@ -13,12 +13,17 @@ export interface SiteAwareLabelContext {
   pickupSiteName?: string | null
   dumpSiteName?: string | null
   yardSiteName?: string | null
+  /** Active job's material (e.g. "Road Grindings") — labels the load/unload
+   *  actions with what's actually being hauled, same idea as the site name. */
+  material?: string | null
 }
 
 /**
  * Given the event a primary/secondary action would fire and its default
- * label, returns a label naming the actual site when one is known —
- * otherwise falls back to the default label unchanged.
+ * label, returns a label naming the actual site or material when one is
+ * known — otherwise falls back to the default label unchanged. Shared by
+ * the primary action button (CenterAction) and the Day Activity / Full Log
+ * timeline (LogEntryRow) so both read the same way.
  */
 export function siteAwareActionLabel(
   eventType: DumpTruckEventType | null,
@@ -30,10 +35,18 @@ export function siteAwareActionLabel(
       return ctx.pickupSiteName ? `Depart Yard — Heading to ${ctx.pickupSiteName}` : defaultLabel
     case 'arrive_pickup':
       return ctx.pickupSiteName ? `Arrived at ${ctx.pickupSiteName}` : defaultLabel
+    case 'loading_started':
+      return ctx.material ? `Load ${ctx.material}` : defaultLabel
+    case 'loading_completed':
+      return ctx.material ? `${ctx.material} Loaded` : defaultLabel
     case 'depart_pickup':
       return ctx.dumpSiteName ? `Leave Pickup — Heading to ${ctx.dumpSiteName}` : defaultLabel
     case 'arrive_dump':
       return ctx.dumpSiteName ? `Arrived at ${ctx.dumpSiteName}` : defaultLabel
+    case 'unloading_started':
+      return ctx.material ? `Drop ${ctx.material}` : defaultLabel
+    case 'unloading_completed':
+      return ctx.material ? `${ctx.material} Dropped` : defaultLabel
     case 'depart_dump':
       return ctx.yardSiteName ? `Leave Dump — Heading to ${ctx.yardSiteName}` : defaultLabel
     case 'arrive_yard':
