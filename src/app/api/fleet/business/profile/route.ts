@@ -41,6 +41,10 @@ export async function PATCH(request: NextRequest) {
       insurancePolicyNumber: body.insurancePolicyNumber,
       insuranceExpiry: body.insuranceExpiry,
       dispatchAlertEmail: body.dispatchAlertEmail,
+      addressLine1: body.addressLine1,
+      city: body.city,
+      state: body.state,
+      postalCode: body.postalCode,
     }, auth.userId, auth.email)
     return NextResponse.json({ profile })
   } catch (err) {

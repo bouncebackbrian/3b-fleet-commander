@@ -9,6 +9,7 @@ import { haversineMeters } from '@/lib/dumpTruck/geofence'
 import AdminActivityLogPanel from '@/components/dumpTruck/AdminActivityLogPanel'
 import AdminPayrollHoursPanel from '@/components/dumpTruck/AdminPayrollHoursPanel'
 import AdminFuelPanel from '@/components/dumpTruck/AdminFuelPanel'
+import AdminDriverTaxPanel from '@/components/dumpTruck/AdminDriverTaxPanel'
 import BrokerPicker, { type BrokerOption } from '@/components/dumpTruck/BrokerPicker'
 import TicketSheet from '@/components/dumpTruck/TicketSheet'
 import { TICKET_FIELD_CATALOG } from '@/lib/fleet/dumpTruck/ticketTemplates'
@@ -53,6 +54,7 @@ export default function DumpTruckAdminPage() {
       <JobsPanel jobs={jobs} sites={sites} equipment={equipment} drivers={drivers} brokers={brokers} onBrokersChanged={reload} onCreated={reload} />
       <TicketTemplatesPanel brokers={brokers} />
       <PayPolicyPanel drivers={drivers} />
+      <AdminDriverTaxPanel drivers={drivers} />
       <AdminPayrollHoursPanel drivers={drivers} />
       <AdminFuelPanel />
       <AdminActivityLogPanel drivers={drivers} />

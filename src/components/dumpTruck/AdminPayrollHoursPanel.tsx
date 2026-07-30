@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import type { DriverOption } from '@/lib/fleet/dumpTruck/jobs'
+import { tipOfTheDay } from '@/lib/dumpTruck/taxTips'
 
 interface DriverSummary {
   driverId: string
@@ -55,6 +56,16 @@ export default function AdminPayrollHoursPanel({ drivers }: { drivers: DriverOpt
   const [loading, setLoading] = useState(false)
   const [payments, setPayments] = useState<Record<string, PaymentDraft>>({})
   const [savingPayment, setSavingPayment] = useState<string | null>(null)
+  const [taxProfiles, setTaxProfiles] = useState<Record<string, { classification: 'w2' | '1099'; withholdingPercent: number | null }>>({})
+
+  useEffect(() => {
+    fetch('/api/fleet/dump-truck/driver-tax').then(r => r.json()).then(b => {
+      const map: Record<string, { classification: 'w2' | '1099'; withholdingPercent: number | null }> = {}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const p of (b.profiles ?? []) as any[]) map[p.driverId] = { classification: p.classification, withholdingPercent: p.withholdingPercent }
+      setTaxProfiles(map)
+    }).catch(() => {})
+  }, [])
 
   const buildParams = useCallback(() => {
     const params = new URLSearchParams({ range })
@@ -194,6 +205,12 @@ export default function AdminPayrollHoursPanel({ drivers }: { drivers: DriverOpt
         </div>
       )}
 
+      {driverSummaries.some(s => taxProfiles[s.driverId]?.classification === '1099') && (
+        <div style={{ fontSize: '.78rem', color: 'var(--muted)', fontStyle: 'italic', marginBottom: '.75rem', padding: '.6rem .75rem', background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+          💡 {tipOfTheDay()}
+        </div>
+      )}
+
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', fontSize: '.82rem', borderCollapse: 'collapse' }}>
           <thead>
@@ -251,6 +268,11 @@ export default function AdminPayrollHoursPanel({ drivers }: { drivers: DriverOpt
                       value={draft.amountPaid}
                       onChange={e => setPayments(p => ({ ...p, [s.driverId]: { ...draft, amountPaid: e.target.value } }))}
                     />
+                    {taxProfiles[s.driverId]?.classification === '1099' && taxProfiles[s.driverId]?.withholdingPercent != null && draft.amountPaid && (
+                      <div style={{ fontSize: '.68rem', color: 'var(--warn)', marginTop: 2, whiteSpace: 'nowrap' }}>
+                        Suggest setting aside ${(Number(draft.amountPaid) * (taxProfiles[s.driverId].withholdingPercent as number) / 100).toFixed(2)}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <input

@@ -1557,9 +1557,14 @@ interface BusinessProfileState {
   insurancePolicyNumber: string
   insuranceExpiry: string
   dispatchAlertEmail: string
+  addressLine1: string
+  city: string
+  state: string
+  postalCode: string
 }
 const EMPTY_BUSINESS_PROFILE: BusinessProfileState = {
   name: '', dotNumber: '', mcNumber: '', ein: '', insuranceCarrier: '', insurancePolicyNumber: '', insuranceExpiry: '', dispatchAlertEmail: '',
+  addressLine1: '', city: '', state: '', postalCode: '',
 }
 
 function BusinessProfileTab() {
@@ -1586,6 +1591,10 @@ function BusinessProfileTab() {
             insurancePolicyNumber: b.profile.insurancePolicyNumber ?? '',
             insuranceExpiry: b.profile.insuranceExpiry ?? '',
             dispatchAlertEmail: b.profile.dispatchAlertEmail ?? '',
+            addressLine1: b.profile.addressLine1 ?? '',
+            city: b.profile.city ?? '',
+            state: b.profile.state ?? '',
+            postalCode: b.profile.postalCode ?? '',
           })
         }
         setLogoUrl(b.logoUrl ?? null)
@@ -1608,6 +1617,10 @@ function BusinessProfileTab() {
           insurancePolicyNumber: profile.insurancePolicyNumber || null,
           insuranceExpiry: profile.insuranceExpiry || null,
           dispatchAlertEmail: profile.dispatchAlertEmail || null,
+          addressLine1: profile.addressLine1 || null,
+          city: profile.city || null,
+          state: profile.state || null,
+          postalCode: profile.postalCode || null,
         }),
       })
       if (res.ok) { setSaved(true); setTimeout(() => setSaved(false), 2000) }
@@ -1675,6 +1688,27 @@ function BusinessProfileTab() {
         <div>
           <label style={lbl}>EIN</label>
           <input style={inp} value={profile.ein} onChange={e => setProfile(p => ({ ...p, ein: e.target.value }))} />
+        </div>
+        <div style={{ fontSize: '.68rem', color: 'var(--muted)', marginTop: 8, marginBottom: 4 }}>
+          Mailing address — used as the Payer address on Form 1099-NEC if you file 1099s for any drivers.
+        </div>
+        <div>
+          <label style={lbl}>Street Address</label>
+          <input style={inp} value={profile.addressLine1} onChange={e => setProfile(p => ({ ...p, addressLine1: e.target.value }))} />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '.75rem' }}>
+          <div>
+            <label style={lbl}>City</label>
+            <input style={inp} value={profile.city} onChange={e => setProfile(p => ({ ...p, city: e.target.value }))} />
+          </div>
+          <div>
+            <label style={lbl}>State</label>
+            <input style={inp} value={profile.state} onChange={e => setProfile(p => ({ ...p, state: e.target.value }))} />
+          </div>
+          <div>
+            <label style={lbl}>ZIP</label>
+            <input style={inp} value={profile.postalCode} onChange={e => setProfile(p => ({ ...p, postalCode: e.target.value }))} />
+          </div>
         </div>
       </div>
 

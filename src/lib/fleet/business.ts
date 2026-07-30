@@ -32,6 +32,11 @@ export interface BusinessProfile {
   logoStoragePath: string | null
   /** Where safety-critical/out-of-service defect alerts get emailed — see lib/email/resend.ts. Null = alerts skipped. */
   dispatchAlertEmail: string | null
+  /** Payer mailing address on Form 1099-NEC — see lib/fleet/dumpTruck/driverTax.ts. */
+  addressLine1: string | null
+  city: string | null
+  state: string | null
+  postalCode: string | null
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -48,10 +53,14 @@ function fromRow(r: any): BusinessProfile {
     threeBBizId: r.three_b_biz_id,
     logoStoragePath: r.logo_storage_path,
     dispatchAlertEmail: r.dispatch_alert_email,
+    addressLine1: r.address_line1,
+    city: r.city,
+    state: r.state,
+    postalCode: r.postal_code,
   }
 }
 
-const PROFILE_COLUMNS = 'id, name, dot_number, mc_number, ein, insurance_carrier, insurance_policy_number, insurance_expiry, three_b_biz_id, logo_storage_path, dispatch_alert_email'
+const PROFILE_COLUMNS = 'id, name, dot_number, mc_number, ein, insurance_carrier, insurance_policy_number, insurance_expiry, three_b_biz_id, logo_storage_path, dispatch_alert_email, address_line1, city, state, postal_code'
 
 export async function getBusinessProfile(businessId: string): Promise<BusinessProfile | null> {
   const { data, error } = await fleetServiceClient
@@ -72,6 +81,10 @@ export interface UpdateBusinessProfileInput {
   insurancePolicyNumber?: string | null
   insuranceExpiry?: string | null
   dispatchAlertEmail?: string | null
+  addressLine1?: string | null
+  city?: string | null
+  state?: string | null
+  postalCode?: string | null
 }
 
 export async function updateBusinessProfile(
@@ -86,6 +99,10 @@ export async function updateBusinessProfile(
   if (input.insurancePolicyNumber !== undefined) patch.insurance_policy_number = input.insurancePolicyNumber
   if (input.insuranceExpiry !== undefined) patch.insurance_expiry = input.insuranceExpiry
   if (input.dispatchAlertEmail !== undefined) patch.dispatch_alert_email = input.dispatchAlertEmail
+  if (input.addressLine1 !== undefined) patch.address_line1 = input.addressLine1
+  if (input.city !== undefined) patch.city = input.city
+  if (input.state !== undefined) patch.state = input.state
+  if (input.postalCode !== undefined) patch.postal_code = input.postalCode
 
   const { data, error } = await fleetServiceClient
     .from('businesses')
