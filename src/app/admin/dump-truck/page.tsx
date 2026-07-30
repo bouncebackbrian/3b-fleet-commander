@@ -75,6 +75,9 @@ interface DefectDTO {
   resolutionNotes: string | null
   createdAt: string
   photoDocumentId: string | null
+  lat: number | null
+  lng: number | null
+  assignedTo: string | null
 }
 
 const SEVERITY_COLOR: Record<DefectDTO['severity'], string> = {
@@ -92,6 +95,34 @@ function formatDowntime(ms: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`
 }
 
+// Simple keyword clustering — no vendor/booking integration, just a hint that
+// multiple trucks have the same kind of open issue so one shop visit/appointment
+// can cover all of them instead of separate calls.
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  Tires: ['tire', 'tread'],
+  Brakes: ['brake'],
+  Lights: ['light', 'lamp', 'signal', 'blinker'],
+  Hydraulics: ['hydraulic', 'hoist', 'ram', 'cylinder'],
+  Engine: ['engine', 'oil leak', 'coolant', 'overheat'],
+  Electrical: ['electrical', 'battery', 'alternator', 'wiring'],
+}
+
+function groupSimilarOpenDefects(defects: DefectDTO[], unitFor: (id: string) => string) {
+  const open = defects.filter(d => d.status === 'open' || d.status === 'acknowledged')
+  const byCategory = new Map<string, { truckId: string; unit: string }[]>()
+
+  for (const d of open) {
+    const text = d.description.toLowerCase()
+    const category = Object.keys(CATEGORY_KEYWORDS).find(cat => CATEGORY_KEYWORDS[cat].some(kw => text.includes(kw)))
+    if (!category) continue
+    const list = byCategory.get(category) ?? []
+    if (!list.some(t => t.truckId === d.truckId)) list.push({ truckId: d.truckId, unit: unitFor(d.truckId) })
+    byCategory.set(category, list)
+  }
+
+  return [...byCategory.entries()].filter(([, trucks]) => trucks.length >= 2)
+}
+
 /**
  * Open Defects — dispatch-side visibility that didn't exist before (defects
  * wrote to fleet_dt_defects but never surfaced anywhere in the admin UI, not
@@ -103,6 +134,8 @@ function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: Equipme
   const [showResolved, setShowResolved] = useState(false)
   const [resolvingId, setResolvingId] = useState<string | null>(null)
   const [resolutionNotes, setResolutionNotes] = useState('')
+  const [assigningId, setAssigningId] = useState<string | null>(null)
+  const [assignedTo, setAssignedTo] = useState('')
   const [now, setNow] = useState(() => Date.now())
 
   const reload = () => {
@@ -135,6 +168,22 @@ function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: Equipme
     }
   }
 
+  const assign = async (id: string, to: string) => {
+    try {
+      const res = await fetch(`/api/fleet/dump-truck/defects/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignedTo: to || null }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not assign defect')
+      toast.success(to ? `Assigned to ${to}` : 'Assignment cleared')
+      setAssigningId(null)
+      setAssignedTo('')
+      reload()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not assign defect')
+    }
+  }
+
   const viewPhoto = async (documentId: string) => {
     try {
       const res = await fetch(`/api/fleet/dump-truck/documents/${documentId}`)
@@ -159,6 +208,12 @@ function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: Equipme
         </label>
       </div>
 
+      {groupSimilarOpenDefects(defects, unitFor).map(([category, trucks]) => (
+        <div key={category} style={{ marginBottom: '.6rem', padding: '.6rem .75rem', borderRadius: 10, background: 'rgba(245,194,0,.1)', border: '1px solid var(--warn)', fontSize: '.8rem', color: 'var(--warn)', fontWeight: 700 }}>
+          🔧 {trucks.length} trucks need {category.toLowerCase()} work ({trucks.map(t => t.unit).join(', ')}) — consider booking one appointment to save a call.
+        </div>
+      ))}
+
       {visible.length === 0 && <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>No open defects.</div>}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
@@ -181,8 +236,35 @@ function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: Equipme
                 {d.photoDocumentId && (
                   <button onClick={() => viewPhoto(d.photoDocumentId!)} style={{ color: 'var(--primary)', fontWeight: 700 }}>📷 View Photo</button>
                 )}
+                {d.lat != null && d.lng != null && (
+                  <a
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lng}&travelmode=driving`}
+                    target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 700 }}
+                  >
+                    📍 Driver's Location
+                  </a>
+                )}
               </div>
               {d.resolutionNotes && <div style={{ fontSize: '.78rem', color: 'var(--muted)', marginTop: 4 }}>Resolution: {d.resolutionNotes}</div>}
+
+              {assigningId === d.id ? (
+                <div style={{ marginTop: '.5rem', display: 'flex', gap: 6 }}>
+                  <input
+                    style={{ ...inputStyle, flex: 1 }} placeholder="Who's handling it — shop, tow company, mobile tech…"
+                    value={assignedTo} onChange={e => setAssignedTo(e.target.value)} autoFocus
+                  />
+                  <button onClick={() => assign(d.id, assignedTo)} style={{ ...btnStyle, padding: '.4rem .8rem', fontSize: '.78rem' }}>Save</button>
+                  <button onClick={() => setAssigningId(null)} style={{ padding: '.4rem .8rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.78rem' }}>Cancel</button>
+                </div>
+              ) : (
+                <div style={{ marginTop: '.4rem', fontSize: '.78rem', color: 'var(--muted)' }}>
+                  {d.assignedTo ? <>🔧 Assigned to <strong style={{ color: 'var(--text)' }}>{d.assignedTo}</strong></> : 'Not yet assigned'}
+                  {' '}
+                  <button onClick={() => { setAssigningId(d.id); setAssignedTo(d.assignedTo ?? '') }} style={{ color: 'var(--primary)', fontWeight: 700 }}>
+                    {d.assignedTo ? 'Change' : 'Assign'}
+                  </button>
+                </div>
+              )}
 
               {d.status !== 'resolved' && (
                 resolvingId === d.id ? (

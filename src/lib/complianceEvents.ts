@@ -120,6 +120,7 @@ export type ComplianceDocType =
   | 'inspection_report'
   | 'citation'
   | 'court_notice'
+  | 'insurance'
   | 'other'
 
 export const COMPLIANCE_DOC_LABELS: Record<ComplianceDocType, string> = {
@@ -129,6 +130,7 @@ export const COMPLIANCE_DOC_LABELS: Record<ComplianceDocType, string> = {
   inspection_report: 'Inspection Report',
   citation:          'Citation',
   court_notice:      'Court Notice',
+  insurance:         'Insurance Card',
   other:             'Other',
 }
 
@@ -330,14 +332,23 @@ export function readLocalTireLogs(): TireLog[] {
   catch { return [] }
 }
 
+/**
+ * Throws on failure (most commonly QuotaExceededError from base64 photos
+ * filling up localStorage) rather than silently no-op'ing — a save that
+ * silently didn't happen is worse than one that visibly failed. Callers
+ * (saveComplianceEvent, savePreTripRecord, saveTireLog) let this propagate
+ * so the UI can show the driver why nothing was saved.
+ */
 function upsertLocal<T extends { id: string }>(key: string, record: T, max: number) {
+  const existing: T[] = JSON.parse(localStorage.getItem(key) ?? '[]')
+  const idx = existing.findIndex(r => r.id === record.id)
+  if (idx >= 0) existing[idx] = record
+  else          existing.unshift(record)
   try {
-    const existing: T[] = JSON.parse(localStorage.getItem(key) ?? '[]')
-    const idx = existing.findIndex(r => r.id === record.id)
-    if (idx >= 0) existing[idx] = record
-    else          existing.unshift(record)
     localStorage.setItem(key, JSON.stringify(existing.slice(0, max)))
-  } catch { /* storage full */ }
+  } catch {
+    throw new Error('Device storage is full — delete some old photos/documents from Compliance or the Vault, then try again.')
+  }
 }
 
 // ── Save compliance event ─────────────────────────────────────────────────────

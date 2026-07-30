@@ -72,13 +72,19 @@ export interface SendDefectAlertEmailInput {
   businessName: string
   truckUnit: string | null
   driverName: string
-  severity: 'safety_critical' | 'out_of_service'
+  severity: 'monitor' | 'non_safety' | 'safety_critical' | 'out_of_service'
   description: string
   reportedAt: string
   photo?: { bytes: Buffer; mimeType: string } | null
+  lat?: number | null
+  lng?: number | null
 }
 
-/** Fired immediately when a driver reports a safety-critical/out-of-service defect — see reportQuickDefect(). */
+const SEVERITY_LABELS: Record<SendDefectAlertEmailInput['severity'], string> = {
+  monitor: 'MONITOR', non_safety: 'NON-SAFETY', safety_critical: 'SAFETY-CRITICAL', out_of_service: 'OUT OF SERVICE',
+}
+
+/** Fired immediately when a driver reports a defect — see reportQuickDefect() and completeInspection(). */
 export async function sendDefectAlertEmail(input: SendDefectAlertEmailInput): Promise<SendTicketEmailResult> {
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
@@ -90,10 +96,13 @@ export async function sendDefectAlertEmail(input: SendDefectAlertEmailInput): Pr
   }
 
   const resend = new Resend(apiKey)
-  const severityLabel = input.severity === 'out_of_service' ? 'OUT OF SERVICE' : 'SAFETY-CRITICAL'
+  const severityLabel = SEVERITY_LABELS[input.severity]
   const attachments = input.photo
     ? [{ filename: `defect-photo.${input.photo.mimeType.split('/')[1] ?? 'jpg'}`, content: input.photo.bytes.toString('base64') }]
     : undefined
+  const mapsUrl = input.lat != null && input.lng != null
+    ? `https://www.google.com/maps/dir/?api=1&destination=${input.lat},${input.lng}&travelmode=driving`
+    : null
 
   try {
     const { error } = await resend.emails.send({
@@ -103,6 +112,7 @@ export async function sendDefectAlertEmail(input: SendDefectAlertEmailInput): Pr
       html: `
         <p><strong>${severityLabel}</strong> defect reported by ${input.driverName} on truck ${input.truckUnit ?? 'unknown'}.</p>
         <p>${input.description}</p>
+        ${mapsUrl ? `<p><a href="${mapsUrl}">📍 Open driver's location in Google Maps</a> — forward this to whoever you send to handle it (tow, mobile tire tech, etc.)</p>` : ''}
         <p style="color:#666">Reported ${new Date(input.reportedAt).toLocaleString()}${input.photo ? ' — photo attached' : ''}</p>
       `,
       attachments,

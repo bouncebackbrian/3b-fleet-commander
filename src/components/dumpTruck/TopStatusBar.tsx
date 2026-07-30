@@ -72,6 +72,15 @@ export default function TopStatusBar({
         >
           📊 Hours
         </Link>
+        <Link
+          href="/dashboard"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 4, color: 'var(--primary)',
+            padding: '.35rem .6rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)',
+          }}
+        >
+          🏠 Home
+        </Link>
       </div>
     </div>
   )

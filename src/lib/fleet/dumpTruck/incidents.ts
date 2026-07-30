@@ -78,6 +78,8 @@ export interface QuickDefectInput {
   severity: 'monitor' | 'non_safety' | 'safety_critical' | 'out_of_service'
   /** A photo uploaded standalone first (see uploadDocument()) — linked to this defect once it exists. */
   photoDocumentId?: string | null
+  lat?: number | null
+  lng?: number | null
 }
 
 const ALERT_SEVERITIES = new Set(['safety_critical', 'out_of_service'])
@@ -95,6 +97,8 @@ export async function reportQuickDefect(
       description: input.description,
       severity: input.severity,
       reported_by: driverId,
+      lat: input.lat ?? null,
+      lng: input.lng ?? null,
     })
     .select('id, created_at')
     .single()
@@ -144,10 +148,12 @@ async function alertDispatchOfDefect(
     businessName: profile.name,
     truckUnit: truck?.unit_number ?? null,
     driverName: driverProfile?.full_name || 'Driver',
-    severity: input.severity as 'safety_critical' | 'out_of_service',
+    severity: input.severity,
     description: input.description,
     reportedAt,
     photo,
+    lat: input.lat ?? null,
+    lng: input.lng ?? null,
   })
 }
 
@@ -164,6 +170,9 @@ export interface DefectRow {
   resolutionNotes: string | null
   createdAt: string
   photoDocumentId: string | null
+  lat: number | null
+  lng: number | null
+  assignedTo: string | null
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -172,7 +181,7 @@ function defectFromRow(r: any, photoDocumentId: string | null): DefectRow {
     id: r.id, truckId: r.truck_id, trailerId: r.trailer_id, description: r.description,
     severity: r.severity, status: r.status, reportedBy: r.reported_by, resolvedBy: r.resolved_by,
     resolvedAt: r.resolved_at, resolutionNotes: r.resolution_notes, createdAt: r.created_at,
-    photoDocumentId,
+    photoDocumentId, lat: r.lat, lng: r.lng, assignedTo: r.assigned_to,
   }
 }
 
@@ -199,20 +208,26 @@ export async function listDefects(businessId: string): Promise<DefectRow[]> {
 }
 
 export interface ResolveDefectInput {
-  status: 'acknowledged' | 'resolved' | 'deferred'
+  status?: 'acknowledged' | 'resolved' | 'deferred'
   resolutionNotes?: string | null
+  /** Who dispatch sent to handle it — a mobile tire tech, a tow company, a shop name. Free text. */
+  assignedTo?: string | null
 }
 
 /** Downtime = resolved_at - created_at, computed at read time — see admin panel. */
 export async function resolveDefect(
   businessId: string, defectId: string, input: ResolveDefectInput, userId: string, email: string | null,
 ): Promise<DefectRow> {
-  const patch: Record<string, unknown> = { status: input.status }
-  if (input.status === 'resolved') {
-    patch.resolved_by = userId
-    patch.resolved_at = new Date().toISOString()
+  const patch: Record<string, unknown> = {}
+  if (input.status) {
+    patch.status = input.status
+    if (input.status === 'resolved') {
+      patch.resolved_by = userId
+      patch.resolved_at = new Date().toISOString()
+    }
   }
   if (input.resolutionNotes !== undefined) patch.resolution_notes = input.resolutionNotes
+  if (input.assignedTo !== undefined) patch.assigned_to = input.assignedTo
 
   const { data, error } = await fleetServiceClient
     .from('fleet_dt_defects')
@@ -223,7 +238,10 @@ export async function resolveDefect(
     .single()
   if (error) throw error
 
-  audit.log({ userId, email, action: `dump_truck.defect.${input.status}`, resource: 'fleet_dt_defects', resourceId: defectId })
+  audit.log({
+    userId, email, action: input.status ? `dump_truck.defect.${input.status}` : 'dump_truck.defect.assign',
+    resource: 'fleet_dt_defects', resourceId: defectId,
+  })
 
   const { data: doc } = await fleetServiceClient.from('fleet_dt_documents')
     .select('id').eq('linked_entity_type', 'defect').eq('linked_entity_id', defectId).maybeSingle()

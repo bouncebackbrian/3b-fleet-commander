@@ -77,6 +77,7 @@ export default function PreTripChecklistSheet({ open, onClose, mission, onNeedsC
   const [gpsCapturing, setGpsCapturing] = useState(false)
   const [saving,       setSaving]       = useState(false)
   const [saved,        setSaved]        = useState(false)
+  const [saveError,    setSaveError]    = useState<string | null>(null)
   const [activeGroup,  setActiveGroup]  = useState(0)
 
   // Per-item note input refs aren't needed — inline state
@@ -124,6 +125,7 @@ export default function PreTripChecklistSheet({ open, onClose, mission, onNeedsC
   async function handleSave() {
     if (!record || saving) return
     setSaving(true)
+    setSaveError(null)
     try {
       // Merge notes into items
       const finalItems: PreTripItem[] = items.map(i => ({
@@ -167,8 +169,9 @@ export default function PreTripChecklistSheet({ open, onClose, mission, onNeedsC
           onNeedsCompliance()
         }
       }, 900)
-    } catch {
+    } catch (err) {
       setSaving(false)
+      setSaveError(err instanceof Error ? err.message : 'Could not save — try again.')
     }
   }
 
@@ -383,6 +386,11 @@ export default function PreTripChecklistSheet({ open, onClose, mission, onNeedsC
           {failCount > 0 && (
             <div style={{ fontSize: '.72rem', color: 'var(--warn)', fontWeight: 700, textAlign: 'center', marginBottom: 6 }}>
               ⚠️ Save will prompt to log a compliance event for defects
+            </div>
+          )}
+          {saveError && (
+            <div style={{ marginBottom: '.6rem', padding: '.6rem .75rem', borderRadius: 10, background: 'rgba(232,64,0,.12)', color: 'var(--error)', fontSize: '.8rem', fontWeight: 700 }}>
+              ⚠️ {saveError}
             </div>
           )}
           <button onClick={handleSave} disabled={saving || saved} style={{

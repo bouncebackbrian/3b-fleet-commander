@@ -2,6 +2,7 @@
 import { useRef, useState } from 'react'
 import Sheet, { inputStyle, primaryBtnStyle } from './Sheet'
 import type { DefectSeverity } from '@/lib/dumpTruck/types'
+import { captureGeolocation } from '@/lib/dumpTruck/events'
 import { toast } from '@/hooks/useToast'
 
 const SEVERITIES: { key: DefectSeverity; label: string }[] = [
@@ -41,9 +42,10 @@ export default function DefectQuickSheet({ truckId, trailerId, shiftId, onClose,
         photoDocumentId = (await uploadRes.json()).id
       }
 
+      const geo = await captureGeolocation()
       const res = await fetch('/api/fleet/dump-truck/defects', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ truckId, trailerId, shiftId, description, severity, photoDocumentId }),
+        body: JSON.stringify({ truckId, trailerId, shiftId, description, severity, photoDocumentId, lat: geo.lat, lng: geo.lng }),
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Could not save defect')
       toast.success(
@@ -81,7 +83,7 @@ export default function DefectQuickSheet({ truckId, trailerId, shiftId, onClose,
         </div>
         {(severity === 'safety_critical' || severity === 'out_of_service') && (
           <div style={{ fontSize: '.78rem', color: 'var(--error)', fontWeight: 700 }}>
-            ⚠️ This severity blocks normal dispatch until resolved or overridden by dispatch/admin — dispatch gets emailed immediately.
+            ⚠️ This severity blocks normal dispatch until resolved or overridden by dispatch/admin — dispatch gets emailed immediately with your location.
           </div>
         )}
         <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => setPhoto(e.target.files?.[0] ?? null)} />

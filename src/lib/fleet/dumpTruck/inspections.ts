@@ -9,8 +9,10 @@
 
 import { fleetServiceClient } from '@/lib/fleet-service-client'
 import { audit } from '@/lib/fleet/audit'
+import { getBusinessProfile } from '@/lib/fleet/business'
+import { sendDefectAlertEmail } from '@/lib/email/resend'
 import { hasBlockingDefect, validateInspectionSubmission } from '@/lib/dumpTruck/inspections'
-import type { InspectionItemInput, InspectionTemplateItem, InspectionType } from '@/lib/dumpTruck/types'
+import type { InspectionItemInput, InspectionTemplateItem, InspectionType, DefectSeverity } from '@/lib/dumpTruck/types'
 import { recordEvent, type RecordEventGeoInput } from './events'
 import { getShiftById } from './shifts'
 import { DumpTruckError, getShiftFlowState } from './shared'
@@ -208,6 +210,15 @@ export async function completeInspection(
         reported_by: driverId,
       })),
     )
+
+    // Tires flagged on pretrip/posttrip re-alert dispatch every single time,
+    // deliberately, so a worn tire doesn't fall out of focus until it's
+    // actually replaced — unlike other defects, this isn't a one-shot alert.
+    const tireItems = defectItems.filter(i => i.itemLabel.toLowerCase().includes('tire'))
+    if (tireItems.length) {
+      alertDispatchOfTireItems(businessId, driverId, inspection.truck_id, inspection.inspection_type, tireItems)
+        .catch(err => console.error('[inspections] alertDispatchOfTireItems failed:', err))
+    }
   }
 
   await fleetServiceClient.from('fleet_dt_inspections').update({
@@ -239,4 +250,35 @@ export async function completeInspection(
   })
 
   return { hasBlockingDefects: blocking }
+}
+
+async function alertDispatchOfTireItems(
+  businessId: string, driverId: string, truckId: string, inspectionType: InspectionType,
+  tireItems: { itemLabel: string; notes: string | null; severity: DefectSeverity | null }[],
+): Promise<void> {
+  const profile = await getBusinessProfile(businessId)
+  if (!profile?.dispatchAlertEmail) return
+
+  const [{ data: truck }, { data: driverProfile }] = await Promise.all([
+    fleetServiceClient.from('fleet_equipment').select('unit_number').eq('id', truckId).maybeSingle(),
+    fleetServiceClient.from('profiles').select('full_name').eq('id', driverId).maybeSingle(),
+  ])
+
+  const description = tireItems
+    .map(i => `${i.itemLabel}${i.notes ? ` — ${i.notes}` : ''}`)
+    .join('; ')
+  const worstSeverity = tireItems.some(i => i.severity === 'out_of_service') ? 'out_of_service'
+    : tireItems.some(i => i.severity === 'safety_critical') ? 'safety_critical'
+    : tireItems.some(i => i.severity === 'non_safety') ? 'non_safety'
+    : 'monitor'
+
+  await sendDefectAlertEmail({
+    to: profile.dispatchAlertEmail,
+    businessName: profile.name,
+    truckUnit: truck?.unit_number ?? null,
+    driverName: driverProfile?.full_name || 'Driver',
+    severity: worstSeverity,
+    description: `[${inspectionType === 'pretrip' ? 'Pre-Trip' : 'Post-Trip'}] ${description}`,
+    reportedAt: new Date().toISOString(),
+  })
 }

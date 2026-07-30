@@ -53,7 +53,7 @@ const REPAIR_TYPES: ComplianceEventType[] = [
 ]
 
 const DOC_TYPES: ComplianceDocType[] = [
-  'photo', 'repair_invoice', 'work_order', 'inspection_report', 'citation', 'court_notice', 'other',
+  'photo', 'insurance', 'repair_invoice', 'work_order', 'inspection_report', 'citation', 'court_notice', 'other',
 ]
 
 interface Props {
@@ -73,6 +73,7 @@ export default function ComplianceEventSheet({ open, onClose, mission, existingE
   const [showCodeRef,  setShowCodeRef]  = useState(false)
   const [saving,       setSaving]       = useState(false)
   const [saved,        setSaved]        = useState(false)
+  const [saveError,    setSaveError]    = useState<string | null>(null)
   const [photoLoading, setPhotoLoading] = useState(false)
   const [selectedDocType, setSelectedDocType] = useState<ComplianceDocType>('photo')
   const photoRef = useRef<HTMLInputElement>(null)
@@ -132,6 +133,7 @@ export default function ComplianceEventSheet({ open, onClose, mission, existingE
   async function handleSave() {
     if (!event || saving) return
     setSaving(true)
+    setSaveError(null)
     try {
       await saveComplianceEvent(event)
 
@@ -165,8 +167,9 @@ export default function ComplianceEventSheet({ open, onClose, mission, existingE
 
       setSaved(true)
       setTimeout(() => { onClose(); setSaved(false) }, 900)
-    } catch {
+    } catch (err) {
       setSaving(false)
+      setSaveError(err instanceof Error ? err.message : 'Could not save — try again.')
     }
   }
 
@@ -447,6 +450,11 @@ export default function ComplianceEventSheet({ open, onClose, mission, existingE
 
         {/* Footer */}
         <div style={{ flexShrink: 0, padding: '.75rem 1.1rem 1.4rem', borderTop: '1px solid var(--border)' }}>
+          {saveError && (
+            <div style={{ marginBottom: '.6rem', padding: '.6rem .75rem', borderRadius: 10, background: 'rgba(232,64,0,.12)', color: 'var(--error)', fontSize: '.8rem', fontWeight: 700 }}>
+              ⚠️ {saveError}
+            </div>
+          )}
           <button onClick={handleSave} disabled={saving || saved} style={{
             width: '100%', padding: '1rem', borderRadius: 14, border: 'none',
             background: saved ? 'var(--success)' : 'var(--primary)',

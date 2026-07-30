@@ -1,6 +1,9 @@
 /**
- * PATCH /api/fleet/dump-truck/defects/[id] — acknowledge/resolve/defer a defect (dispatch/admin only).
- * Resolving stamps resolved_at, which is the downtime end for the admin panel's duration display.
+ * PATCH /api/fleet/dump-truck/defects/[id] — acknowledge/resolve/defer and/or
+ * assign a defect (dispatch/admin only). Resolving stamps resolved_at, which
+ * is the downtime end for the admin panel's duration display. Assigning
+ * ("sent to Big O Tires", "towed by ABC Towing") doesn't require a status
+ * change — either or both of status/assignedTo may be provided.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -20,12 +23,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   try {
     const { id } = await params
     const body = await request.json()
-    if (!['acknowledged', 'resolved', 'deferred'].includes(body.status)) {
+    if (body.status !== undefined && !['acknowledged', 'resolved', 'deferred'].includes(body.status)) {
       return NextResponse.json({ error: 'status must be acknowledged, resolved, or deferred' }, { status: 400 })
+    }
+    if (body.status === undefined && body.assignedTo === undefined) {
+      return NextResponse.json({ error: 'status or assignedTo is required' }, { status: 400 })
     }
 
     const defect = await resolveDefect(auth.businessId, id, {
-      status: body.status, resolutionNotes: body.resolutionNotes ?? null,
+      status: body.status, resolutionNotes: body.resolutionNotes ?? undefined, assignedTo: body.assignedTo ?? undefined,
     }, auth.userId, auth.email)
     return NextResponse.json({ defect })
   } catch (err) {
