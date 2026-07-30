@@ -66,3 +66,55 @@ export async function sendTicketEmail(input: SendTicketEmailInput): Promise<Send
   }
   return { sent: true }
 }
+
+export interface SendDefectAlertEmailInput {
+  to: string
+  businessName: string
+  truckUnit: string | null
+  driverName: string
+  severity: 'safety_critical' | 'out_of_service'
+  description: string
+  reportedAt: string
+  photo?: { bytes: Buffer; mimeType: string } | null
+}
+
+/** Fired immediately when a driver reports a safety-critical/out-of-service defect — see reportQuickDefect(). */
+export async function sendDefectAlertEmail(input: SendDefectAlertEmailInput): Promise<SendTicketEmailResult> {
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) {
+    console.warn('[email/resend] RESEND_API_KEY not configured — skipping defect alert email')
+    return { sent: false, skippedReason: 'RESEND_API_KEY not configured' }
+  }
+  if (!input.to) {
+    return { sent: false, skippedReason: 'No dispatch alert email configured on this business' }
+  }
+
+  const resend = new Resend(apiKey)
+  const severityLabel = input.severity === 'out_of_service' ? 'OUT OF SERVICE' : 'SAFETY-CRITICAL'
+  const attachments = input.photo
+    ? [{ filename: `defect-photo.${input.photo.mimeType.split('/')[1] ?? 'jpg'}`, content: input.photo.bytes.toString('base64') }]
+    : undefined
+
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM_ADDRESS,
+      to: [input.to],
+      subject: `⚠️ ${severityLabel} defect — ${input.truckUnit ?? 'truck'} — ${input.businessName}`,
+      html: `
+        <p><strong>${severityLabel}</strong> defect reported by ${input.driverName} on truck ${input.truckUnit ?? 'unknown'}.</p>
+        <p>${input.description}</p>
+        <p style="color:#666">Reported ${new Date(input.reportedAt).toLocaleString()}${input.photo ? ' — photo attached' : ''}</p>
+      `,
+      attachments,
+    })
+    if (error) {
+      console.error('[email/resend] sendDefectAlertEmail failed:', error.message)
+      return { sent: false, errors: [error.message] }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error sending email'
+    console.error('[email/resend] sendDefectAlertEmail failed:', message)
+    return { sent: false, errors: [message] }
+  }
+  return { sent: true }
+}

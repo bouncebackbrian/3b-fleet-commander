@@ -1556,9 +1556,10 @@ interface BusinessProfileState {
   insuranceCarrier: string
   insurancePolicyNumber: string
   insuranceExpiry: string
+  dispatchAlertEmail: string
 }
 const EMPTY_BUSINESS_PROFILE: BusinessProfileState = {
-  name: '', dotNumber: '', mcNumber: '', ein: '', insuranceCarrier: '', insurancePolicyNumber: '', insuranceExpiry: '',
+  name: '', dotNumber: '', mcNumber: '', ein: '', insuranceCarrier: '', insurancePolicyNumber: '', insuranceExpiry: '', dispatchAlertEmail: '',
 }
 
 function BusinessProfileTab() {
@@ -1584,6 +1585,7 @@ function BusinessProfileTab() {
             insuranceCarrier: b.profile.insuranceCarrier ?? '',
             insurancePolicyNumber: b.profile.insurancePolicyNumber ?? '',
             insuranceExpiry: b.profile.insuranceExpiry ?? '',
+            dispatchAlertEmail: b.profile.dispatchAlertEmail ?? '',
           })
         }
         setLogoUrl(b.logoUrl ?? null)
@@ -1605,6 +1607,7 @@ function BusinessProfileTab() {
           insuranceCarrier: profile.insuranceCarrier || null,
           insurancePolicyNumber: profile.insurancePolicyNumber || null,
           insuranceExpiry: profile.insuranceExpiry || null,
+          dispatchAlertEmail: profile.dispatchAlertEmail || null,
         }),
       })
       if (res.ok) { setSaved(true); setTimeout(() => setSaved(false), 2000) }
@@ -1690,6 +1693,21 @@ function BusinessProfileTab() {
             <label style={lbl}>Expiry</label>
             <input style={inp} type="date" value={profile.insuranceExpiry} onChange={e => setProfile(p => ({ ...p, insuranceExpiry: e.target.value }))} />
           </div>
+        </div>
+      </div>
+
+      <div style={card}>
+        {secHead('Dispatch Alerts')}
+        <div style={{ fontSize: '.72rem', color: 'var(--muted)', marginBottom: 4 }}>
+          Safety-critical / out-of-service defect reports (with any attached photo) get emailed here immediately
+          so whoever&apos;s dispatching can start getting it fixed. Leave blank to skip email alerts.
+        </div>
+        <div>
+          <label style={lbl}>Alert Email</label>
+          <input
+            style={inp} type="email" placeholder="dispatch@yourcompany.com"
+            value={profile.dispatchAlertEmail} onChange={e => setProfile(p => ({ ...p, dispatchAlertEmail: e.target.value }))}
+          />
         </div>
       </div>
 

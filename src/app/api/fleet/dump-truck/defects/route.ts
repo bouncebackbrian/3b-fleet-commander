@@ -1,13 +1,28 @@
 /**
- * POST /api/fleet/dump-truck/defects — driver quick defect report (standalone, not tied to an inspection)
+ * /api/fleet/dump-truck/defects
+ * POST — driver quick defect report (standalone, not tied to an inspection)
+ * GET  — admin/dispatch "Open Defects" panel listing
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireFleetAuth } from '@/lib/fleet-auth-guard'
-import { reportQuickDefect } from '@/lib/fleet/dumpTruck/incidents'
+import { reportQuickDefect, listDefects } from '@/lib/fleet/dumpTruck/incidents'
 import { DumpTruckError } from '@/lib/fleet/dumpTruck/shared'
 
 export const dynamic = 'force-dynamic'
+
+export async function GET() {
+  const auth = await requireFleetAuth()
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  try {
+    const defects = await listDefects(auth.businessId)
+    return NextResponse.json({ defects })
+  } catch (err) {
+    console.error('[api/fleet/dump-truck/defects] GET error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
 
 export async function POST(request: NextRequest) {
   const auth = await requireFleetAuth()

@@ -47,6 +47,7 @@ export default function DumpTruckAdminPage() {
         </p>
       </div>
 
+      <OpenDefectsPanel equipment={equipment} drivers={drivers} />
       <SitesPanel sites={sites} onCreated={reload} />
       <PendingDealsPanel jobs={jobs} sites={sites} equipment={equipment} drivers={drivers} onAccepted={reload} />
       <JobsPanel jobs={jobs} sites={sites} equipment={equipment} drivers={drivers} brokers={brokers} onBrokersChanged={reload} onCreated={reload} />
@@ -57,6 +58,158 @@ export default function DumpTruckAdminPage() {
       <AdminActivityLogPanel drivers={drivers} />
 
       <ToastContainer />
+    </div>
+  )
+}
+
+interface DefectDTO {
+  id: string
+  truckId: string
+  trailerId: string | null
+  description: string
+  severity: 'monitor' | 'non_safety' | 'safety_critical' | 'out_of_service'
+  status: 'open' | 'acknowledged' | 'resolved' | 'deferred'
+  reportedBy: string | null
+  resolvedBy: string | null
+  resolvedAt: string | null
+  resolutionNotes: string | null
+  createdAt: string
+  photoDocumentId: string | null
+}
+
+const SEVERITY_COLOR: Record<DefectDTO['severity'], string> = {
+  monitor: 'var(--muted)', non_safety: 'var(--muted)', safety_critical: 'var(--warn)', out_of_service: 'var(--error)',
+}
+const SEVERITY_LABEL: Record<DefectDTO['severity'], string> = {
+  monitor: 'Monitor', non_safety: 'Non-Safety', safety_critical: 'Safety-Critical', out_of_service: 'Out of Service',
+}
+
+function formatDowntime(ms: number): string {
+  if (ms < 0) return '0m'
+  const totalMin = Math.floor(ms / 60000)
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  return h > 0 ? `${h}h ${m}m` : `${m}m`
+}
+
+/**
+ * Open Defects — dispatch-side visibility that didn't exist before (defects
+ * wrote to fleet_dt_defects but never surfaced anywhere in the admin UI, not
+ * even the raw activity log). Shows downtime (created_at -> resolved_at, or
+ * running for still-open ones), attached photo, and a resolve action.
+ */
+function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: EquipmentOption[]; trailers: EquipmentOption[] }; drivers: DriverOption[] }) {
+  const [defects, setDefects] = useState<DefectDTO[]>([])
+  const [showResolved, setShowResolved] = useState(false)
+  const [resolvingId, setResolvingId] = useState<string | null>(null)
+  const [resolutionNotes, setResolutionNotes] = useState('')
+  const [now, setNow] = useState(() => Date.now())
+
+  const reload = () => {
+    fetch('/api/fleet/dump-truck/defects').then(r => r.json()).then(b => setDefects(b.defects ?? []))
+  }
+  useEffect(reload, [])
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30000)
+    return () => clearInterval(t)
+  }, [])
+
+  const unitFor = (id: string) => equipment.trucks.find(t => t.id === id)?.unitNumber ?? equipment.trailers.find(t => t.id === id)?.unitNumber ?? '—'
+  const nameFor = (id: string | null) => drivers.find(d => d.userId === id)?.name ?? '—'
+
+  const visible = defects.filter(d => showResolved || d.status !== 'resolved')
+
+  const act = async (id: string, status: 'acknowledged' | 'resolved' | 'deferred', notes?: string) => {
+    try {
+      const res = await fetch(`/api/fleet/dump-truck/defects/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, resolutionNotes: notes ?? null }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not update defect')
+      toast.success(status === 'resolved' ? 'Defect resolved' : `Defect ${status}`)
+      setResolvingId(null)
+      setResolutionNotes('')
+      reload()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not update defect')
+    }
+  }
+
+  const viewPhoto = async (documentId: string) => {
+    try {
+      const res = await fetch(`/api/fleet/dump-truck/documents/${documentId}`)
+      if (!res.ok) throw new Error('Could not load photo')
+      const { url } = await res.json()
+      window.open(url, '_blank')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not load photo')
+    }
+  }
+
+  const openCount = defects.filter(d => d.status === 'open' || d.status === 'acknowledged').length
+
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.75rem' }}>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 800 }}>
+          Open Defects {openCount > 0 && <span style={{ color: 'var(--error)' }}>({openCount})</span>}
+        </h2>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.78rem', color: 'var(--muted)' }}>
+          <input type="checkbox" checked={showResolved} onChange={e => setShowResolved(e.target.checked)} /> Show resolved
+        </label>
+      </div>
+
+      {visible.length === 0 && <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>No open defects.</div>}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
+        {visible.map(d => {
+          const downtimeMs = (d.resolvedAt ? new Date(d.resolvedAt).getTime() : now) - new Date(d.createdAt).getTime()
+          return (
+            <div key={d.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '.75rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                <div>
+                  <span style={{ fontWeight: 800, color: SEVERITY_COLOR[d.severity], fontSize: '.78rem' }}>{SEVERITY_LABEL[d.severity]}</span>
+                  {' — '}<span style={{ fontWeight: 700 }}>{unitFor(d.truckId)}</span>
+                  <span style={{ color: 'var(--muted)', fontSize: '.78rem' }}> · reported by {nameFor(d.reportedBy)}</span>
+                </div>
+                <span style={{ fontSize: '.72rem', color: 'var(--muted)', flexShrink: 0 }}>{new Date(d.createdAt).toLocaleString()}</span>
+              </div>
+              <div style={{ margin: '.4rem 0', fontSize: '.85rem' }}>{d.description}</div>
+              <div style={{ display: 'flex', gap: '.75rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '.78rem', color: 'var(--muted)' }}>
+                <span>⏱ Downtime: <strong style={{ color: 'var(--text)' }}>{formatDowntime(downtimeMs)}</strong>{!d.resolvedAt && ' (running)'}</span>
+                <span>Status: <strong style={{ color: 'var(--text)' }}>{d.status}</strong></span>
+                {d.photoDocumentId && (
+                  <button onClick={() => viewPhoto(d.photoDocumentId!)} style={{ color: 'var(--primary)', fontWeight: 700 }}>📷 View Photo</button>
+                )}
+              </div>
+              {d.resolutionNotes && <div style={{ fontSize: '.78rem', color: 'var(--muted)', marginTop: 4 }}>Resolution: {d.resolutionNotes}</div>}
+
+              {d.status !== 'resolved' && (
+                resolvingId === d.id ? (
+                  <div style={{ marginTop: '.6rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <textarea
+                      style={{ ...inputStyle, minHeight: 50 }} placeholder="Resolution notes (optional)"
+                      value={resolutionNotes} onChange={e => setResolutionNotes(e.target.value)}
+                    />
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={() => act(d.id, 'resolved', resolutionNotes)} style={{ ...btnStyle, padding: '.4rem .8rem', fontSize: '.78rem' }}>Confirm Resolved</button>
+                      <button onClick={() => setResolvingId(null)} style={{ padding: '.4rem .8rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.78rem' }}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 6, marginTop: '.6rem' }}>
+                    {d.status === 'open' && (
+                      <button onClick={() => act(d.id, 'acknowledged')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '.78rem', fontWeight: 700 }}>Acknowledge</button>
+                    )}
+                    <button onClick={() => setResolvingId(d.id)} style={{ ...btnStyle, padding: '.4rem .8rem', fontSize: '.78rem' }}>Mark Resolved</button>
+                    <button onClick={() => act(d.id, 'deferred')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.78rem', fontWeight: 700 }}>Defer</button>
+                  </div>
+                )
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

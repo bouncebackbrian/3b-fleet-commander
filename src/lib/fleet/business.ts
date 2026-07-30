@@ -30,6 +30,8 @@ export interface BusinessProfile {
   insuranceExpiry: string | null
   threeBBizId: string | null
   logoStoragePath: string | null
+  /** Where safety-critical/out-of-service defect alerts get emailed — see lib/email/resend.ts. Null = alerts skipped. */
+  dispatchAlertEmail: string | null
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -45,13 +47,16 @@ function fromRow(r: any): BusinessProfile {
     insuranceExpiry: r.insurance_expiry,
     threeBBizId: r.three_b_biz_id,
     logoStoragePath: r.logo_storage_path,
+    dispatchAlertEmail: r.dispatch_alert_email,
   }
 }
+
+const PROFILE_COLUMNS = 'id, name, dot_number, mc_number, ein, insurance_carrier, insurance_policy_number, insurance_expiry, three_b_biz_id, logo_storage_path, dispatch_alert_email'
 
 export async function getBusinessProfile(businessId: string): Promise<BusinessProfile | null> {
   const { data, error } = await fleetServiceClient
     .from('businesses')
-    .select('id, name, dot_number, mc_number, ein, insurance_carrier, insurance_policy_number, insurance_expiry, three_b_biz_id, logo_storage_path')
+    .select(PROFILE_COLUMNS)
     .eq('id', businessId)
     .maybeSingle()
   if (error) throw error
@@ -66,6 +71,7 @@ export interface UpdateBusinessProfileInput {
   insuranceCarrier?: string | null
   insurancePolicyNumber?: string | null
   insuranceExpiry?: string | null
+  dispatchAlertEmail?: string | null
 }
 
 export async function updateBusinessProfile(
@@ -79,12 +85,13 @@ export async function updateBusinessProfile(
   if (input.insuranceCarrier !== undefined) patch.insurance_carrier = input.insuranceCarrier
   if (input.insurancePolicyNumber !== undefined) patch.insurance_policy_number = input.insurancePolicyNumber
   if (input.insuranceExpiry !== undefined) patch.insurance_expiry = input.insuranceExpiry
+  if (input.dispatchAlertEmail !== undefined) patch.dispatch_alert_email = input.dispatchAlertEmail
 
   const { data, error } = await fleetServiceClient
     .from('businesses')
     .update(patch)
     .eq('id', businessId)
-    .select('id, name, dot_number, mc_number, ein, insurance_carrier, insurance_policy_number, insurance_expiry, three_b_biz_id, logo_storage_path')
+    .select(PROFILE_COLUMNS)
     .single()
   if (error) throw error
 

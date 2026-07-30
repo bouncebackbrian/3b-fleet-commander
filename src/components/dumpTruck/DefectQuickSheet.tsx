@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Sheet, { inputStyle, primaryBtnStyle } from './Sheet'
 import type { DefectSeverity } from '@/lib/dumpTruck/types'
 import { toast } from '@/hooks/useToast'
@@ -22,17 +22,35 @@ interface Props {
 export default function DefectQuickSheet({ truckId, trailerId, shiftId, onClose, onSaved }: Props) {
   const [description, setDescription] = useState('')
   const [severity, setSeverity] = useState<DefectSeverity>('non_safety')
+  const [photo, setPhoto] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const submit = async () => {
     setBusy(true)
     try {
+      let photoDocumentId: string | null = null
+      if (photo) {
+        const form = new FormData()
+        form.append('file', photo)
+        form.append('docType', 'defect_photo')
+        form.append('shiftId', shiftId)
+        form.append('capturedAt', new Date().toISOString())
+        const uploadRes = await fetch('/api/fleet/dump-truck/documents', { method: 'POST', body: form })
+        if (!uploadRes.ok) throw new Error((await uploadRes.json()).error ?? 'Photo upload failed')
+        photoDocumentId = (await uploadRes.json()).id
+      }
+
       const res = await fetch('/api/fleet/dump-truck/defects', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ truckId, trailerId, shiftId, description, severity }),
+        body: JSON.stringify({ truckId, trailerId, shiftId, description, severity, photoDocumentId }),
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Could not save defect')
-      toast.success('Defect reported')
+      toast.success(
+        severity === 'safety_critical' || severity === 'out_of_service'
+          ? 'Defect reported — dispatch alerted'
+          : 'Defect reported',
+      )
       onSaved()
       onClose()
     } catch (err) {
@@ -63,9 +81,13 @@ export default function DefectQuickSheet({ truckId, trailerId, shiftId, onClose,
         </div>
         {(severity === 'safety_critical' || severity === 'out_of_service') && (
           <div style={{ fontSize: '.78rem', color: 'var(--error)', fontWeight: 700 }}>
-            ⚠️ This severity blocks normal dispatch until resolved or overridden by dispatch/admin.
+            ⚠️ This severity blocks normal dispatch until resolved or overridden by dispatch/admin — dispatch gets emailed immediately.
           </div>
         )}
+        <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => setPhoto(e.target.files?.[0] ?? null)} />
+        <button style={{ ...inputStyle, minHeight: 60, fontWeight: 700 }} onClick={() => fileRef.current?.click()}>
+          {photo ? `📷 ${photo.name}` : '📷 Attach Photo (optional)'}
+        </button>
         <button
           style={{ ...primaryBtnStyle, opacity: description.trim() && !busy ? 1 : .5 }}
           disabled={!description.trim() || busy}

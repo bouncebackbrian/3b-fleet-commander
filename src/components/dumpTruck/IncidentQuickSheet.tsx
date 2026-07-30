@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Sheet, { inputStyle, primaryBtnStyle } from './Sheet'
 import { captureGeolocation } from '@/lib/dumpTruck/events'
 import { toast } from '@/hooks/useToast'
@@ -27,18 +27,32 @@ export default function IncidentQuickSheet({ shiftId, truckId, jobId, onClose, o
   const [description, setDescription] = useState('')
   const [injuries, setInjuries] = useState(false)
   const [safetyStatus, setSafetyStatus] = useState<'safe' | 'needs_assistance' | 'emergency'>('safe')
+  const [photo, setPhoto] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const submit = async () => {
     setBusy(true)
     try {
+      let photoDocumentId: string | null = null
+      if (photo) {
+        const form = new FormData()
+        form.append('file', photo)
+        form.append('docType', 'incident_photo')
+        form.append('shiftId', shiftId)
+        form.append('capturedAt', new Date().toISOString())
+        const uploadRes = await fetch('/api/fleet/dump-truck/documents', { method: 'POST', body: form })
+        if (!uploadRes.ok) throw new Error((await uploadRes.json()).error ?? 'Photo upload failed')
+        photoDocumentId = (await uploadRes.json()).id
+      }
+
       const geo = await captureGeolocation()
       const res = await fetch('/api/fleet/dump-truck/incidents', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           shiftId, truckId, jobId, incidentType, description, injuries,
           immediateSafetyStatus: safetyStatus, occurredAt: new Date().toISOString(),
-          lat: geo.lat, lng: geo.lng,
+          lat: geo.lat, lng: geo.lng, photoDocumentId,
         }),
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Could not save incident')
@@ -85,6 +99,10 @@ export default function IncidentQuickSheet({ shiftId, truckId, jobId, onClose, o
             ))}
           </div>
         </div>
+        <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => setPhoto(e.target.files?.[0] ?? null)} />
+        <button style={{ ...inputStyle, minHeight: 60, fontWeight: 700 }} onClick={() => fileRef.current?.click()}>
+          {photo ? `📷 ${photo.name}` : '📷 Attach Photo (optional)'}
+        </button>
         <button
           style={{ ...primaryBtnStyle, opacity: description.trim() && !busy ? 1 : .5 }}
           disabled={!description.trim() || busy}
