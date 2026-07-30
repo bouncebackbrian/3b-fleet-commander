@@ -17,10 +17,11 @@ interface Props {
   onNavigate: (site: DumpTruckSite) => void
   onPinLocation: (site: DumpTruckSite) => void
   onEditJob: () => void
+  onViewTicket: () => void
 }
 
 export default function LeftRail({
-  flowState, clockInAt, truckUnit, trailerUnit, jobs, activeJobId, onChangeJob, sites, loadCount, onNavigate, onPinLocation, onEditJob,
+  flowState, clockInAt, truckUnit, trailerUnit, jobs, activeJobId, onChangeJob, sites, loadCount, onNavigate, onPinLocation, onEditJob, onViewTicket,
 }: Props) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -46,15 +47,26 @@ export default function LeftRail({
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={fieldLabelStyle}>Job</div>
-            <button
-              onClick={onEditJob}
-              style={{
-                fontSize: '.68rem', fontWeight: 700, padding: '.15rem .5rem', borderRadius: 6,
-                background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--primary)',
-              }}
-            >
-              ✏️ Edit
-            </button>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                onClick={onViewTicket}
+                style={{
+                  fontSize: '.68rem', fontWeight: 700, padding: '.15rem .5rem', borderRadius: 6,
+                  background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--primary)',
+                }}
+              >
+                🎫 Ticket
+              </button>
+              <button
+                onClick={onEditJob}
+                style={{
+                  fontSize: '.68rem', fontWeight: 700, padding: '.15rem .5rem', borderRadius: 6,
+                  background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--primary)',
+                }}
+              >
+                ✏️ Edit
+              </button>
+            </div>
           </div>
           {jobs.length === 1 ? (
             <div style={fieldValueStyle}>{jobs[0].jobNumber}</div>

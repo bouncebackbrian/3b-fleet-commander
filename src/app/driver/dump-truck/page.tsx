@@ -28,10 +28,11 @@ import LoadTicketSheet from '@/components/dumpTruck/LoadTicketSheet'
 import NewSiteSheet from '@/components/dumpTruck/NewSiteSheet'
 import FullLogSheet from '@/components/dumpTruck/FullLogSheet'
 import EditJobSheet from '@/components/dumpTruck/EditJobSheet'
+import TicketSheet from '@/components/dumpTruck/TicketSheet'
 
 type SheetKey =
   | 'clock_in' | 'odometer_pickup' | 'odometer_dropoff' | 'pretrip' | 'posttrip'
-  | 'delay' | 'note' | 'defect' | 'incident' | 'photo' | 'ticket' | 'fuel' | 'new_site' | 'submit' | 'full_log' | 'edit_job' | null
+  | 'delay' | 'note' | 'defect' | 'incident' | 'photo' | 'ticket' | 'fuel' | 'new_site' | 'submit' | 'full_log' | 'edit_job' | 'dispatch_ticket' | null
 
 export default function DumpTruckDriverPage() {
   const {
@@ -171,6 +172,7 @@ export default function DumpTruckDriverPage() {
             onNavigate={setNavigateSite}
             onPinLocation={handlePinLocation}
             onEditJob={() => setSheet('edit_job')}
+            onViewTicket={() => setSheet('dispatch_ticket')}
           />
         </div>
 
@@ -329,6 +331,18 @@ export default function DumpTruckDriverPage() {
 
       {sheet === 'full_log' && (
         <FullLogSheet timeline={timeline} onClose={() => setSheet(null)} />
+      )}
+
+      {sheet === 'dispatch_ticket' && activeJob && (
+        <TicketSheet
+          job={activeJob}
+          driverDisplayName={driverName ?? '—'}
+          truckUnit={context?.shift?.truckId ?? null}
+          canSign="driver"
+          shiftId={context?.shift?.id ?? null}
+          timeline={timeline}
+          onClose={() => setSheet(null)}
+        />
       )}
 
       {sheet === 'edit_job' && activeJob && (

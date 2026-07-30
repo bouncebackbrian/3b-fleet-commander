@@ -166,6 +166,42 @@ export async function recordEvent(
   return { id: data.id, eventType: input.eventType, matchedSiteId, duplicate: false }
 }
 
+export interface LoadTagOcrResult {
+  ticketNumber: string | null
+  netWeightTons: number | null
+  grossWeightLb: number | null
+  tareWeightLb: number | null
+  material: string | null
+  date: string | null
+  time: string | null
+}
+
+/**
+ * Attach an optional load-tag photo's OCR result to the event it was taken
+ * at — written into the event's existing device_metadata jsonb rather than
+ * a new column (spec: "location" for a load-tag photo is the event's own
+ * GPS, already captured; OCR only supplies tag number/weight/material).
+ */
+export async function attachLoadTagToEvent(
+  businessId: string, eventId: string, documentId: string, ocr: LoadTagOcrResult,
+): Promise<void> {
+  const { data: event, error: fetchError } = await fleetServiceClient
+    .from('fleet_dt_events')
+    .select('device_metadata, business_id')
+    .eq('id', eventId)
+    .single()
+  if (fetchError) throw fetchError
+  if (event.business_id !== businessId) throw new DumpTruckError('Event not found', 404)
+
+  const deviceMetadata = { ...(event.device_metadata ?? {}), loadTag: { documentId, ...ocr } }
+
+  const { error } = await fleetServiceClient
+    .from('fleet_dt_events')
+    .update({ device_metadata: deviceMetadata })
+    .eq('id', eventId)
+  if (error) throw error
+}
+
 // ── Side effects ────────────────────────────────────────────────────────────
 
 const DEPART_CATEGORY: Partial<Record<DumpTruckEventType, 'empty' | 'loaded'>> = {

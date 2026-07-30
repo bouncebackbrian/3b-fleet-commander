@@ -4,6 +4,7 @@
 
 import { fleetServiceClient } from '@/lib/fleet-service-client'
 import { audit } from '@/lib/fleet/audit'
+import { createTicketInstance } from './ticketInstances'
 import type { DumpTruckJob } from '@/lib/dumpTruck/types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -42,6 +43,17 @@ function fromRow(r: any): DumpTruckJob {
     dispatchAcceptedBy: r.dispatch_accepted_by,
     dispatchAcceptedAt: r.dispatch_accepted_at,
   }
+}
+
+export async function getJobById(businessId: string, jobId: string): Promise<DumpTruckJob | null> {
+  const { data, error } = await fleetServiceClient
+    .from('fleet_dt_jobs')
+    .select('*')
+    .eq('business_id', businessId)
+    .eq('id', jobId)
+    .maybeSingle()
+  if (error) throw error
+  return data ? fromRow(data) : null
 }
 
 export async function listJobsForDriver(businessId: string, driverId: string): Promise<DumpTruckJob[]> {
@@ -179,6 +191,7 @@ export async function createJob(
   if (error) throw error
   const job = fromRow(data)
   audit.log({ userId, email, action: 'dump_truck.job.create', resource: 'fleet_dt_jobs', resourceId: job.id, after: job })
+  if (job.driverId) await createTicketInstance(businessId, job.id, job.driverId, job.brokerId)
   return job
 }
 
@@ -317,6 +330,7 @@ export async function acceptJob(
     userId: dispatcherId, email, action: 'dump_truck.job.dispatch_accept', resource: 'fleet_dt_jobs', resourceId: job.id,
     before: fromRow(before), after: job,
   })
+  await createTicketInstance(businessId, job.id, job.driverId, job.brokerId)
   return job
 }
 

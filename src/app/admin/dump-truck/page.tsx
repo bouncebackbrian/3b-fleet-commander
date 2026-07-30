@@ -10,6 +10,8 @@ import AdminActivityLogPanel from '@/components/dumpTruck/AdminActivityLogPanel'
 import AdminPayrollHoursPanel from '@/components/dumpTruck/AdminPayrollHoursPanel'
 import AdminFuelPanel from '@/components/dumpTruck/AdminFuelPanel'
 import BrokerPicker, { type BrokerOption } from '@/components/dumpTruck/BrokerPicker'
+import TicketSheet from '@/components/dumpTruck/TicketSheet'
+import { TICKET_FIELD_CATALOG } from '@/lib/fleet/dumpTruck/ticketTemplates'
 
 const SITE_TYPES: SiteType[] = ['yard', 'pickup', 'dump', 'customer', 'fuel', 'maintenance', 'scale', 'disposal', 'parking', 'other']
 
@@ -48,6 +50,7 @@ export default function DumpTruckAdminPage() {
       <SitesPanel sites={sites} onCreated={reload} />
       <PendingDealsPanel jobs={jobs} sites={sites} equipment={equipment} drivers={drivers} onAccepted={reload} />
       <JobsPanel jobs={jobs} sites={sites} equipment={equipment} drivers={drivers} brokers={brokers} onBrokersChanged={reload} onCreated={reload} />
+      <TicketTemplatesPanel brokers={brokers} />
       <PayPolicyPanel drivers={drivers} />
       <AdminPayrollHoursPanel drivers={drivers} />
       <AdminFuelPanel />
@@ -345,6 +348,7 @@ function JobsPanel({ jobs, sites, equipment, drivers, brokers, onBrokersChanged,
   }
   const [form, setForm] = useState(emptyForm)
   const [busy, setBusy] = useState(false)
+  const [ticketJob, setTicketJob] = useState<DumpTruckJob | null>(null)
 
   const submit = async () => {
     if (!form.jobNumber) { toast.error('Job number is required'); return }
@@ -451,7 +455,7 @@ function JobsPanel({ jobs, sites, equipment, drivers, brokers, onBrokersChanged,
       <button style={{ ...btnStyle, opacity: busy ? .5 : 1, marginTop: '1rem' }} disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Add Job'}</button>
 
       <table style={{ width: '100%', marginTop: '1.25rem', fontSize: '.85rem' }}>
-        <thead><tr style={{ color: 'var(--muted)', textAlign: 'left' }}><th>Job #</th><th>Customer</th><th>Driver</th><th>Status</th></tr></thead>
+        <thead><tr style={{ color: 'var(--muted)', textAlign: 'left' }}><th>Job #</th><th>Customer</th><th>Driver</th><th>Status</th><th></th></tr></thead>
         <tbody>
           {jobs.map(j => (
             <tr key={j.id} style={{ borderTop: '1px solid var(--border)' }}>
@@ -459,16 +463,154 @@ function JobsPanel({ jobs, sites, equipment, drivers, brokers, onBrokersChanged,
               <td>{j.customerName ?? '—'}</td>
               <td>{drivers.find(d => d.userId === j.driverId)?.name ?? '—'}</td>
               <td>{j.status}</td>
+              <td>
+                {j.driverId && (
+                  <button
+                    onClick={() => setTicketJob(j)}
+                    style={{
+                      fontSize: '.72rem', fontWeight: 700, padding: '.3rem .6rem', borderRadius: 6,
+                      background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--primary)',
+                    }}
+                  >
+                    🎫 Ticket
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+
+      {ticketJob && (
+        <TicketSheet
+          job={ticketJob}
+          driverDisplayName={drivers.find(d => d.userId === ticketJob.driverId)?.name ?? '—'}
+          truckUnit={equipment.trucks.find(t => t.id === ticketJob.truckId)?.unitNumber ?? null}
+          canSign="company"
+          onClose={() => setTicketJob(null)}
+        />
+      )}
     </div>
   )
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div><div style={labelStyle}>{label}</div>{children}</div>
+}
+
+interface TicketTemplateDTO {
+  id: string
+  brokerId: string | null
+  name: string
+  fieldKeys: string[]
+  requiresCompanySignoff: boolean
+  requiresDriverSignature: boolean
+}
+
+/**
+ * Ticket Templates — per-broker (or generic) digital dispatch ticket
+ * configuration: which fields from the fixed catalog show on the rendered
+ * ticket, and whether company/driver signatures are required to complete
+ * it. One template per (business, broker) — broker=null is the generic
+ * Fleet Commander default every job without a broker uses.
+ */
+function TicketTemplatesPanel({ brokers }: { brokers: BrokerOption[] }) {
+  const [templates, setTemplates] = useState<TicketTemplateDTO[]>([])
+  const [selectedBrokerId, setSelectedBrokerId] = useState<string>('') // '' = generic
+  const [name, setName] = useState('Fleet Commander (Generic)')
+  const [fieldKeys, setFieldKeys] = useState<string[]>(TICKET_FIELD_CATALOG.map(f => f.key))
+  const [requiresCompanySignoff, setRequiresCompanySignoff] = useState(true)
+  const [requiresDriverSignature, setRequiresDriverSignature] = useState(true)
+  const [busy, setBusy] = useState(false)
+
+  const reloadTemplates = () => {
+    fetch('/api/fleet/dump-truck/ticket-templates').then(r => r.json()).then(b => setTemplates(b.templates ?? []))
+  }
+  useEffect(reloadTemplates, [])
+
+  useEffect(() => {
+    const existing = templates.find(t => (t.brokerId ?? '') === selectedBrokerId)
+    if (existing) {
+      setName(existing.name)
+      setFieldKeys(existing.fieldKeys)
+      setRequiresCompanySignoff(existing.requiresCompanySignoff)
+      setRequiresDriverSignature(existing.requiresDriverSignature)
+    } else {
+      const broker = brokers.find(b => b.id === selectedBrokerId)
+      setName(broker ? broker.name : 'Fleet Commander (Generic)')
+      setFieldKeys(TICKET_FIELD_CATALOG.map(f => f.key))
+      setRequiresCompanySignoff(true)
+      setRequiresDriverSignature(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBrokerId, templates])
+
+  const toggleField = (key: string) => {
+    setFieldKeys(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
+  }
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      const res = await fetch('/api/fleet/dump-truck/ticket-templates', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brokerId: selectedBrokerId || null, name, fieldKeys, requiresCompanySignoff, requiresDriverSignature }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not save template')
+      toast.success('Ticket template saved')
+      reloadTemplates()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not save template')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div style={cardStyle}>
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '.25rem' }}>Dispatch Ticket Templates</h2>
+      <p style={{ color: 'var(--muted)', fontSize: '.8rem', marginBottom: '1rem' }}>
+        Choose which fields show on the digital dispatch ticket and whether it requires a company/driver signature —
+        per broker, or the generic Fleet Commander default used for jobs with no broker.
+      </p>
+
+      <Field label="Template For">
+        <select style={inputStyle} value={selectedBrokerId} onChange={e => setSelectedBrokerId(e.target.value)}>
+          <option value="">Fleet Commander (Generic)</option>
+          {brokers.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+      </Field>
+
+      <div style={{ marginTop: '1rem' }}>
+        <Field label="Template Name"><input style={inputStyle} value={name} onChange={e => setName(e.target.value)} /></Field>
+      </div>
+
+      <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' as const, margin: '1rem 0 .5rem' }}>
+        Fields Shown On Ticket
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '.4rem' }}>
+        {TICKET_FIELD_CATALOG.map(f => (
+          <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.82rem' }}>
+            <input type="checkbox" checked={fieldKeys.includes(f.key)} onChange={() => toggleField(f.key)} />
+            {f.label}
+          </label>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: '1.5rem', margin: '1rem 0' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.85rem', fontWeight: 700 }}>
+          <input type="checkbox" checked={requiresCompanySignoff} onChange={e => setRequiresCompanySignoff(e.target.checked)} />
+          Requires company sign-off
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.85rem', fontWeight: 700 }}>
+          <input type="checkbox" checked={requiresDriverSignature} onChange={e => setRequiresDriverSignature(e.target.checked)} />
+          Requires driver signature
+        </label>
+      </div>
+
+      <button style={{ ...btnStyle, opacity: busy ? .5 : 1 }} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save Template'}</button>
+    </div>
+  )
 }
 
 interface PayPolicyState {

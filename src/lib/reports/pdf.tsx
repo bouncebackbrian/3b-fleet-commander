@@ -108,3 +108,148 @@ export async function renderReportTablePdf(
     rows: table.body,
   })
 }
+
+// ── Digital dispatch ticket ─────────────────────────────────────────────────
+
+export interface DispatchTicketSignature {
+  imageBytes: Buffer
+  signedBy: string
+  signedAt: string
+}
+
+export interface DispatchTicketTimelineRow {
+  time: string
+  label: string
+  loadTag?: string | null
+}
+
+export interface DispatchTicketPdfInput {
+  logoBytes?: Buffer | null
+  logoFormat?: 'png' | 'jpg'
+  businessName: string
+  threeBBizId: string | null
+  jobNumber: string
+  brokerName: string | null
+  driverName: string
+  truckUnit: string | null
+  date: string
+  fields: { label: string; value: string }[]
+  timeline: DispatchTicketTimelineRow[]
+  companySignature: DispatchTicketSignature | null
+  driverSignature: DispatchTicketSignature | null
+}
+
+const ticketStyles = StyleSheet.create({
+  page: { padding: 28, fontSize: 9, fontFamily: 'Helvetica' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 10 },
+  logo: { width: 44, height: 44, objectFit: 'contain' },
+  businessName: { fontSize: 15, fontWeight: 700 },
+  tagline: { fontSize: 8, color: '#666' },
+  title: { fontSize: 13, fontWeight: 700, marginTop: 12, marginBottom: 8 },
+  fieldGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
+  field: { width: '45%' },
+  fieldLabel: { fontSize: 7, color: '#666', textTransform: 'uppercase' },
+  fieldValue: { fontSize: 9, fontWeight: 700 },
+  sectionTitle: { fontSize: 9, fontWeight: 700, marginTop: 8, marginBottom: 4, textTransform: 'uppercase', color: '#444' },
+  table: { borderTop: '1px solid #ccc', borderLeft: '1px solid #ccc', marginBottom: 14 },
+  tableRow: { flexDirection: 'row' },
+  tableHeaderCell: { flexGrow: 1, flexBasis: 0, padding: 3, borderRight: '1px solid #ccc', borderBottom: '1px solid #ccc', fontWeight: 700, backgroundColor: '#f2f2f2', fontSize: 7 },
+  tableCell: { flexGrow: 1, flexBasis: 0, padding: 3, borderRight: '1px solid #ccc', borderBottom: '1px solid #ccc', fontSize: 7 },
+  signRow: { flexDirection: 'row', gap: 20, marginTop: 10 },
+  signBox: { flex: 1, border: '1px solid #ccc', borderRadius: 4, padding: 8, minHeight: 90 },
+  signLabel: { fontSize: 7, color: '#666', textTransform: 'uppercase', marginBottom: 4 },
+  signImage: { width: 140, height: 50, objectFit: 'contain' },
+  signMeta: { fontSize: 7, color: '#444', marginTop: 4 },
+  signPending: { fontSize: 8, color: '#999', fontStyle: 'italic', marginTop: 20 },
+  footer: { position: 'absolute', bottom: 16, left: 28, right: 28, fontSize: 7, color: '#999', textAlign: 'center' },
+})
+
+function DispatchTicketDocument(props: DispatchTicketPdfInput) {
+  return (
+    <Document>
+      <Page size="A4" style={ticketStyles.page}>
+        <View style={ticketStyles.headerRow}>
+          {props.logoBytes && (
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            <Image style={ticketStyles.logo} src={{ data: props.logoBytes, format: props.logoFormat ?? 'png' } as any} />
+          )}
+          <View>
+            <Text style={ticketStyles.businessName}>{props.businessName}</Text>
+            <Text style={ticketStyles.tagline}>via 3B Fleet Commander{props.threeBBizId ? ` — 3B Business ID: ${props.threeBBizId}` : ''}</Text>
+          </View>
+        </View>
+
+        <Text style={ticketStyles.title}>Dispatch Ticket — Job {props.jobNumber}</Text>
+
+        <View style={ticketStyles.fieldGrid}>
+          <View style={ticketStyles.field}><Text style={ticketStyles.fieldLabel}>Date</Text><Text style={ticketStyles.fieldValue}>{props.date}</Text></View>
+          <View style={ticketStyles.field}><Text style={ticketStyles.fieldLabel}>Truck</Text><Text style={ticketStyles.fieldValue}>{props.truckUnit ?? '—'}</Text></View>
+          <View style={ticketStyles.field}><Text style={ticketStyles.fieldLabel}>Driver</Text><Text style={ticketStyles.fieldValue}>{props.driverName}</Text></View>
+          {props.brokerName && <View style={ticketStyles.field}><Text style={ticketStyles.fieldLabel}>Broker</Text><Text style={ticketStyles.fieldValue}>{props.brokerName}</Text></View>}
+          {props.fields.map((f, i) => (
+            <View key={i} style={ticketStyles.field}>
+              <Text style={ticketStyles.fieldLabel}>{f.label}</Text>
+              <Text style={ticketStyles.fieldValue}>{f.value}</Text>
+            </View>
+          ))}
+        </View>
+
+        {props.timeline.length > 0 && (
+          <>
+            <Text style={ticketStyles.sectionTitle}>Time Log</Text>
+            <View style={ticketStyles.table}>
+              <View style={ticketStyles.tableRow} fixed>
+                <Text style={ticketStyles.tableHeaderCell}>Time</Text>
+                <Text style={ticketStyles.tableHeaderCell}>Event</Text>
+                <Text style={ticketStyles.tableHeaderCell}>Load Tag</Text>
+              </View>
+              {props.timeline.map((row, i) => (
+                <View key={i} style={ticketStyles.tableRow} wrap={false}>
+                  <Text style={ticketStyles.tableCell}>{row.time}</Text>
+                  <Text style={ticketStyles.tableCell}>{row.label}</Text>
+                  <Text style={ticketStyles.tableCell}>{row.loadTag ?? ''}</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
+        <View style={ticketStyles.signRow}>
+          <View style={ticketStyles.signBox}>
+            <Text style={ticketStyles.signLabel}>Company Receipt</Text>
+            {props.companySignature ? (
+              <>
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                <Image style={ticketStyles.signImage} src={{ data: props.companySignature.imageBytes, format: 'png' } as any} />
+                <Text style={ticketStyles.signMeta}>{props.companySignature.signedBy} — {props.companySignature.signedAt}</Text>
+              </>
+            ) : (
+              <Text style={ticketStyles.signPending}>Not signed</Text>
+            )}
+          </View>
+          <View style={ticketStyles.signBox}>
+            <Text style={ticketStyles.signLabel}>Driver Signature</Text>
+            {props.driverSignature ? (
+              <>
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                <Image style={ticketStyles.signImage} src={{ data: props.driverSignature.imageBytes, format: 'png' } as any} />
+                <Text style={ticketStyles.signMeta}>{props.driverSignature.signedBy} — {props.driverSignature.signedAt}</Text>
+              </>
+            ) : (
+              <Text style={ticketStyles.signPending}>Not signed</Text>
+            )}
+          </View>
+        </View>
+
+        <Text style={ticketStyles.footer} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages} — Generated via 3B Fleet Commander`} fixed />
+      </Page>
+    </Document>
+  )
+}
+
+export async function renderDispatchTicketPdf(input: DispatchTicketPdfInput): Promise<Buffer> {
+  const stream = await renderToStream(<DispatchTicketDocument {...input} />)
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk))
+  return Buffer.concat(chunks)
+}
