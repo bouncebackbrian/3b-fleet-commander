@@ -39,6 +39,7 @@ function fromRow(r: any): DumpTruckJob {
     pricePerHour: r.price_per_hour != null ? Number(r.price_per_hour) : null,
     pricePerTon: r.price_per_ton != null ? Number(r.price_per_ton) : null,
     materialCost: r.material_cost != null ? Number(r.material_cost) : null,
+    freightBillNumber: r.freight_bill_number,
     source: r.source,
     dispatchAcceptedBy: r.dispatch_accepted_by,
     dispatchAcceptedAt: r.dispatch_accepted_at,
@@ -143,6 +144,7 @@ export interface CreateJobInput {
   pricePerHour?: number | null
   pricePerTon?: number | null
   materialCost?: number | null
+  freightBillNumber?: string | null
 }
 
 export async function createJob(
@@ -184,6 +186,7 @@ export async function createJob(
       price_per_hour: input.pricePerHour ?? null,
       price_per_ton: input.pricePerTon ?? null,
       material_cost: input.materialCost ?? null,
+      freight_bill_number: input.freightBillNumber ?? null,
       created_by: userId,
     })
     .select('*')

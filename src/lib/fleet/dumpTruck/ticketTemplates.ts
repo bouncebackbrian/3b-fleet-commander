@@ -15,7 +15,7 @@ import type { DumpTruckJob } from '@/lib/dumpTruck/types'
 
 export interface TicketFieldDef {
   key: keyof Pick<DumpTruckJob,
-    'poNumber' | 'customerName' | 'material' | 'estQuantity' | 'quantityUnit' | 'loadTime' | 'orderDate' |
+    'poNumber' | 'freightBillNumber' | 'customerName' | 'material' | 'estQuantity' | 'quantityUnit' | 'loadTime' | 'orderDate' |
     'deliveryDate' | 'cosigneeName' | 'orderedBy' | 'contactPhone' | 'truckType' | 'directions' |
     'pricePerHour' | 'pricePerTon' | 'fuelSurcharge' | 'materialCost'>
   label: string
@@ -23,6 +23,7 @@ export interface TicketFieldDef {
 
 export const TICKET_FIELD_CATALOG: TicketFieldDef[] = [
   { key: 'poNumber', label: 'PO Number' },
+  { key: 'freightBillNumber', label: 'Freight Bill #' },
   { key: 'customerName', label: 'Customer' },
   { key: 'material', label: 'Material' },
   { key: 'estQuantity', label: 'Est. Quantity' },

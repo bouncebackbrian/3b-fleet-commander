@@ -588,7 +588,7 @@ function JobsPanel({ jobs, sites, equipment, drivers, brokers, onBrokersChanged,
     jobNumber: '', poNumber: '', customerName: '', brokerId: '', brokerName: '', driverId: '', truckId: '', trailerId: '',
     pickupSiteId: '', dumpSiteId: '', material: '',
     loadTime: '', orderDate: '', deliveryDate: '', cosigneeName: '', orderedBy: '', contactPhone: '',
-    truckType: '', directions: '', travelTimeMinutes: '', fuelSurcharge: '', pricePerHour: '', pricePerTon: '', materialCost: '',
+    truckType: '', directions: '', travelTimeMinutes: '', fuelSurcharge: '', pricePerHour: '', pricePerTon: '', materialCost: '', freightBillNumber: '',
   }
   const [form, setForm] = useState(emptyForm)
   const [busy, setBusy] = useState(false)
@@ -612,6 +612,7 @@ function JobsPanel({ jobs, sites, equipment, drivers, brokers, onBrokersChanged,
           pricePerHour: form.pricePerHour ? Number(form.pricePerHour) : null,
           pricePerTon: form.pricePerTon ? Number(form.pricePerTon) : null,
           materialCost: form.materialCost ? Number(form.materialCost) : null,
+          freightBillNumber: form.freightBillNumber || null,
         }),
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Could not create job')
@@ -635,6 +636,7 @@ function JobsPanel({ jobs, sites, equipment, drivers, brokers, onBrokersChanged,
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '.75rem', marginBottom: '1rem' }}>
         <Field label="Job Number"><input style={inputStyle} value={form.jobNumber} onChange={e => setForm({ ...form, jobNumber: e.target.value })} /></Field>
         <Field label="PO Number"><input style={inputStyle} value={form.poNumber} onChange={e => setForm({ ...form, poNumber: e.target.value })} /></Field>
+        <Field label="Freight Bill #"><input style={inputStyle} value={form.freightBillNumber} onChange={e => setForm({ ...form, freightBillNumber: e.target.value })} /></Field>
         <Field label="Customer"><input style={inputStyle} value={form.customerName} onChange={e => setForm({ ...form, customerName: e.target.value })} /></Field>
         <Field label="Broker">
           <BrokerPicker

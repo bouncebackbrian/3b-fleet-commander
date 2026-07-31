@@ -188,6 +188,8 @@ export interface DumpTruckJob {
   pricePerHour: number | null
   pricePerTon: number | null
   materialCost: number | null
+  /** Broker's own bill/ticket number (distinct from PO#) — printed on their paper dispatch ticket, e.g. "Freight Bill". */
+  freightBillNumber: string | null
 }
 
 export interface DumpTruckShift {
