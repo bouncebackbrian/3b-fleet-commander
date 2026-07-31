@@ -8,6 +8,7 @@
  */
 import { useEffect, useState, useCallback } from 'react'
 import { captureGeolocation, createId } from '@/lib/dumpTruck/events'
+import { EVENT_LABELS } from '@/lib/dumpTruck/eventLabels'
 import { toast } from '@/hooks/useToast'
 import ToastContainer from '@/components/shared/ToastContainer'
 
@@ -57,6 +58,16 @@ interface RangeSummary {
   estimatedGrossEarnings: number
 }
 
+interface TimestampLogEntry {
+  id: string
+  shiftId: string
+  eventType: string
+  effectiveAt: string
+  notes: string | null
+  lat: number | null
+  lng: number | null
+}
+
 interface PayrollPayment {
   checkNumber: string | null
   amountPaid: number | null
@@ -91,6 +102,26 @@ export default function DriverHoursPage() {
   const [correctionShiftId, setCorrectionShiftId] = useState<string | null>(null)
   const [correctionText, setCorrectionText] = useState('')
   const [submittingCorrection, setSubmittingCorrection] = useState(false)
+  const [logDate, setLogDate] = useState<string | null>(null)
+  const [logEntries, setLogEntries] = useState<TimestampLogEntry[]>([])
+  const [logLoading, setLogLoading] = useState(false)
+
+  const viewTimestamps = async (workDate: string) => {
+    setLogDate(workDate)
+    setLogLoading(true)
+    try {
+      const res = await fetch(`/api/fleet/dump-truck/hours/log?from=${workDate}&to=${workDate}`)
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not load timestamps')
+      const body = await res.json()
+      const entries = (body.entries ?? []) as TimestampLogEntry[]
+      setLogEntries([...entries].sort((a, b) => a.effectiveAt.localeCompare(b.effectiveAt)))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not load timestamps')
+      setLogDate(null)
+    } finally {
+      setLogLoading(false)
+    }
+  }
 
   const load = useCallback(async () => {
     if (rangeType === 'custom' && (!customFrom || !customTo)) return
@@ -247,7 +278,13 @@ export default function DriverHoursPage() {
                             <span style={{ color: 'var(--warn)', marginLeft: 6 }}>⚠️ correction requested</span>
                           )}
                         </td>
-                        <td style={td}>
+                        <td style={{ ...td, display: 'flex', gap: 6 }}>
+                          <button
+                            onClick={() => viewTimestamps(r.workDate)}
+                            style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--primary)', padding: '.3rem .5rem', borderRadius: 6, border: '1px solid var(--border)' }}
+                          >
+                            View Timestamps
+                          </button>
                           <button
                             onClick={() => setCorrectionShiftId(r.shiftId)}
                             style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--primary)', padding: '.3rem .5rem', borderRadius: 6, border: '1px solid var(--border)' }}
@@ -263,6 +300,34 @@ export default function DriverHoursPage() {
             )}
           </div>
         </>
+      )}
+
+      {logDate && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(3,13,11,.75)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setLogDate(null)}>
+          <div style={{ ...cardStyle, maxWidth: 480, width: '90%', maxHeight: '80vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontWeight: 800, marginBottom: '.75rem' }}>Timestamps — {logDate}</h3>
+            {logLoading && <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>Loading…</div>}
+            {!logLoading && logEntries.length === 0 && (
+              <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>No events found for this day.</div>
+            )}
+            {!logLoading && logEntries.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {logEntries.map(e => (
+                  <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '.5rem .6rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '.82rem', fontWeight: 700 }}>{EVENT_LABELS[e.eventType] ?? e.eventType}</div>
+                      {e.notes && <div style={{ fontSize: '.72rem', color: 'var(--muted)' }}>{e.notes}</div>}
+                    </div>
+                    <div style={{ fontSize: '.75rem', color: 'var(--muted)', flexShrink: 0 }}>
+                      {new Date(e.effectiveAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button onClick={() => setLogDate(null)} style={{ width: '100%', marginTop: '1rem', padding: '.7rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>Close</button>
+          </div>
+        </div>
       )}
 
       {correctionShiftId && (
