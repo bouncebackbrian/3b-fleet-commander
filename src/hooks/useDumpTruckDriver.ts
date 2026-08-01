@@ -335,6 +335,7 @@ export function useDumpTruckDriver() {
         throw new Error(body.error ?? 'Submit failed')
       }
       toast.success('Day submitted')
+      if (typeof window !== 'undefined') window.open(`/api/fleet/dump-truck/shifts/${context.shift.id}/report`, '_blank')
       await fetchContext()
       return true
     } catch (err) {

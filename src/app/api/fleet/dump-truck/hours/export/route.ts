@@ -16,10 +16,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireFleetAuth } from '@/lib/fleet-auth-guard'
 import { resolveRange, type RangeType } from '@/lib/dumpTruck/hours'
 import { buildDriverHoursForRange } from '@/lib/fleet/dumpTruck/hours'
-import { buildDetailCsv, buildSummaryCsv, buildDetailTable, buildSummaryTable, recordExportAudit } from '@/lib/fleet/dumpTruck/exports'
+import {
+  buildDetailCsv, buildSummaryCsv, buildDetailTable, recordExportAudit,
+  buildDefectsCsvBlock, type DefectReportRow,
+} from '@/lib/fleet/dumpTruck/exports'
 import { getDriverBusinessMeta } from '@/lib/fleet/dumpTruck/shared'
 import { getPayrollPayment } from '@/lib/fleet/dumpTruck/payroll'
-import { renderReportTablePdf } from '@/lib/reports/pdf'
+import { listDefectsForShifts } from '@/lib/fleet/dumpTruck/incidents'
+import { fleetServiceClient } from '@/lib/fleet-service-client'
+import { renderReportTablePdf, renderSummaryReportPdf } from '@/lib/reports/pdf'
+import { getBusinessLogoForPdf } from '@/lib/fleet/business'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,8 +70,79 @@ export async function GET(request: NextRequest) {
 
     const filename = `dump-truck-hours-${exportType}-${range.start}-to-${range.end}`
 
+    // The "Weekly Summary" export doubles as the end-of-week report — truck
+    // issues reported during the week's shifts are folded in here so dispatch/
+    // payroll see them alongside the hours, not in a separate download.
+    let defectRows: DefectReportRow[] = []
+    if (exportType === 'summary') {
+      const shiftIds = rows.map(r => r.shiftId)
+      const defects = await listDefectsForShifts(auth.businessId, shiftIds)
+      const truckIds = [...new Set(defects.map(d => d.truckId).filter(Boolean))]
+      const { data: equipment } = truckIds.length
+        ? await fleetServiceClient.from('fleet_equipment').select('id, unit_number').in('id', truckIds)
+        : { data: [] as { id: string; unit_number: string }[] }
+      const unitByTruckId = new Map((equipment ?? []).map(e => [e.id, e.unit_number]))
+      defectRows = defects.map(d => ({
+        reportedAt: d.createdAt,
+        severity: d.severity,
+        description: d.description,
+        status: d.status,
+        truckUnit: unitByTruckId.get(d.truckId) ?? null,
+        resolvedAt: d.resolvedAt,
+      }))
+    }
+
     if (format === 'pdf') {
-      const table = exportType === 'summary' ? buildSummaryTable(summary, fullMeta) : buildDetailTable(rows, fullMeta)
+      if (exportType === 'summary') {
+        const logo = await getBusinessLogoForPdf(auth.businessId)
+        const pdf = await renderSummaryReportPdf({
+          logoBytes: logo?.bytes ?? null,
+          logoFormat: logo?.format,
+          businessName: meta.businessName,
+          threeBBizId: meta.threebBizId,
+          title: 'End of Week Report',
+          subtitleLines: [
+            `Driver: ${meta.driverName}${meta.threebId ? ` (${meta.threebId})` : ''}`,
+            `Range: ${rangeType} (${range.start} to ${range.end})`,
+          ],
+          disclaimers: ['Estimated earnings only — not a pay stub or final wage statement.'],
+          stats: [
+            { label: 'Days Worked', value: String(summary.daysWorked) },
+            { label: 'Regular Hours', value: summary.totalRegularHours.toFixed(2) },
+            { label: 'Overtime Hours', value: summary.totalOvertimeHours.toFixed(2) },
+            { label: 'Drive Hours', value: summary.totalDriveHours.toFixed(2) },
+            { label: 'Loads', value: String(summary.totalLoads) },
+            { label: 'Miles', value: String(summary.totalMiles) },
+            { label: 'Delay Hours', value: (summary.totalTrafficDelayHours + summary.totalMechanicalDelayHours + summary.totalOtherDelayHours).toFixed(2) },
+            { label: 'Est. Earnings', value: `$${summary.estimatedGrossEarnings.toFixed(2)}` },
+          ],
+          sections: [
+            {
+              title: 'Daily Breakdown',
+              headers: ['Date', 'Truck', 'Total Hrs', 'Loads', 'Status'],
+              rows: rows.map(r => [r.workDate, r.truckUnit ?? '—', r.totalShiftHours.toFixed(2), r.loadsCompleted, r.submissionStatus]),
+            },
+            {
+              title: 'Truck Issues Reported',
+              headers: ['Reported', 'Truck', 'Severity', 'Description', 'Status', 'Resolved'],
+              rows: defectRows.map(d => [
+                new Date(d.reportedAt).toLocaleString(), d.truckUnit ?? '', d.severity, d.description, d.status,
+                d.resolvedAt ? new Date(d.resolvedAt).toLocaleString() : '',
+              ]),
+            },
+          ],
+        })
+        return new NextResponse(new Uint8Array(pdf), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${filename}.pdf"`,
+            'Cache-Control': 'no-store',
+          },
+        })
+      }
+
+      const table = buildDetailTable(rows, fullMeta)
       const pdf = await renderReportTablePdf(auth.businessId, meta.businessName, meta.threebBizId, table)
       return new NextResponse(new Uint8Array(pdf), {
         status: 200,
@@ -77,7 +154,9 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const csv = exportType === 'summary' ? buildSummaryCsv(summary, fullMeta) : buildDetailCsv(rows, fullMeta)
+    const csv = exportType === 'summary'
+      ? buildSummaryCsv(summary, fullMeta) + buildDefectsCsvBlock(defectRows)
+      : buildDetailCsv(rows, fullMeta)
     return new NextResponse(csv, {
       status: 200,
       headers: {

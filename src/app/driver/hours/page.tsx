@@ -240,10 +240,10 @@ export default function DriverHoursPage() {
             )}
 
             <div style={{ display: 'flex', gap: 8, marginTop: '1.25rem', flexWrap: 'wrap' }}>
+              <button onClick={() => window.open(exportUrl('summary', 'pdf'), '_blank')} style={exportBtnStyle}>📄 End of Week Report (PDF)</button>
+              <button onClick={() => window.open(exportUrl('summary'), '_blank')} style={exportBtnStyle}>⬇️ End of Week Report (CSV)</button>
               <button onClick={() => window.open(exportUrl('detail'), '_blank')} style={exportBtnStyle}>⬇️ Detail CSV</button>
               <button onClick={() => window.open(exportUrl('detail', 'pdf'), '_blank')} style={exportBtnStyle}>📄 Detail PDF</button>
-              <button onClick={() => window.open(exportUrl('summary'), '_blank')} style={exportBtnStyle}>⬇️ Summary CSV</button>
-              <button onClick={() => window.open(exportUrl('summary', 'pdf'), '_blank')} style={exportBtnStyle}>📄 Summary PDF</button>
             </div>
           </div>
 
@@ -284,6 +284,12 @@ export default function DriverHoursPage() {
                             style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--primary)', padding: '.3rem .5rem', borderRadius: 6, border: '1px solid var(--border)' }}
                           >
                             View Timestamps
+                          </button>
+                          <button
+                            onClick={() => window.open(`/api/fleet/dump-truck/shifts/${r.shiftId}/report`, '_blank')}
+                            style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--primary)', padding: '.3rem .5rem', borderRadius: 6, border: '1px solid var(--border)' }}
+                          >
+                            📄 Shift Report
                           </button>
                           <button
                             onClick={() => setCorrectionShiftId(r.shiftId)}

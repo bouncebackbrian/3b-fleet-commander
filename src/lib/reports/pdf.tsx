@@ -253,3 +253,115 @@ export async function renderDispatchTicketPdf(input: DispatchTicketPdfInput): Pr
   for await (const chunk of stream) chunks.push(Buffer.from(chunk))
   return Buffer.concat(chunks)
 }
+
+// ── Shift / weekly summary reports ──────────────────────────────────────────
+// One flexible document — a stat grid plus any number of titled tables —
+// reused for both the end-of-shift report (Time Log + Truck Issues sections)
+// and the end-of-week report (Daily Breakdown + Truck Issues sections), so
+// the two report types share layout/branding instead of each hand-rolling one.
+
+export interface SummaryReportStat {
+  label: string
+  value: string
+}
+
+export interface SummaryReportSection {
+  title: string
+  headers: string[]
+  rows: (string | number)[][]
+}
+
+export interface SummaryReportPdfInput {
+  logoBytes?: Buffer | null
+  logoFormat?: 'png' | 'jpg'
+  businessName: string
+  threeBBizId: string | null
+  title: string
+  subtitleLines: string[]
+  stats: SummaryReportStat[]
+  sections: SummaryReportSection[]
+  disclaimers?: string[]
+}
+
+const summaryStyles = StyleSheet.create({
+  page: { padding: 28, fontSize: 9, fontFamily: 'Helvetica' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 10 },
+  logo: { width: 44, height: 44, objectFit: 'contain' },
+  businessName: { fontSize: 15, fontWeight: 700 },
+  tagline: { fontSize: 8, color: '#666' },
+  title: { fontSize: 13, fontWeight: 700, marginTop: 12 },
+  subtitle: { fontSize: 8, color: '#444', marginTop: 2 },
+  disclaimer: { fontSize: 7, color: '#888', marginTop: 2 },
+  statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12, marginBottom: 14 },
+  stat: { width: '22%', border: '1px solid #ddd', borderRadius: 4, padding: 6 },
+  statLabel: { fontSize: 6.5, color: '#666', textTransform: 'uppercase' },
+  statValue: { fontSize: 11, fontWeight: 700 },
+  sectionTitle: { fontSize: 9, fontWeight: 700, marginTop: 10, marginBottom: 4, textTransform: 'uppercase', color: '#444' },
+  emptySection: { fontSize: 8, color: '#888', fontStyle: 'italic', marginBottom: 8 },
+  table: { borderTop: '1px solid #ccc', borderLeft: '1px solid #ccc', marginBottom: 10 },
+  tableRow: { flexDirection: 'row' },
+  tableHeaderCell: { flexGrow: 1, flexBasis: 0, padding: 3, borderRight: '1px solid #ccc', borderBottom: '1px solid #ccc', fontWeight: 700, backgroundColor: '#f2f2f2', fontSize: 7 },
+  tableCell: { flexGrow: 1, flexBasis: 0, padding: 3, borderRight: '1px solid #ccc', borderBottom: '1px solid #ccc', fontSize: 7 },
+  footer: { position: 'absolute', bottom: 16, left: 28, right: 28, fontSize: 7, color: '#999', textAlign: 'center' },
+})
+
+function SummaryReportDocument(props: SummaryReportPdfInput) {
+  return (
+    <Document>
+      <Page size="A4" style={summaryStyles.page}>
+        <View style={summaryStyles.headerRow}>
+          {props.logoBytes && (
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            <Image style={summaryStyles.logo} src={{ data: props.logoBytes, format: props.logoFormat ?? 'png' } as any} />
+          )}
+          <View>
+            <Text style={summaryStyles.businessName}>{props.businessName}</Text>
+            <Text style={summaryStyles.tagline}>via 3B Fleet Commander{props.threeBBizId ? ` — 3B Business ID: ${props.threeBBizId}` : ''}</Text>
+          </View>
+        </View>
+
+        <Text style={summaryStyles.title}>{props.title}</Text>
+        {props.subtitleLines.map((line, i) => <Text key={i} style={summaryStyles.subtitle}>{line}</Text>)}
+        {(props.disclaimers ?? []).map((line, i) => <Text key={i} style={summaryStyles.disclaimer}>{line}</Text>)}
+
+        <View style={summaryStyles.statGrid}>
+          {props.stats.map((s, i) => (
+            <View key={i} style={summaryStyles.stat}>
+              <Text style={summaryStyles.statLabel}>{s.label}</Text>
+              <Text style={summaryStyles.statValue}>{s.value}</Text>
+            </View>
+          ))}
+        </View>
+
+        {props.sections.map((section, si) => (
+          <View key={si}>
+            <Text style={summaryStyles.sectionTitle}>{section.title}</Text>
+            {section.rows.length === 0 ? (
+              <Text style={summaryStyles.emptySection}>None reported.</Text>
+            ) : (
+              <View style={summaryStyles.table}>
+                <View style={summaryStyles.tableRow} fixed>
+                  {section.headers.map((h, i) => <Text key={i} style={summaryStyles.tableHeaderCell}>{h}</Text>)}
+                </View>
+                {section.rows.map((row, r) => (
+                  <View key={r} style={summaryStyles.tableRow} wrap={false}>
+                    {row.map((cell, c) => <Text key={c} style={summaryStyles.tableCell}>{cell === null || cell === undefined ? '' : String(cell)}</Text>)}
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        ))}
+
+        <Text style={summaryStyles.footer} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages} — Generated via 3B Fleet Commander`} fixed />
+      </Page>
+    </Document>
+  )
+}
+
+export async function renderSummaryReportPdf(input: SummaryReportPdfInput): Promise<Buffer> {
+  const stream = await renderToStream(<SummaryReportDocument {...input} />)
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk))
+  return Buffer.concat(chunks)
+}

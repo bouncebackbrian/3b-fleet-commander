@@ -149,15 +149,6 @@ export function buildSummaryCsv(summary: RangeSummary, meta: ExportMeta): string
   return header + buildCsv([summary], summaryColumns(meta))
 }
 
-export function buildSummaryTable(summary: RangeSummary, meta: ExportMeta): ReportTable {
-  const { headers, body } = toTableMatrix([summary], summaryColumns(meta))
-  return {
-    title: `Driver Personal Records (Weekly Summary) — ${meta.driverName}${meta.threebId ? ` (${meta.threebId})` : ''}`,
-    metaLine: `Generated: ${meta.generatedAt}  Range: ${meta.rangeType} (${meta.range.start} to ${meta.range.end})`,
-    disclaimers: SUMMARY_DISCLAIMERS, headers, body,
-  }
-}
-
 // ── Dispatch/admin payroll export — all drivers, one CSV (spec follow-up) ────
 
 export interface AdminPayrollMeta {
@@ -292,6 +283,34 @@ export function buildAdminPayrollSummaryTable(rows: DriverRangeSummary[], meta: 
     metaLine: `Generated: ${meta.generatedAt}  Range: ${meta.rangeType} (${meta.range.start} to ${meta.range.end}) — week is Monday–Sunday`,
     disclaimers: SUMMARY_DISCLAIMERS, headers, body,
   }
+}
+
+// ── Truck issues (defects) section — appended to the weekly summary export ──
+
+export interface DefectReportRow {
+  reportedAt: string
+  severity: string
+  description: string
+  status: string
+  truckUnit: string | null
+  resolvedAt: string | null
+}
+
+function defectColumns(): CsvColumn<DefectReportRow>[] {
+  return [
+    { header: 'Reported', value: r => r.reportedAt },
+    { header: 'Truck', value: r => r.truckUnit ?? '' },
+    { header: 'Severity', value: r => r.severity },
+    { header: 'Description', value: r => r.description },
+    { header: 'Status', value: r => r.status },
+    { header: 'Resolved', value: r => r.resolvedAt ?? '' },
+  ]
+}
+
+/** Appended as a second block below the main CSV — same file, not a separate download. */
+export function buildDefectsCsvBlock(defects: DefectReportRow[], title = 'Truck Issues Reported'): string {
+  if (defects.length === 0) return `\r\n${title}\r\nNone reported.\r\n`
+  return `\r\n${title}\r\n` + buildCsv(defects, defectColumns())
 }
 
 export async function recordExportAudit(input: {

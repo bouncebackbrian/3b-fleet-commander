@@ -209,6 +209,29 @@ export async function listDefects(businessId: string): Promise<DefectRow[]> {
   return rows.map(r => defectFromRow(r, photoByDefect.get(r.id) ?? null))
 }
 
+/** Defects reported during specific shifts — powers end-of-shift and end-of-week reports (truck issues section). */
+export async function listDefectsForShifts(businessId: string, shiftIds: string[]): Promise<DefectRow[]> {
+  if (shiftIds.length === 0) return []
+  const { data, error } = await fleetServiceClient
+    .from('fleet_dt_defects')
+    .select('*')
+    .eq('business_id', businessId)
+    .in('shift_id', shiftIds)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  const rows = data ?? []
+  if (rows.length === 0) return []
+
+  const { data: docs } = await fleetServiceClient
+    .from('fleet_dt_documents')
+    .select('id, linked_entity_id')
+    .eq('linked_entity_type', 'defect')
+    .in('linked_entity_id', rows.map(r => r.id))
+  const photoByDefect = new Map((docs ?? []).map(d => [d.linked_entity_id, d.id]))
+
+  return rows.map(r => defectFromRow(r, photoByDefect.get(r.id) ?? null))
+}
+
 export interface ResolveDefectInput {
   status?: 'acknowledged' | 'resolved' | 'deferred'
   resolutionNotes?: string | null
