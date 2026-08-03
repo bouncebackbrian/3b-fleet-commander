@@ -190,6 +190,15 @@ export interface DumpTruckJob {
   materialCost: number | null
   /** Broker's own bill/ticket number (distinct from PO#) — printed on their paper dispatch ticket, e.g. "Freight Bill". */
   freightBillNumber: string | null
+
+  // Sign-out fields (2026-08-03) — the driver's own paper-ticket estimate vs.
+  // what the job site actually released them at, distinct from the app's
+  // auto-tracked clock_out (that's the driver's own action, not the customer's).
+  /** Driver-written estimate on the paper ticket, e.g. "3:15 PM incl. drive to yard". Free text — not a parsed time. */
+  scheduledEndTime: string | null
+  /** Name of the customer/job-site rep who formally released the driver. */
+  signedOutBy: string | null
+  signedOutAt: string | null
 }
 
 export interface DumpTruckShift {

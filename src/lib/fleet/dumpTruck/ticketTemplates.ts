@@ -17,7 +17,7 @@ export interface TicketFieldDef {
   key: keyof Pick<DumpTruckJob,
     'poNumber' | 'freightBillNumber' | 'customerName' | 'material' | 'estQuantity' | 'quantityUnit' | 'loadTime' | 'orderDate' |
     'deliveryDate' | 'cosigneeName' | 'orderedBy' | 'contactPhone' | 'truckType' | 'directions' |
-    'pricePerHour' | 'pricePerTon' | 'fuelSurcharge' | 'materialCost'>
+    'pricePerHour' | 'pricePerTon' | 'fuelSurcharge' | 'materialCost' | 'scheduledEndTime' | 'signedOutBy'>
   label: string
 }
 
@@ -40,6 +40,8 @@ export const TICKET_FIELD_CATALOG: TicketFieldDef[] = [
   { key: 'pricePerTon', label: 'Price / Ton' },
   { key: 'fuelSurcharge', label: 'Fuel Surcharge' },
   { key: 'materialCost', label: 'Material Cost' },
+  { key: 'scheduledEndTime', label: 'Scheduled End Time' },
+  { key: 'signedOutBy', label: 'Signed Out By' },
 ]
 
 const DEFAULT_FIELD_KEYS = TICKET_FIELD_CATALOG.map(f => f.key)

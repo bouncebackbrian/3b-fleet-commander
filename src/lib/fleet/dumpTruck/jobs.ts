@@ -40,6 +40,9 @@ function fromRow(r: any): DumpTruckJob {
     pricePerTon: r.price_per_ton != null ? Number(r.price_per_ton) : null,
     materialCost: r.material_cost != null ? Number(r.material_cost) : null,
     freightBillNumber: r.freight_bill_number,
+    scheduledEndTime: r.scheduled_end_time,
+    signedOutBy: r.signed_out_by,
+    signedOutAt: r.signed_out_at,
     source: r.source,
     dispatchAcceptedBy: r.dispatch_accepted_by,
     dispatchAcceptedAt: r.dispatch_accepted_at,
@@ -145,6 +148,7 @@ export interface CreateJobInput {
   pricePerTon?: number | null
   materialCost?: number | null
   freightBillNumber?: string | null
+  scheduledEndTime?: string | null
 }
 
 export async function createJob(
@@ -187,6 +191,7 @@ export async function createJob(
       price_per_ton: input.pricePerTon ?? null,
       material_cost: input.materialCost ?? null,
       freight_bill_number: input.freightBillNumber ?? null,
+      scheduled_end_time: input.scheduledEndTime ?? null,
       created_by: userId,
     })
     .select('*')
@@ -390,15 +395,24 @@ export interface DriverJobEditInput {
   material?: string | null
   pickupSiteId?: string | null
   dumpSiteId?: string | null
+  /** Driver-written estimate on the paper ticket, e.g. "3:15 PM incl. drive to yard". */
+  scheduledEndTime?: string | null
+  /** Name of the customer/job-site rep who formally released the driver. */
+  signedOutBy?: string | null
+  signedOutAt?: string | null
 }
 
 /**
- * Driver-editable job fields only — material and pickup/dump site.
- * Dispatch frequently changes these verbally mid-shift; drivers need to
- * correct the record themselves rather than wait for an admin. Any active
- * business member may call this (not gated by canManage) — same "record
- * physical reality" rationale as site GPS pinning. Callers should also log
- * a visible timeline note so dispatch sees what changed and by whom.
+ * Driver-editable job fields only — material, pickup/dump site, and the
+ * paper-ticket sign-out fields (scheduled end time as written on paper,
+ * plus who/when the job site actually signed the driver out — distinct
+ * from the app's own clock_out, which is the driver's own action, not the
+ * customer's). Dispatch frequently changes material/site verbally mid-shift;
+ * drivers need to correct the record themselves rather than wait for an
+ * admin. Any active business member may call this (not gated by canManage)
+ * — same "record physical reality" rationale as site GPS pinning. Callers
+ * should also log a visible timeline note so dispatch sees what changed and
+ * by whom.
  */
 export async function updateJobDriverFields(
   businessId: string,
@@ -420,6 +434,9 @@ export async function updateJobDriverFields(
   if (input.material !== undefined) patch.material = input.material
   if (input.pickupSiteId !== undefined) patch.pickup_site_id = input.pickupSiteId
   if (input.dumpSiteId !== undefined) patch.dump_site_id = input.dumpSiteId
+  if (input.scheduledEndTime !== undefined) patch.scheduled_end_time = input.scheduledEndTime
+  if (input.signedOutBy !== undefined) patch.signed_out_by = input.signedOutBy
+  if (input.signedOutAt !== undefined) patch.signed_out_at = input.signedOutAt
 
   const { data, error } = await fleetServiceClient
     .from('fleet_dt_jobs')

@@ -1,16 +1,17 @@
 /**
  * PATCH /api/fleet/dump-truck/jobs/[id] — driver-editable job fields
  *
- * Only material, pickupSiteId, dumpSiteId can be changed here — dispatch
- * frequently changes these verbally mid-shift and the driver needs to
- * correct the record themselves. Open to any active business member (not
- * gated by canManage), same as site GPS pinning — the driver is recording
- * physical reality, not editing dispatch-ticket business fields.
+ * Only material, pickupSiteId, dumpSiteId, and the paper-ticket sign-out
+ * fields can be changed here — dispatch frequently changes material/site
+ * verbally mid-shift and the driver needs to correct the record themselves.
+ * Open to any active business member (not gated by canManage), same as site
+ * GPS pinning — the driver is recording physical reality, not editing
+ * dispatch-ticket business fields.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireFleetAuth } from '@/lib/fleet-auth-guard'
-import { updateJobDriverFields } from '@/lib/fleet/dumpTruck/jobs'
+import { updateJobDriverFields, type DriverJobEditInput } from '@/lib/fleet/dumpTruck/jobs'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,10 +22,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   try {
     const { id } = await params
     const body = await request.json()
-    const input: { material?: string | null; pickupSiteId?: string | null; dumpSiteId?: string | null } = {}
+    const input: DriverJobEditInput = {}
     if ('material' in body) input.material = body.material
     if ('pickupSiteId' in body) input.pickupSiteId = body.pickupSiteId
     if ('dumpSiteId' in body) input.dumpSiteId = body.dumpSiteId
+    if ('scheduledEndTime' in body) input.scheduledEndTime = body.scheduledEndTime
+    if ('signedOutBy' in body) input.signedOutBy = body.signedOutBy
+    if ('signedOutAt' in body) input.signedOutAt = body.signedOutAt
 
     const job = await updateJobDriverFields(auth.businessId, id, input, auth.userId, auth.email)
     return NextResponse.json({ job })

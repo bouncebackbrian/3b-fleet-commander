@@ -63,6 +63,7 @@ export async function finalizeCompletedTicket(
     .map(f => ({ label: f.label, value: job[f.key] }))
     .filter(f => f.value != null && f.value !== '')
     .map(f => ({ label: f.label, value: String(f.value) }))
+  if (job.signedOutAt) fields.push({ label: 'Signed Out At', value: new Date(job.signedOutAt).toLocaleString() })
 
   const { data: events } = await fleetServiceClient
     .from('fleet_dt_events')

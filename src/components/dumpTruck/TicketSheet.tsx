@@ -99,6 +99,7 @@ export default function TicketSheet({ job, driverDisplayName, truckUnit, canSign
             <TicketField label="Driver" value={driverDisplayName} />
             {job.customerName && <TicketField label="Customer" value={job.customerName} />}
             {fields.map(f => <TicketField key={f.label} label={f.label} value={String(f.value)} />)}
+            {job.signedOutAt && <TicketField label="Signed Out At" value={new Date(job.signedOutAt).toLocaleString()} />}
           </div>
 
           {timeline && timeline.length > 0 && (
