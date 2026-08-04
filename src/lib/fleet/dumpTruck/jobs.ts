@@ -395,6 +395,7 @@ export interface DriverJobEditInput {
   material?: string | null
   pickupSiteId?: string | null
   dumpSiteId?: string | null
+  truckType?: string | null
   /** Driver-written estimate on the paper ticket, e.g. "3:15 PM incl. drive to yard". */
   scheduledEndTime?: string | null
   /** Name of the customer/job-site rep who formally released the driver. */
@@ -403,16 +404,16 @@ export interface DriverJobEditInput {
 }
 
 /**
- * Driver-editable job fields only — material, pickup/dump site, and the
- * paper-ticket sign-out fields (scheduled end time as written on paper,
- * plus who/when the job site actually signed the driver out — distinct
- * from the app's own clock_out, which is the driver's own action, not the
- * customer's). Dispatch frequently changes material/site verbally mid-shift;
- * drivers need to correct the record themselves rather than wait for an
- * admin. Any active business member may call this (not gated by canManage)
- * — same "record physical reality" rationale as site GPS pinning. Callers
- * should also log a visible timeline note so dispatch sees what changed and
- * by whom.
+ * Driver-editable job fields only — material, pickup/dump site, truck
+ * configuration, and the paper-ticket sign-out fields (scheduled end time as
+ * written on paper, plus who/when the job site actually signed the driver
+ * out — distinct from the app's own clock_out, which is the driver's own
+ * action, not the customer's). Dispatch frequently changes material/site/
+ * truck-type verbally mid-shift; drivers need to correct the record
+ * themselves rather than wait for an admin. Any active business member may
+ * call this (not gated by canManage) — same "record physical reality"
+ * rationale as site GPS pinning. Callers should also log a visible timeline
+ * note so dispatch sees what changed and by whom.
  */
 export async function updateJobDriverFields(
   businessId: string,
@@ -434,6 +435,7 @@ export async function updateJobDriverFields(
   if (input.material !== undefined) patch.material = input.material
   if (input.pickupSiteId !== undefined) patch.pickup_site_id = input.pickupSiteId
   if (input.dumpSiteId !== undefined) patch.dump_site_id = input.dumpSiteId
+  if (input.truckType !== undefined) patch.truck_type = input.truckType
   if (input.scheduledEndTime !== undefined) patch.scheduled_end_time = input.scheduledEndTime
   if (input.signedOutBy !== undefined) patch.signed_out_by = input.signedOutBy
   if (input.signedOutAt !== undefined) patch.signed_out_at = input.signedOutAt

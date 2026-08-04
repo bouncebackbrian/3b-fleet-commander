@@ -1,12 +1,12 @@
 /**
  * PATCH /api/fleet/dump-truck/jobs/[id] — driver-editable job fields
  *
- * Only material, pickupSiteId, dumpSiteId, and the paper-ticket sign-out
- * fields can be changed here — dispatch frequently changes material/site
- * verbally mid-shift and the driver needs to correct the record themselves.
- * Open to any active business member (not gated by canManage), same as site
- * GPS pinning — the driver is recording physical reality, not editing
- * dispatch-ticket business fields.
+ * Only material, pickupSiteId, dumpSiteId, truckType, and the paper-ticket
+ * sign-out fields can be changed here — dispatch frequently changes
+ * material/site/truck-type verbally mid-shift and the driver needs to
+ * correct the record themselves. Open to any active business member (not
+ * gated by canManage), same as site GPS pinning — the driver is recording
+ * physical reality, not editing dispatch-ticket business fields.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -26,6 +26,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if ('material' in body) input.material = body.material
     if ('pickupSiteId' in body) input.pickupSiteId = body.pickupSiteId
     if ('dumpSiteId' in body) input.dumpSiteId = body.dumpSiteId
+    if ('truckType' in body) input.truckType = body.truckType
     if ('scheduledEndTime' in body) input.scheduledEndTime = body.scheduledEndTime
     if ('signedOutBy' in body) input.signedOutBy = body.signedOutBy
     if ('signedOutAt' in body) input.signedOutAt = body.signedOutAt

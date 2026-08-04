@@ -21,10 +21,13 @@ interface Props {
   onSaved: (summary: string) => void
 }
 
+const TRUCK_TYPE_OPTIONS = ['10 Wheel', 'Transfer', 'Super Dump', 'End Dump', 'Semi Bottom', 'Flatbed', 'Water', 'Other']
+
 export default function EditJobSheet({ job, sites, onClose, onSaved }: Props) {
   const [material, setMaterial] = useState(job.material ?? '')
   const [pickupSiteId, setPickupSiteId] = useState(job.pickupSiteId ?? '')
   const [dumpSiteId, setDumpSiteId] = useState(job.dumpSiteId ?? '')
+  const [truckType, setTruckType] = useState(job.truckType ?? '')
   const [scheduledEndTime, setScheduledEndTime] = useState(job.scheduledEndTime ?? '')
   const [signedOutBy, setSignedOutBy] = useState(job.signedOutBy ?? '')
   const [busy, setBusy] = useState(false)
@@ -34,7 +37,7 @@ export default function EditJobSheet({ job, sites, onClose, onSaved }: Props) {
 
   const changed =
     material !== (job.material ?? '') || pickupSiteId !== (job.pickupSiteId ?? '') || dumpSiteId !== (job.dumpSiteId ?? '') ||
-    scheduledEndTime !== (job.scheduledEndTime ?? '') || signedOutBy !== (job.signedOutBy ?? '')
+    truckType !== (job.truckType ?? '') || scheduledEndTime !== (job.scheduledEndTime ?? '') || signedOutBy !== (job.signedOutBy ?? '')
 
   const save = async (extra?: { signedOutAt?: string }) => {
     setBusy(true)
@@ -45,6 +48,7 @@ export default function EditJobSheet({ job, sites, onClose, onSaved }: Props) {
           material: material.trim() || null,
           pickupSiteId: pickupSiteId || null,
           dumpSiteId: dumpSiteId || null,
+          truckType: truckType.trim() || null,
           scheduledEndTime: scheduledEndTime.trim() || null,
           signedOutBy: signedOutBy.trim() || null,
           ...extra,
@@ -64,6 +68,7 @@ export default function EditJobSheet({ job, sites, onClose, onSaved }: Props) {
         const to = sites.find(s => s.id === dumpSiteId)?.name ?? '—'
         changes.push(`dump site: "${from}" → "${to}"`)
       }
+      if (truckType !== (job.truckType ?? '')) changes.push(`truck type: "${job.truckType ?? '—'}" → "${truckType || '—'}"`)
       if (scheduledEndTime !== (job.scheduledEndTime ?? '')) changes.push(`scheduled end time: "${scheduledEndTime || '—'}"`)
       if (extra?.signedOutAt) changes.push(`signed out by ${signedOutBy.trim() || 'job site'} at ${new Date(extra.signedOutAt).toLocaleTimeString()}`)
       else if (signedOutBy !== (job.signedOutBy ?? '')) changes.push(`signed out by: "${signedOutBy || '—'}"`)
@@ -112,6 +117,17 @@ export default function EditJobSheet({ job, sites, onClose, onSaved }: Props) {
             <option value="">Unassigned</option>
             {dumpSites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
+        </div>
+
+        <div>
+          <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase' }}>Truck Type</div>
+          <input
+            style={inputStyle} value={truckType} onChange={e => setTruckType(e.target.value)}
+            list="truck-type-options" placeholder="e.g. Super Dump"
+          />
+          <datalist id="truck-type-options">
+            {TRUCK_TYPE_OPTIONS.map(t => <option key={t} value={t} />)}
+          </datalist>
         </div>
 
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
