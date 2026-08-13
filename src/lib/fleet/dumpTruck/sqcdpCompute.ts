@@ -29,6 +29,8 @@ import { buildBusinessHoursForRange } from './adminHours'
 import { buildFuelSummaryForBusiness } from './adminFuel'
 import { listDefects, listDefectDispositions } from './incidents'
 import { listCorrectiveActions } from './correctiveActions'
+import { listExpenses } from './expenses'
+import { computeRevenueForRange } from './revenue'
 import {
   KPI_CATALOG, type KpiResult, type SqcdpCategory, type CategoryScoreResult,
   categoryScore, overallScore, monthRange, previousMonth, ratioScore, targetVarianceScore,
@@ -184,6 +186,57 @@ async function computeActionClosure(businessId: string, range: MonthRange, categ
   return { kpiId, score: ratioScore(closedOnTime, due.length), displayValue: `${closedOnTime}/${due.length}` }
 }
 
+/** revenue_capture: % of this period's completed load cycles tied to a job
+ *  that actually has a price set (price_per_ton or price_per_hour). There's
+ *  no separate "expected work" baseline in this app, so this measures
+ *  whether pricing data is being captured on jobs at all — a real, honest
+ *  proxy, not the spec's literal "completed vs expected" definition. */
+async function computeRevenueCostKpis(businessId: string, range: MonthRange, businessSummary: RangeSummary): Promise<{
+  revenueCapture: KpiResult; contributionMargin: KpiResult; expenseDocumentation: KpiResult
+}> {
+  const [revenueRows, fuelSummary, expenseRows] = await Promise.all([
+    computeRevenueForRange(businessId, range),
+    buildFuelSummaryForBusiness(businessId, { from: range.start, to: range.end }),
+    listExpenses(businessId, { from: range.start, to: range.end }),
+  ])
+
+  const { data: loadCycleCount } = await fleetServiceClient
+    .from('fleet_dt_load_cycles').select('id, job_id')
+    .eq('business_id', businessId)
+    .gte('created_at', `${range.start}T00:00:00Z`).lte('created_at', `${range.end}T23:59:59.999Z`)
+    .not('dump_depart_event_id', 'is', null)
+
+  const pricedJobIds = new Set(revenueRows.filter(r => r.priced).map(r => r.jobId))
+  const totalLoads = loadCycleCount?.length ?? 0
+  const pricedLoads = (loadCycleCount ?? []).filter(lc => lc.job_id && pricedJobIds.has(lc.job_id)).length
+
+  const revenueCapture: KpiResult = totalLoads === 0
+    ? { kpiId: 'cost.revenue_capture', score: null, displayValue: 'No completed loads this month' }
+    : { kpiId: 'cost.revenue_capture', score: ratioScore(pricedLoads, totalLoads), displayValue: `${pricedLoads}/${totalLoads} loads on a priced job` }
+
+  const totalRevenue = revenueRows.reduce((s, r) => s + r.revenue, 0)
+  const nonFuelExpenses = expenseRows.filter(e => e.category !== 'fuel' && e.approvalStatus !== 'rejected').reduce((s, e) => s + e.amount, 0)
+  const directCost = fuelSummary.totalCost + nonFuelExpenses + businessSummary.estimatedGrossEarnings
+  const anyPriced = revenueRows.some(r => r.priced)
+  const contributionMargin: KpiResult = !anyPriced || totalRevenue === 0
+    ? { kpiId: 'cost.truck_contribution_margin', score: null, displayValue: 'No priced jobs this month' }
+    : {
+        kpiId: 'cost.truck_contribution_margin',
+        score: Math.round(Math.max(0, Math.min(100, ((totalRevenue - directCost) / totalRevenue) * 100)) * 10) / 10,
+        displayValue: `$${(totalRevenue - directCost).toFixed(0)} contribution on $${totalRevenue.toFixed(0)} revenue`,
+      }
+
+  const expenseDocumentation: KpiResult = expenseRows.length === 0
+    ? { kpiId: 'cost.expense_documentation', score: null, displayValue: 'No expenses logged this month' }
+    : {
+        kpiId: 'cost.expense_documentation',
+        score: ratioScore(expenseRows.filter(e => e.documentId != null && e.truckId != null).length, expenseRows.length),
+        displayValue: `${expenseRows.filter(e => e.documentId != null && e.truckId != null).length}/${expenseRows.length} fully coded`,
+      }
+
+  return { revenueCapture, contributionMargin, expenseDocumentation }
+}
+
 async function computeDelayParetoBuckets(businessId: string, range: MonthRange): Promise<Record<string, number>> {
   const { data: shifts } = await fleetServiceClient.from('fleet_dt_shifts').select('id').eq('business_id', businessId)
   const shiftIds = (shifts ?? []).map(s => s.id)
@@ -216,7 +269,7 @@ export async function computeSqcdpMonth(businessId: string, month: string): Prom
     listDefects(businessId),
   ])
 
-  const [pretripPosttrip, defectStuff, loadCycleStuff, fuelEfficiency, avoidableDelay, safetyActionClosure, peopleActionClosure] = await Promise.all([
+  const [pretripPosttrip, defectStuff, loadCycleStuff, fuelEfficiency, avoidableDelay, safetyActionClosure, peopleActionClosure, revenueCostStuff] = await Promise.all([
     computePretripPosttripCompletion(businessId, range),
     computeDefectEscalationAndResponseTime(businessId, range),
     computeLoadCycleKpis(businessId, range),
@@ -224,6 +277,7 @@ export async function computeSqcdpMonth(businessId: string, month: string): Prom
     computeAvoidableDelay(businessId, range, priorRange),
     computeActionClosure(businessId, range, 'safety'),
     computeActionClosure(businessId, range),
+    computeRevenueCostKpis(businessId, range, hoursResult.businessSummary),
   ])
 
   const truckUtilization = computeTruckUtilization(hoursResult.businessSummary)
@@ -233,6 +287,7 @@ export async function computeSqcdpMonth(businessId: string, month: string): Prom
     pretripPosttrip, defectStuff.escalation, defectStuff.responseTime, safetyActionClosure,
     loadCycleStuff.documentCompleteness, loadCycleStuff.statusUpdates,
     fuelEfficiency, avoidableDelay, truckUtilization, attendance, peopleActionClosure,
+    revenueCostStuff.revenueCapture, revenueCostStuff.contributionMargin, revenueCostStuff.expenseDocumentation,
   ]
 
   const computedIds = new Set(kpiResults.map(r => r.kpiId))

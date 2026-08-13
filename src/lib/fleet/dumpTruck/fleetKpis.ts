@@ -18,6 +18,8 @@ import { buildBusinessHoursForRange } from './adminHours'
 import { buildFuelSummaryForBusiness } from './adminFuel'
 import { listDumpTruckEquipment } from './equipment'
 import { listDefects } from './incidents'
+import { listExpenses } from './expenses'
+import { computeRevenueForRange } from './revenue'
 import type { DriverHoursRow } from './exports'
 
 export interface TruckFuelSummary {
@@ -27,6 +29,19 @@ export interface TruckFuelSummary {
   avgMpg: number | null
 }
 
+export interface TruckPnl {
+  revenue: number
+  /** Non-fuel operating expenses coded to this truck (fleet_dt_expenses, excluding category='fuel'). */
+  expenseCost: number
+  fuelCost: number
+  /** Estimated wage cost — sum of hourly/per-mile pay estimate for shifts on this truck (see hours.ts). */
+  wageCost: number
+  /** revenue - expenseCost - fuelCost - wageCost. Null when no job assigned to this truck has a price set. */
+  contribution: number | null
+  contributionMarginPct: number | null
+  priced: boolean
+}
+
 export interface TruckKpiRow {
   truckId: string
   unitNumber: string
@@ -34,6 +49,7 @@ export interface TruckKpiRow {
   fuel: TruckFuelSummary | null
   issueGroups: RecurringIssueGroup[]
   openDefectCount: number
+  pnl: TruckPnl
 }
 
 export interface DriverKpiRow {
@@ -63,12 +79,26 @@ function withinRange(iso: string, range: DateRange): boolean {
 }
 
 export async function buildFleetKpisForRange(businessId: string, range: DateRange): Promise<FleetKpiResult> {
-  const [{ rows, driverSummaries, businessSummary }, fuel, equipment, defectRows] = await Promise.all([
+  const [{ rows, driverSummaries, businessSummary }, fuel, equipment, defectRows, revenueRows, expenseRows] = await Promise.all([
     buildBusinessHoursForRange(businessId, range),
     buildFuelSummaryForBusiness(businessId, { from: range.start, to: range.end }),
     listDumpTruckEquipment(businessId),
     listDefects(businessId),
+    computeRevenueForRange(businessId, range),
+    listExpenses(businessId, { from: range.start, to: range.end }),
   ])
+
+  const revenueByTruck = new Map<string, { revenue: number; priced: boolean }>()
+  for (const r of revenueRows) {
+    if (!r.truckId) continue
+    const existing = revenueByTruck.get(r.truckId) ?? { revenue: 0, priced: false }
+    revenueByTruck.set(r.truckId, { revenue: existing.revenue + r.revenue, priced: existing.priced || r.priced })
+  }
+  const nonFuelExpensesByTruck = new Map<string, number>()
+  for (const e of expenseRows) {
+    if (!e.truckId || e.category === 'fuel' || e.approvalStatus === 'rejected') continue
+    nonFuelExpensesByTruck.set(e.truckId, (nonFuelExpensesByTruck.get(e.truckId) ?? 0) + e.amount)
+  }
 
   const rangedDefects: RecurringIssueDefect[] = defectRows
     .filter(d => withinRange(d.createdAt, range))
@@ -83,15 +113,25 @@ export async function buildFleetKpisForRange(businessId: string, range: DateRang
       const truckFuel = fuel.vehicles.find(v => v.vehicleId === truck.id) ?? null
       const truckDefects = rangedDefects.filter(d => d.truckId === truck.id)
       const issueGroups = groupRecurringIssues(truckDefects)
+      const hours = buildRangeSummary(truckRows)
+
+      const rev = revenueByTruck.get(truck.id) ?? { revenue: 0, priced: false }
+      const fuelCost = truckFuel?.totalCost ?? 0
+      const expenseCost = nonFuelExpensesByTruck.get(truck.id) ?? 0
+      const wageCost = hours.estimatedGrossEarnings
+      const contribution = rev.priced ? rev.revenue - fuelCost - expenseCost - wageCost : null
+      const contributionMarginPct = rev.priced && rev.revenue > 0 ? Math.round((contribution! / rev.revenue) * 1000) / 10 : null
+
       return {
         truckId: truck.id,
         unitNumber: truck.unitNumber,
-        hours: buildRangeSummary(truckRows),
+        hours,
         fuel: truckFuel
           ? { totalGallons: truckFuel.totalGallons, totalCost: truckFuel.totalCost, totalMiles: truckFuel.totalMiles, avgMpg: truckFuel.avgMpg }
           : null,
         issueGroups,
         openDefectCount: issueGroups.reduce((sum, g) => sum + g.openCount, 0),
+        pnl: { revenue: rev.revenue, expenseCost, fuelCost, wageCost, contribution, contributionMarginPct, priced: rev.priced },
       }
     })
     .filter(t => t.hours.daysWorked > 0 || (t.fuel && t.fuel.totalGallons > 0) || t.issueGroups.length > 0)
