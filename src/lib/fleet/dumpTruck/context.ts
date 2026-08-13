@@ -17,6 +17,8 @@ export interface DriverContext {
   shift: Awaited<ReturnType<typeof getOpenShift>>
   driverName: string
   businessName: string
+  /** Spec §6 EN/ES foundation — storage + toggle only, no translation pipeline yet. */
+  preferredLanguage: 'en' | 'es'
   /** Human-readable unit number (e.g. "06") for shift.truckId — resolved
    *  server-side so the driver cockpit never has to display the raw
    *  fleet_equipment UUID (it did before this field existed). */
@@ -94,7 +96,7 @@ export async function getDriverContext(businessId: string, driverId: string): Pr
 
   return {
     shift, events, sites, jobs, openDefects, loadCycles, truckUnitNumber, truckHoldStatus, truckHoldReason,
-    driverName: meta.driverName, businessName: meta.businessName,
+    driverName: meta.driverName, businessName: meta.businessName, preferredLanguage: meta.preferredLanguage,
   }
 }
 

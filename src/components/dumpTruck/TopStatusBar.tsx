@@ -17,10 +17,14 @@ interface Props {
   /** Spec §5.3 — explicit INBOUND/OUTBOUND/JOB SITE context, derived
    *  read-only from the flow state (see travelStatus.ts), no new events. */
   flowState?: FlowStateId | null
+  /** Spec §6 EN/ES foundation — storage + toggle only, no translation pipeline yet. */
+  preferredLanguage?: 'en' | 'es'
+  onLanguageChange?: (language: 'en' | 'es') => void
 }
 
 export default function TopStatusBar({
   isOnline, pendingCount, failedCount, gpsPermission, wx, weather, weatherLoading, businessName, driverName, flowState,
+  preferredLanguage, onLanguageChange,
 }: Props) {
   const travelStatus = flowState ? travelStatusFor(flowState) : null
 
@@ -80,6 +84,18 @@ export default function TopStatusBar({
             color={wx.severe ? 'var(--warn)' : 'var(--muted)'}
             icon={weatherLoading ? '⏳' : wx.emoji}
           />
+        )}
+        {preferredLanguage && onLanguageChange && (
+          <button
+            onClick={() => onLanguageChange(preferredLanguage === 'en' ? 'es' : 'en')}
+            title="Switch language / Cambiar idioma"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4, color: 'var(--primary)', fontWeight: 700,
+              padding: '.35rem .6rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)',
+            }}
+          >
+            🌐 {preferredLanguage === 'en' ? 'EN' : 'ES'}
+          </button>
         )}
         <Link
           href="/driver/hours"

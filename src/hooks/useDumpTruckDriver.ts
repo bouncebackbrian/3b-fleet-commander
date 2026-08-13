@@ -51,6 +51,7 @@ interface DriverContextResponse {
   truckUnitNumber: string | null
   truckHoldStatus: 'none' | 'on_hold'
   truckHoldReason: string | null
+  preferredLanguage: 'en' | 'es'
   events: { id: string; eventType: DumpTruckEventType; effectiveAt: string; notes: string | null; lat: number | null; lng: number | null }[]
   sites: DumpTruckSite[]
   jobs: DumpTruckJob[]
@@ -359,6 +360,21 @@ export function useDumpTruckDriver() {
     flushFuelQueue()
   }, [refreshFuelQueueSummary, flushFuelQueue])
 
+  /** Spec §6 EN/ES foundation — persists the choice, then refetches context
+   *  so the rest of the cockpit picks up the new value immediately. */
+  const setLanguage = useCallback(async (language: 'en' | 'es'): Promise<void> => {
+    if (!isOnline) { toast.error('Language preference requires a connection'); return }
+    try {
+      const res = await fetch('/api/fleet/dump-truck/language-preference', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ language }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not save language preference')
+      await fetchContext()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not save language preference')
+    }
+  }, [isOnline, fetchContext])
+
   return {
     loading, context, flowState, primaryAction, timeline,
     activeJobId, setActiveJobId,
@@ -367,6 +383,7 @@ export function useDumpTruckDriver() {
     truckUnitNumber: context?.truckUnitNumber ?? null,
     truckHoldStatus: context?.truckHoldStatus ?? 'none',
     truckHoldReason: context?.truckHoldReason ?? null,
+    preferredLanguage: context?.preferredLanguage ?? 'en', setLanguage,
     fireEvent, clockIn, submitDay, queueFuelEntry, refetch: fetchContext,
   }
 }
