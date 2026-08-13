@@ -148,7 +148,7 @@ export default function InspectionSheet({ shiftId, inspectionType, onClose, onCo
                       style={{
                         flex: 1, padding: '.5rem', borderRadius: 8, fontSize: '.8rem', fontWeight: 700,
                         background: current?.result === r.key ? r.color : 'var(--surface-2)',
-                        color: current?.result === r.key ? '#04140f' : 'var(--text)',
+                        color: current?.result === r.key ? '#fff' : 'var(--text)',
                         border: '1px solid var(--border)', minHeight: 44,
                       }}
                     >

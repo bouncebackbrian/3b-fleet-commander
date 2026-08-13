@@ -146,7 +146,7 @@ export default function TicketSheet({ job, driverDisplayName, truckUnit, canSign
           ) : canSignNow ? (
             <button
               onClick={() => setSigning(true)}
-              style={{ width: '100%', padding: '.9rem', borderRadius: 12, background: 'var(--primary)', color: '#04140f', fontWeight: 900, fontSize: '1rem', minHeight: 52 }}
+              style={{ width: '100%', padding: '.9rem', borderRadius: 12, background: 'var(--primary)', color: 'var(--dt-on-primary, #04140f)', fontWeight: 900, fontSize: '1rem', minHeight: 52 }}
             >
               {canSign === 'driver' ? '✍️ Sign — Day Complete' : '✍️ Confirm Receipt'}
             </button>

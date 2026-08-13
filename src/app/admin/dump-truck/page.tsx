@@ -511,7 +511,7 @@ function SitesPanel({ sites, onCreated }: { sites: DumpTruckSite[]; onCreated: (
       <button style={{ ...btnStyle, opacity: busy ? .5 : 1 }} disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Add Site'}</button>
 
       <table style={{ width: '100%', marginTop: '1.25rem', fontSize: '.85rem' }}>
-        <thead><tr style={{ color: 'var(--muted)', textAlign: 'left' }}><th>Name</th><th>Type</th><th>City/State</th><th>Coords</th></tr></thead>
+        <thead><tr style={{ color: 'var(--muted)', textAlign: 'left' }}><th>Name</th><th>Type</th><th>City/State</th><th>Coords</th><th>Status</th></tr></thead>
         <tbody>
           {sites.map(s => (
             <tr key={s.id} style={{ borderTop: '1px solid var(--border)' }}>
@@ -519,6 +519,11 @@ function SitesPanel({ sites, onCreated }: { sites: DumpTruckSite[]; onCreated: (
               <td>{s.siteType}</td>
               <td>{[s.city, s.state].filter(Boolean).join(', ') || '—'}</td>
               <td>{s.lat != null ? `${s.lat.toFixed(4)}, ${s.lng!.toFixed(4)}` : '—'}</td>
+              <td>
+                {s.verified
+                  ? <span style={{ color: 'var(--success)', fontWeight: 700 }}>✓ Verified</span>
+                  : <span style={{ color: 'var(--warn)', fontWeight: 700 }} title="Address/GPS not yet confirmed with dispatch">⚠ Unverified</span>}
+              </td>
             </tr>
           ))}
         </tbody>

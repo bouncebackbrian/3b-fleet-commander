@@ -131,7 +131,7 @@ export default function LoadTicketSheet({ shiftId, loadCycles, onClose, onSaved 
               style={{
                 flex: 1, padding: '.6rem', borderRadius: 8, fontWeight: 700, fontSize: '.85rem',
                 background: ticketType === t ? 'var(--primary)' : 'var(--surface-2)',
-                color: ticketType === t ? '#04140f' : 'var(--text)', border: '1px solid var(--border)',
+                color: ticketType === t ? 'var(--dt-on-primary, #04140f)' : 'var(--text)', border: '1px solid var(--border)',
               }}
             >
               {t === 'scale' ? 'Scale Ticket' : 'Delivery Ticket'}
