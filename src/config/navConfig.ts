@@ -144,6 +144,14 @@ export const FLEET_NAV: NavEntry[] = [
     tier:  ['starter', 'pro', 'enterprise'],
   },
 
+  // ── Dump Truck Mode — operating expenses ──────────────────────────────────
+  {
+    id: 'fleet-dump-truck-expenses', label: 'Expenses', href: '/admin/dump-truck/expenses', icon: '🧾',
+    family: 'fleet', enabled: true,
+    modes: ['dispatcher', 'owner_op', 'fleet_owner', 'fleet_manager', 'admin'],
+    tier:  ['starter', 'pro', 'enterprise'],
+  },
+
   // ── Dump Truck Mode — SQCDP monthly review ────────────────────────────────
   {
     id: 'fleet-dump-truck-sqcdp', label: 'SQCDP Review', href: '/admin/dump-truck/sqcdp', icon: '📋',

@@ -35,6 +35,11 @@ interface IssueGroupDTO {
   sampleDescription: string
 }
 
+interface TruckPnlDTO {
+  revenue: number; expenseCost: number; fuelCost: number; wageCost: number
+  contribution: number | null; contributionMarginPct: number | null; priced: boolean
+}
+
 interface TruckKpiDTO {
   truckId: string
   unitNumber: string
@@ -42,6 +47,7 @@ interface TruckKpiDTO {
   fuel: { totalGallons: number; totalCost: number; totalMiles: number; avgMpg: number | null } | null
   issueGroups: IssueGroupDTO[]
   openDefectCount: number
+  pnl: TruckPnlDTO
 }
 
 interface DriverKpiDTO {
@@ -172,6 +178,7 @@ export default function FleetKpisPage() {
                   <thead><tr>
                     <th style={thStyle}>Truck</th><th style={thStyle}>Hours</th><th style={thStyle}>Loads</th>
                     <th style={thStyle}>Tons</th><th style={thStyle}>Fuel</th><th style={thStyle}>MPG</th><th style={thStyle}>Open Defects</th>
+                    <th style={thStyle}>Revenue</th><th style={thStyle}>Contribution</th>
                   </tr></thead>
                   <tbody>
                     {data.byTruck.map(t => (
@@ -185,10 +192,19 @@ export default function FleetKpisPage() {
                         <td style={{ ...tdStyle, color: t.openDefectCount > 0 ? 'var(--error)' : undefined, fontWeight: t.openDefectCount > 0 ? 700 : 400 }}>
                           {t.openDefectCount}
                         </td>
+                        <td style={tdStyle}>{t.pnl.priced ? `$${t.pnl.revenue.toFixed(0)}` : <span style={{ color: 'var(--muted)' }}>No priced job</span>}</td>
+                        <td style={{ ...tdStyle, fontWeight: 700, color: t.pnl.contribution == null ? 'var(--muted)' : t.pnl.contribution >= 0 ? 'var(--success)' : 'var(--error)' }}>
+                          {t.pnl.contribution != null ? `$${t.pnl.contribution.toFixed(0)} (${t.pnl.contributionMarginPct?.toFixed(0)}%)` : '—'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                <div style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: '.5rem' }}>
+                  Contribution = revenue − fuel − non-fuel expenses − estimated wages. Revenue only computes for trucks whose job has a price set (
+                  <Link href="/admin/dump-truck" style={{ color: 'var(--primary)' }}>Dump Truck Setup → Jobs</Link>). Log repairs/tires/etc. on the{' '}
+                  <Link href="/admin/dump-truck/expenses" style={{ color: 'var(--primary)' }}>Expenses</Link> page.
+                </div>
               </div>
             )}
           </div>

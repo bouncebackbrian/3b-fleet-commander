@@ -119,13 +119,13 @@ export const KPI_CATALOG: KpiDefinition[] = [
     id: 'cost.truck_contribution_margin', category: 'cost', role: 'dispatch',
     nameEn: 'Truck Contribution Margin', nameEs: 'Margen de Contribución del Camión',
     descriptionEn: '(Revenue - tracked direct cost) / revenue.', descriptionEs: '(Ingreso - costo directo) / ingreso.',
-    target: 'Target set', direction: 'higher_is_better', computable: false,
+    target: 'Target set', direction: 'higher_is_better', computable: true,
   },
   {
     id: 'cost.revenue_capture', category: 'cost', role: 'dispatch',
     nameEn: 'Revenue Capture', nameEs: 'Captura de Ingreso',
-    descriptionEn: 'Completed billable work recorded vs expected work.', descriptionEs: 'Trabajo facturable completado registrado vs esperado.',
-    target: '100%', direction: 'higher_is_better', computable: false,
+    descriptionEn: 'Completed loads tied to a priced job / total completed loads.', descriptionEs: 'Cargas completadas con trabajo con tarifa / total de cargas completadas.',
+    target: '100%', direction: 'higher_is_better', computable: true,
   },
   {
     id: 'cost.preventable_damage', category: 'cost', role: 'driver',
@@ -137,7 +137,7 @@ export const KPI_CATALOG: KpiDefinition[] = [
     id: 'cost.expense_documentation', category: 'cost', role: 'driver',
     nameEn: 'Expense Documentation', nameEs: 'Documentación de Gasto',
     descriptionEn: 'Expenses with receipt, truck, and job coding.', descriptionEs: 'Gastos con recibo, camión y código de trabajo.',
-    target: '100%', direction: 'higher_is_better', computable: false,
+    target: '100%', direction: 'higher_is_better', computable: true,
   },
 
   // ── Delivery (20%) ──────────────────────────────────────────────────────
