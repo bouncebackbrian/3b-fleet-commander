@@ -23,6 +23,7 @@ import { matchSite } from '@/lib/dumpTruck/geofence'
 import { getGeofenceSites } from './sites'
 import { getThreebId, getShiftFlowState, syncShiftState, DumpTruckError } from './shared'
 import { getShiftById } from './shifts'
+import { getTruckHoldState } from './equipment'
 import type { DumpTruckEventType, LocationPermissionStatus } from '@/lib/dumpTruck/types'
 
 export interface RecordEventGeoInput {
@@ -85,6 +86,21 @@ export async function recordEvent(
 
   if (CUSTODY_REQUIRED_ODOMETER.includes(input.eventType) && input.odometer == null) {
     throw new DumpTruckError(`Odometer is required for "${input.eventType}"`, 400)
+  }
+
+  // Dispatch-authorized truck hold (spec §5.1) is a hard server-side block on
+  // taking custody of or departing with a held truck — unlike the driver-side
+  // documented defect override (client-only, see DefectOverridePanel), this
+  // cannot be bypassed by the driver; only a dispatcher's mark_operable
+  // disposition (releaseTruckHold) clears it.
+  if ((input.eventType === 'truck_picked_up' || input.eventType === 'depart_yard') && shift.truckId) {
+    const hold = await getTruckHoldState(businessId, shift.truckId)
+    if (hold?.holdStatus === 'on_hold') {
+      throw new DumpTruckError(
+        `Truck is on a dispatch-authorized hold${hold.holdReason ? `: ${hold.holdReason}` : ''}. Contact dispatch for release.`,
+        409,
+      )
+    }
   }
 
   // Geofence match — best-effort, never blocks the write.
