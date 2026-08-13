@@ -46,7 +46,7 @@ export default function TopStatusBar({
         {travelStatus && (
           <span style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '.4rem .85rem', borderRadius: 999,
-            background: 'var(--primary)', color: '#04140f', fontWeight: 900, fontSize: '.85rem', letterSpacing: '.02em',
+            background: 'var(--primary)', color: 'var(--dt-on-primary, #04140f)', fontWeight: 900, fontSize: '.85rem', letterSpacing: '.02em',
           }}>
             <span>{TRAVEL_STATUS_ICON[travelStatus]}</span>
             {TRAVEL_STATUS_LABEL[travelStatus].toUpperCase()}
