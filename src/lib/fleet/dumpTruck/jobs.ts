@@ -60,6 +60,25 @@ export async function getJobById(businessId: string, jobId: string): Promise<Dum
   return data ? fromRow(data) : null
 }
 
+/**
+ * Jobs assigned to this driver, ordered so the app's "pick jobs[0] as the
+ * default active job" callers (useDumpTruckDriver.fetchContext) land on the
+ * right one without a shift<->job link existing in the schema.
+ *
+ * Real Cal-Neva usage showed why 'scheduled_at ascending' (oldest first) was
+ * wrong: the same PO/job legitimately spans multiple days, and a prior day's
+ * job commonly never gets marked 'completed' — it just sits at status
+ * 'active' or 'scheduled' alongside today's job. Oldest-first defaulted the
+ * driver onto a job from days earlier.
+ *
+ * Fix: prefer whichever active/scheduled job's delivery_date matches today
+ * (in the business's local date) — that's the job dispatch actually wants
+ * running right now — then fall back to most-recently-scheduled first so a
+ * newer job still beats a stale abandoned one when nothing matches today
+ * exactly. This does not require a schema change; it's still a heuristic
+ * default the driver can override via the job picker (LeftRail), same as
+ * before.
+ */
 export async function listJobsForDriver(businessId: string, driverId: string): Promise<DumpTruckJob[]> {
   const { data, error } = await fleetServiceClient
     .from('fleet_dt_jobs')
@@ -67,9 +86,15 @@ export async function listJobsForDriver(businessId: string, driverId: string): P
     .eq('business_id', businessId)
     .eq('driver_id', driverId)
     .in('status', ['scheduled', 'active'])
-    .order('scheduled_at', { ascending: true })
+    .order('delivery_date', { ascending: false, nullsFirst: false })
+    .order('scheduled_at', { ascending: false, nullsFirst: false })
   if (error) throw error
-  return (data ?? []).map(fromRow)
+  const jobs = (data ?? []).map(fromRow)
+
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const todaysJobs = jobs.filter(j => j.deliveryDate === todayIso)
+  const rest = jobs.filter(j => j.deliveryDate !== todayIso)
+  return [...todaysJobs, ...rest]
 }
 
 export interface DriverOption {
