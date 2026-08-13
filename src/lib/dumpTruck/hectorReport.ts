@@ -6,6 +6,8 @@
  * Pure and tested like the rest of src/lib/dumpTruck — no React, no fetch.
  */
 
+import { defectCategory } from './defectCategory'
+
 export interface HectorReportDefect {
   description: string
   severity: string
@@ -41,7 +43,7 @@ const SEVERITY_RANK: Record<string, number> = {
 function dedupeDescriptions(defects: HectorReportDefect[]): HectorReportDefect[] {
   const seen = new Map<string, HectorReportDefect>()
   for (const d of defects) {
-    const category = d.description.split(' — ')[0].trim().toLowerCase()
+    const category = defectCategory(d.description)
     const existing = seen.get(category)
     if (!existing || (SEVERITY_RANK[d.severity] ?? 0) > (SEVERITY_RANK[existing.severity] ?? 0)) {
       seen.set(category, d)
