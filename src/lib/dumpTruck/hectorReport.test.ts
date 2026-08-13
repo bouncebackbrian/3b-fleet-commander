@@ -64,6 +64,33 @@ describe('buildHectorReport', () => {
     expect(occurrences).toBe(1)
   })
 
+  it('collapses same-category re-logged defects even when the wording differs', () => {
+    const text = buildHectorReport({
+      truckUnitNumber: '06', driverName: 'Brian', fuelLevel: '1/2',
+      defects: [
+        { description: 'Windshield and mirrors — Crack on passenger side', severity: 'non_safety' },
+        { description: 'Windshield chips or cracks — Cracked windshield', severity: 'non_safety' },
+        { description: 'Windshield chips or cracks — Two cracks on passenger side windshield', severity: 'monitor' },
+      ],
+      now: FIXED_DATE,
+    })
+    const lines = text.split('\n').filter(l => l.startsWith('- '))
+    expect(lines.length).toBe(2)
+  })
+
+  it('keeps the highest-severity instance when collapsing a category', () => {
+    const text = buildHectorReport({
+      truckUnitNumber: '06', driverName: 'Brian', fuelLevel: '1/2',
+      defects: [
+        { description: 'Lighting defects — flickers sometimes', severity: 'non_safety' },
+        { description: 'Lighting defects — wires cutting in and out', severity: 'safety_critical' },
+      ],
+      now: FIXED_DATE,
+    })
+    expect(text).toContain('Lighting defects — wires cutting in and out [SAFETY CRITICAL]')
+    expect(text).not.toContain('flickers sometimes')
+  })
+
   it('reports no open issues when defect list is empty', () => {
     const text = buildHectorReport({
       truckUnitNumber: '07', driverName: 'Brian', fuelLevel: 'Full', defects: [], now: FIXED_DATE,

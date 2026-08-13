@@ -25,14 +25,27 @@ const SEVERITY_LABEL: Record<string, string> = {
   out_of_service: 'OUT OF SERVICE',
 }
 
-/** Collapse near-duplicate defect rows (same physical issue logged repeatedly
- *  across days) down to one line per distinct description so the text stays
- *  short enough to actually read on a phone. */
+const SEVERITY_RANK: Record<string, number> = {
+  monitor: 0,
+  non_safety: 1,
+  safety_critical: 2,
+  out_of_service: 3,
+}
+
+/** Repeated pretrip inspections re-log the same physical issue as a new row
+ *  every time ("Windshield chips or cracks — Cracked windshield", "Windshield
+ *  and mirrors — Crack on passenger side", etc.), so exact-text matching
+ *  barely dedupes. Item labels follow "Category — detail"; group by the
+ *  category so all worded variants of the same physical issue collapse to
+ *  one line, keeping the highest-severity instance seen for that category. */
 function dedupeDescriptions(defects: HectorReportDefect[]): HectorReportDefect[] {
   const seen = new Map<string, HectorReportDefect>()
   for (const d of defects) {
-    const key = d.description.trim().toLowerCase()
-    if (!seen.has(key)) seen.set(key, d)
+    const category = d.description.split(' — ')[0].trim().toLowerCase()
+    const existing = seen.get(category)
+    if (!existing || (SEVERITY_RANK[d.severity] ?? 0) > (SEVERITY_RANK[existing.severity] ?? 0)) {
+      seen.set(category, d)
+    }
   }
   return [...seen.values()]
 }
