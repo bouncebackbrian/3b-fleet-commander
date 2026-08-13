@@ -21,6 +21,12 @@ export interface DriverContext {
    *  server-side so the driver cockpit never has to display the raw
    *  fleet_equipment UUID (it did before this field existed). */
   truckUnitNumber: string | null
+  /** Dispatch-authorized hold (spec §5.1) — 'on_hold' hard-blocks truck_picked_up/
+   *  depart_yard both here (client, before the event is even enqueued — this app's
+   *  offline event queue is optimistic/fire-and-forget, so a server-only check
+   *  would fail silently in the background) and again server-side in events.ts. */
+  truckHoldStatus: 'none' | 'on_hold'
+  truckHoldReason: string | null
   events: (Pick<DumpTruckEvent, 'id' | 'eventType' | 'effectiveAt' | 'notes'> & { lat: number | null; lng: number | null })[]
   sites: Awaited<ReturnType<typeof listSites>>
   jobs: Awaited<ReturnType<typeof listJobsForDriver>>
@@ -40,14 +46,18 @@ export async function getDriverContext(businessId: string, driverId: string): Pr
   let loadCycles: DriverContext['loadCycles'] = []
   let openDefects: DriverContext['openDefects'] = []
   let truckUnitNumber: string | null = null
+  let truckHoldStatus: DriverContext['truckHoldStatus'] = 'none'
+  let truckHoldReason: string | null = null
 
   if (shift?.truckId) {
     const { data: equipment } = await fleetServiceClient
       .from('fleet_equipment')
-      .select('unit_number')
+      .select('unit_number, hold_status, hold_reason')
       .eq('id', shift.truckId)
       .maybeSingle()
     truckUnitNumber = equipment?.unit_number ?? null
+    truckHoldStatus = equipment?.hold_status ?? 'none'
+    truckHoldReason = equipment?.hold_reason ?? null
   }
 
   if (shift) {
@@ -83,7 +93,7 @@ export async function getDriverContext(businessId: string, driverId: string): Pr
   }
 
   return {
-    shift, events, sites, jobs, openDefects, loadCycles, truckUnitNumber,
+    shift, events, sites, jobs, openDefects, loadCycles, truckUnitNumber, truckHoldStatus, truckHoldReason,
     driverName: meta.driverName, businessName: meta.businessName,
   }
 }

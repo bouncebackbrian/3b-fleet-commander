@@ -6,6 +6,12 @@ import { fleetServiceClient } from '@/lib/fleet-service-client'
 import { audit } from '@/lib/fleet/audit'
 import { getBusinessProfile } from '@/lib/fleet/business'
 import { sendDefectAlertEmail } from '@/lib/email/resend'
+import { DumpTruckError } from './shared'
+import { placeTruckOnHold, releaseTruckHold } from './equipment'
+import {
+  validateDisposition, nextStatusFor, setsTruckHold, clearsTruckHold,
+  type DefectDispositionAction, type DefectStatus,
+} from '@/lib/dumpTruck/defectDisposition'
 
 export interface CreateIncidentInput {
   shiftId?: string | null
@@ -274,4 +280,123 @@ export async function resolveDefect(
   const { data: doc } = await fleetServiceClient.from('fleet_dt_documents')
     .select('id').eq('linked_entity_type', 'defect').eq('linked_entity_id', defectId).maybeSingle()
   return defectFromRow(data, doc?.id ?? null)
+}
+
+// ── Dispatch defect-review dispositions (spec §5.1) ──────────────────────────
+// The seven dispatch actions on an open defect. Every call writes an
+// append-only fleet_dt_defect_dispositions row (before/after state, actor,
+// reason, instruction) in addition to whatever it changes on the defect
+// itself or (for place_on_hold/mark_operable) on the truck's hold state.
+// See defectDisposition.ts for the pure transition/validation rules this wraps.
+
+export interface DefectDispositionRow {
+  id: string
+  defectId: string
+  action: DefectDispositionAction
+  actorId: string
+  reason: string | null
+  instruction: string | null
+  beforeStatus: DefectStatus
+  afterStatus: DefectStatus
+  createdAt: string
+}
+
+export interface RecordDispositionInput {
+  action: DefectDispositionAction
+  reason?: string | null
+  instruction?: string | null
+  /** assign_maintenance only — who dispatch sent (shop name, mobile tech, tow company). */
+  assignedTo?: string | null
+}
+
+export async function recordDefectDisposition(
+  businessId: string, defectId: string, input: RecordDispositionInput, actorId: string, email: string | null,
+): Promise<{ defect: DefectRow; disposition: DefectDispositionRow }> {
+  const { data: existing, error: fetchError } = await fleetServiceClient
+    .from('fleet_dt_defects')
+    .select('*')
+    .eq('id', defectId)
+    .eq('business_id', businessId)
+    .single()
+  if (fetchError) throw new DumpTruckError('Defect not found', 404)
+
+  const currentStatus = existing.status as DefectStatus
+  const validation = validateDisposition({
+    action: input.action, currentStatus, reason: input.reason, instruction: input.instruction,
+  })
+  if (!validation.ok) throw new DumpTruckError(validation.error!, 400)
+
+  const afterStatus = nextStatusFor(input.action, currentStatus)
+  const patch: Record<string, unknown> = {}
+  if (afterStatus !== currentStatus) {
+    patch.status = afterStatus
+    if (afterStatus === 'acknowledged') patch.acknowledged_at = new Date().toISOString()
+    if (afterStatus === 'resolved') { patch.resolved_by = actorId; patch.resolved_at = new Date().toISOString() }
+    if (afterStatus === 'open' && input.action === 'reopen') { patch.resolved_by = null; patch.resolved_at = null }
+  }
+  if ((input.action === 'request_details' || input.action === 'place_on_hold') && input.reason) {
+    patch.resolution_notes = existing.resolution_notes ? `${existing.resolution_notes}\n\n${input.reason}` : input.reason
+  }
+  if (input.action === 'resolve' && input.reason?.trim()) {
+    patch.resolution_notes = existing.resolution_notes ? `${existing.resolution_notes}\n\n${input.reason}` : input.reason
+  }
+  if (input.assignedTo !== undefined) patch.assigned_to = input.assignedTo
+
+  let updated = existing
+  if (Object.keys(patch).length > 0) {
+    const { data, error } = await fleetServiceClient
+      .from('fleet_dt_defects').update(patch).eq('id', defectId).eq('business_id', businessId)
+      .select('*').single()
+    if (error) throw error
+    updated = data
+  }
+
+  if (setsTruckHold(input.action)) {
+    await placeTruckOnHold(businessId, existing.truck_id, input.reason!, actorId)
+  }
+  if (clearsTruckHold(input.action)) {
+    await releaseTruckHold(businessId, existing.truck_id, input.instruction!, actorId)
+  }
+
+  const { data: dispositionRow, error: dispositionError } = await fleetServiceClient
+    .from('fleet_dt_defect_dispositions')
+    .insert({
+      business_id: businessId, defect_id: defectId, action: input.action, actor_id: actorId,
+      reason: input.reason ?? null, instruction: input.instruction ?? null,
+      before_status: currentStatus, after_status: afterStatus,
+    })
+    .select('*')
+    .single()
+  if (dispositionError) throw dispositionError
+
+  audit.log({
+    userId: actorId, email, action: `dump_truck.defect.disposition.${input.action}`,
+    resource: 'fleet_dt_defects', resourceId: defectId, metadata: { beforeStatus: currentStatus, afterStatus },
+  })
+
+  const { data: doc } = await fleetServiceClient.from('fleet_dt_documents')
+    .select('id').eq('linked_entity_type', 'defect').eq('linked_entity_id', defectId).maybeSingle()
+
+  return {
+    defect: defectFromRow(updated, doc?.id ?? null),
+    disposition: {
+      id: dispositionRow.id, defectId: dispositionRow.defect_id, action: dispositionRow.action,
+      actorId: dispositionRow.actor_id, reason: dispositionRow.reason, instruction: dispositionRow.instruction,
+      beforeStatus: dispositionRow.before_status, afterStatus: dispositionRow.after_status, createdAt: dispositionRow.created_at,
+    },
+  }
+}
+
+export async function listDefectDispositions(businessId: string, defectId: string): Promise<DefectDispositionRow[]> {
+  const { data, error } = await fleetServiceClient
+    .from('fleet_dt_defect_dispositions')
+    .select('*')
+    .eq('business_id', businessId)
+    .eq('defect_id', defectId)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []).map(r => ({
+    id: r.id, defectId: r.defect_id, action: r.action, actorId: r.actor_id, reason: r.reason, instruction: r.instruction,
+    beforeStatus: r.before_status, afterStatus: r.after_status, createdAt: r.created_at,
+  }))
 }

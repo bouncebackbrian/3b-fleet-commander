@@ -126,19 +126,37 @@ function groupSimilarOpenDefects(defects: DefectDTO[], unitFor: (id: string) => 
   return [...byCategory.entries()].filter(([, trucks]) => trucks.length >= 2)
 }
 
+type DispositionAction =
+  | 'acknowledge' | 'request_details' | 'assign_maintenance'
+  | 'place_on_hold' | 'mark_operable' | 'resolve' | 'reopen' | 'defer'
+
+/** Actions that show an inline note field before firing — required ones match
+ *  defectDisposition.ts's requiresReason/requiresInstruction; resolve's note
+ *  is optional (same as the old "resolution notes" textarea). */
+const NOTE_ACTIONS: Partial<Record<DispositionAction, { field: 'reason' | 'instruction'; required: boolean; placeholder: string; confirmLabel: string }>> = {
+  resolve: { field: 'reason', required: false, placeholder: 'Resolution notes (optional)', confirmLabel: 'Confirm Resolved' },
+  place_on_hold: { field: 'reason', required: true, placeholder: 'Why is this truck being placed on hold? (required)', confirmLabel: 'Place on Hold' },
+  request_details: { field: 'reason', required: true, placeholder: 'What details are you requesting from the driver? (required)', confirmLabel: 'Send Request' },
+  mark_operable: { field: 'instruction', required: true, placeholder: 'Instruction for the driver — e.g. "daylight only until repaired" (required)', confirmLabel: 'Release Hold' },
+}
+
 /**
- * Open Defects — dispatch-side visibility that didn't exist before (defects
- * wrote to fleet_dt_defects but never surfaced anywhere in the admin UI, not
- * even the raw activity log). Shows downtime (created_at -> resolved_at, or
- * running for still-open ones), attached photo, and a resolve action.
+ * Open Defects / dispatch defect inbox (spec §5.1) — acknowledge, request
+ * details, assign to maintenance, place a truck on hold, mark operable with
+ * an instruction, resolve, or reopen. Every action goes through
+ * /disposition, which writes an append-only audit row (who/when/reason/
+ * instruction/before-after) in addition to whatever it changes on the
+ * defect or (hold/release) the truck. Shows downtime, attached photo, and
+ * whether the defect's truck is currently on a dispatch-authorized hold.
  */
 function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: EquipmentOption[]; trailers: EquipmentOption[] }; drivers: DriverOption[] }) {
   const [defects, setDefects] = useState<DefectDTO[]>([])
   const [showResolved, setShowResolved] = useState(false)
-  const [resolvingId, setResolvingId] = useState<string | null>(null)
-  const [resolutionNotes, setResolutionNotes] = useState('')
   const [assigningId, setAssigningId] = useState<string | null>(null)
   const [assignedTo, setAssignedTo] = useState('')
+  const [noteAction, setNoteAction] = useState<{ id: string; action: DispositionAction } | null>(null)
+  const [noteText, setNoteText] = useState('')
+  const [busyId, setBusyId] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
 
   const reload = () => {
@@ -150,41 +168,51 @@ function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: Equipme
     return () => clearInterval(t)
   }, [])
 
-  const unitFor = (id: string) => equipment.trucks.find(t => t.id === id)?.unitNumber ?? equipment.trailers.find(t => t.id === id)?.unitNumber ?? '—'
+  const truckFor = (id: string) => equipment.trucks.find(t => t.id === id)
+  const unitFor = (id: string) => truckFor(id)?.unitNumber ?? equipment.trailers.find(t => t.id === id)?.unitNumber ?? '—'
   const nameFor = (id: string | null) => drivers.find(d => d.userId === id)?.name ?? '—'
 
   const visible = defects.filter(d => showResolved || d.status !== 'resolved')
 
-  const act = async (id: string, status: 'acknowledged' | 'resolved' | 'deferred', notes?: string) => {
+  const disposition = async (id: string, action: DispositionAction, extra?: { reason?: string; instruction?: string; assignedTo?: string }) => {
+    setBusyId(id)
     try {
-      const res = await fetch(`/api/fleet/dump-truck/defects/${id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, resolutionNotes: notes ?? null }),
+      const res = await fetch(`/api/fleet/dump-truck/defects/${id}/disposition`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...extra }),
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Could not update defect')
-      toast.success(status === 'resolved' ? 'Defect resolved' : `Defect ${status}`)
-      setResolvingId(null)
-      setResolutionNotes('')
+      toast.success(
+        action === 'place_on_hold' ? 'Truck placed on hold' :
+        action === 'mark_operable' ? 'Truck hold released' :
+        action === 'resolve' ? 'Defect resolved' : `Defect ${action.replace('_', ' ')}`,
+      )
+      setNoteAction(null)
+      setNoteText('')
       reload()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not update defect')
+    } finally {
+      setBusyId(null)
     }
   }
 
+  const startNoteAction = (id: string, action: DispositionAction) => {
+    if (NOTE_ACTIONS[action]) { setNoteAction({ id, action }); setNoteText(''); return }
+    disposition(id, action)
+  }
+
+  const confirmNoteAction = () => {
+    if (!noteAction) return
+    const cfg = NOTE_ACTIONS[noteAction.action]
+    if (cfg?.required && !noteText.trim()) return
+    disposition(noteAction.id, noteAction.action, cfg?.field === 'instruction' ? { instruction: noteText } : { reason: noteText })
+  }
+
   const assign = async (id: string, to: string) => {
-    try {
-      const res = await fetch(`/api/fleet/dump-truck/defects/${id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assignedTo: to || null }),
-      })
-      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not assign defect')
-      toast.success(to ? `Assigned to ${to}` : 'Assignment cleared')
-      setAssigningId(null)
-      setAssignedTo('')
-      reload()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not assign defect')
-    }
+    await disposition(id, 'assign_maintenance', { assignedTo: to })
+    setAssigningId(null)
+    setAssignedTo('')
   }
 
   const viewPhoto = async (documentId: string) => {
@@ -222,8 +250,15 @@ function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: Equipme
       <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
         {visible.map(d => {
           const downtimeMs = (d.resolvedAt ? new Date(d.resolvedAt).getTime() : now) - new Date(d.createdAt).getTime()
+          const truck = truckFor(d.truckId)
+          const onHold = truck?.holdStatus === 'on_hold'
           return (
-            <div key={d.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '.75rem' }}>
+            <div key={d.id} style={{ border: onHold ? '1px solid var(--error)' : '1px solid var(--border)', borderRadius: 10, padding: '.75rem' }}>
+              {onHold && (
+                <div style={{ marginBottom: '.5rem', padding: '.5rem .6rem', borderRadius: 8, background: 'rgba(220,38,38,.1)', fontSize: '.78rem', fontWeight: 700, color: 'var(--error)' }}>
+                  🚫 {unitFor(d.truckId)} is on a dispatch hold{truck?.holdReason ? ` — ${truck.holdReason}` : ''}. Driver cannot start custody until released.
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                 <div>
                   <span style={{ fontWeight: 800, color: SEVERITY_COLOR[d.severity], fontSize: '.78rem' }}>{SEVERITY_LABEL[d.severity]}</span>
@@ -275,27 +310,46 @@ function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: Equipme
                 </div>
               )}
 
-              {d.status !== 'resolved' && (
-                resolvingId === d.id ? (
-                  <div style={{ marginTop: '.6rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <textarea
-                      style={{ ...inputStyle, minHeight: 50 }} placeholder="Resolution notes (optional)"
-                      value={resolutionNotes} onChange={e => setResolutionNotes(e.target.value)}
-                    />
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => act(d.id, 'resolved', resolutionNotes)} style={{ ...btnStyle, padding: '.4rem .8rem', fontSize: '.78rem' }}>Confirm Resolved</button>
-                      <button onClick={() => setResolvingId(null)} style={{ padding: '.4rem .8rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.78rem' }}>Cancel</button>
-                    </div>
+              {noteAction?.id === d.id ? (
+                <div style={{ marginTop: '.6rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <textarea
+                    style={{ ...inputStyle, minHeight: 50 }} placeholder={NOTE_ACTIONS[noteAction.action]?.placeholder}
+                    value={noteText} onChange={e => setNoteText(e.target.value)} autoFocus
+                  />
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      onClick={confirmNoteAction}
+                      disabled={busyId === d.id || (NOTE_ACTIONS[noteAction.action]?.required && !noteText.trim())}
+                      style={{ ...btnStyle, padding: '.4rem .8rem', fontSize: '.78rem', opacity: busyId === d.id ? .6 : 1 }}
+                    >
+                      {busyId === d.id ? 'Saving…' : NOTE_ACTIONS[noteAction.action]?.confirmLabel}
+                    </button>
+                    <button onClick={() => { setNoteAction(null); setNoteText('') }} style={{ padding: '.4rem .8rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.78rem' }}>Cancel</button>
                   </div>
-                ) : (
-                  <div style={{ display: 'flex', gap: 6, marginTop: '.6rem' }}>
-                    {d.status === 'open' && (
-                      <button onClick={() => act(d.id, 'acknowledged')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '.78rem', fontWeight: 700 }}>🚗 Mark Arrived</button>
-                    )}
-                    <button onClick={() => setResolvingId(d.id)} style={{ ...btnStyle, padding: '.4rem .8rem', fontSize: '.78rem' }}>✅ Mark Left / Done</button>
-                    <button onClick={() => act(d.id, 'deferred')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.78rem', fontWeight: 700 }}>Defer</button>
-                  </div>
-                )
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 6, marginTop: '.6rem', flexWrap: 'wrap' }}>
+                  {d.status === 'open' && (
+                    <button disabled={busyId === d.id} onClick={() => disposition(d.id, 'acknowledge')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '.78rem', fontWeight: 700 }}>🚗 Mark Arrived</button>
+                  )}
+                  <button disabled={busyId === d.id} onClick={() => startNoteAction(d.id, 'request_details')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '.78rem', fontWeight: 700 }}>❓ Request Details</button>
+                  {onHold ? (
+                    <button disabled={busyId === d.id} onClick={() => startNoteAction(d.id, 'mark_operable')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--warn)', color: 'var(--warn)', fontSize: '.78rem', fontWeight: 700 }}>✅ Mark Operable / Release Hold</button>
+                  ) : (
+                    <button disabled={busyId === d.id} onClick={() => startNoteAction(d.id, 'place_on_hold')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--error)', color: 'var(--error)', fontSize: '.78rem', fontWeight: 700 }}>🚫 Place Truck on Hold</button>
+                  )}
+                  {d.status !== 'resolved' && (
+                    <>
+                      <button disabled={busyId === d.id} onClick={() => startNoteAction(d.id, 'resolve')} style={{ ...btnStyle, padding: '.4rem .8rem', fontSize: '.78rem' }}>✅ Mark Left / Done</button>
+                      {(d.status === 'open' || d.status === 'acknowledged') && (
+                        <button disabled={busyId === d.id} onClick={() => disposition(d.id, 'defer')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.78rem', fontWeight: 700 }}>Defer</button>
+                      )}
+                    </>
+                  )}
+                  {(d.status === 'resolved' || d.status === 'deferred') && (
+                    <button disabled={busyId === d.id} onClick={() => disposition(d.id, 'reopen')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.78rem', fontWeight: 700 }}>↩️ Reopen</button>
+                  )}
+                </div>
               )}
             </div>
           )

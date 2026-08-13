@@ -39,7 +39,7 @@ export default function DumpTruckDriverPage() {
   const {
     loading, context, flowState, primaryAction, timeline,
     activeJobId, setActiveJobId, isOnline, queueSummary, fuelQueueSummary,
-    driverName, businessName, truckUnitNumber,
+    driverName, businessName, truckUnitNumber, truckHoldStatus, truckHoldReason,
     fireEvent, clockIn, submitDay, queueFuelEntry, refetch,
   } = useDumpTruckDriver()
   const { wx, weather, weatherLoading } = useWeather()
@@ -75,6 +75,19 @@ export default function DumpTruckDriverPage() {
       : undefined,
   }
 
+  /** Dispatch-authorized hold (spec §5.1) — a hard stop, no driver override.
+   *  Checked client-side before the event is even enqueued because fireEvent
+   *  writes to an offline-first queue and returns success optimistically; a
+   *  server-only check (also present in events.ts) would otherwise fail
+   *  silently in the background sync instead of blocking the tap. Takes
+   *  priority over the documented-override defect flow below — that flow is
+   *  for defects that haven't been escalated to a formal hold. */
+  const truckHoldBlockReason = (() => {
+    if (truckHoldStatus !== 'on_hold') return null
+    if (primaryAction.eventType !== 'truck_picked_up' && primaryAction.eventType !== 'depart_yard') return null
+    return `Truck is on a dispatch hold${truckHoldReason ? `: ${truckHoldReason}` : ''}. Contact dispatch for release — this cannot be overridden from the driver app.`
+  })()
+
   const blockingDefectReason = (() => {
     if (!context?.openDefects.length) return null
     if (primaryAction.eventType !== 'truck_picked_up' && primaryAction.eventType !== 'depart_yard') return null
@@ -92,9 +105,10 @@ export default function DumpTruckDriverPage() {
     return null
   })()
 
-  const disabledReason = blockingDefectReason ?? needsJobReason
+  const disabledReason = truckHoldBlockReason ?? blockingDefectReason ?? needsJobReason
 
   const handlePrimary = async () => {
+    if (truckHoldBlockReason) { toast.error('Truck is on a dispatch hold — contact dispatch'); return }
     if (primaryAction.opensSubmit) { setSheet('submit'); return }
     if (primaryAction.opensChecklist === 'pretrip') { setSheet('pretrip'); return }
     if (primaryAction.opensChecklist === 'posttrip') { setSheet('posttrip'); return }
@@ -197,7 +211,18 @@ export default function DumpTruckDriverPage() {
         </div>
 
         <div className="dt-center">
-          {blockingDefectReason ? (
+          {truckHoldBlockReason ? (
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: '.6rem', width: '100%', maxWidth: 480,
+              background: 'rgba(220,38,38,.08)', border: '1px solid var(--error)', borderRadius: 12, padding: '1.25rem',
+              textAlign: 'center',
+            }}>
+              <div style={{ fontSize: '1.5rem' }}>🚫</div>
+              <div style={{ fontWeight: 800, color: 'var(--error)' }}>Truck {truckUnitNumber ?? ''} is on hold</div>
+              <div style={{ fontSize: '.85rem', color: 'var(--muted)' }}>{truckHoldReason ?? 'Dispatch has placed this truck on hold.'}</div>
+              <div style={{ fontSize: '.78rem', color: 'var(--muted)' }}>Contact dispatch — only they can release the hold. This cannot be worked around from here.</div>
+            </div>
+          ) : blockingDefectReason ? (
             <DefectOverridePanel
               truckUnitNumber={truckUnitNumber}
               driverName={driverName}

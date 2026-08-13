@@ -49,6 +49,8 @@ interface DriverContextResponse {
   driverName: string
   businessName: string
   truckUnitNumber: string | null
+  truckHoldStatus: 'none' | 'on_hold'
+  truckHoldReason: string | null
   events: { id: string; eventType: DumpTruckEventType; effectiveAt: string; notes: string | null; lat: number | null; lng: number | null }[]
   sites: DumpTruckSite[]
   jobs: DumpTruckJob[]
@@ -363,6 +365,8 @@ export function useDumpTruckDriver() {
     isOnline, queueSummary, fuelQueueSummary,
     driverName: context?.driverName ?? null, businessName: context?.businessName ?? null,
     truckUnitNumber: context?.truckUnitNumber ?? null,
+    truckHoldStatus: context?.truckHoldStatus ?? 'none',
+    truckHoldReason: context?.truckHoldReason ?? null,
     fireEvent, clockIn, submitDay, queueFuelEntry, refetch: fetchContext,
   }
 }
