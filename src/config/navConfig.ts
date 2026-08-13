@@ -144,6 +144,14 @@ export const FLEET_NAV: NavEntry[] = [
     tier:  ['starter', 'pro', 'enterprise'],
   },
 
+  // ── Dump Truck Mode — SQCDP monthly review ────────────────────────────────
+  {
+    id: 'fleet-dump-truck-sqcdp', label: 'SQCDP Review', href: '/admin/dump-truck/sqcdp', icon: '📋',
+    family: 'fleet', enabled: true,
+    modes: ['dispatcher', 'owner_op', 'fleet_owner', 'fleet_manager', 'admin'],
+    tier:  ['starter', 'pro', 'enterprise'],
+  },
+
   // ── Dump Truck Mode — recurring issues detail (all-time defect Pareto) ───
   {
     id: 'fleet-dump-truck-recurring-issues', label: 'Recurring Issues', href: '/admin/dump-truck/recurring-issues', icon: '🔧',
