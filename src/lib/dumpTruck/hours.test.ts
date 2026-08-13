@@ -3,7 +3,7 @@ import {
   getWeekRange, getPreviousWeekRange, resolveRange,
   sumPairedDurationSeconds, buildCategoryTimeFromEvents, bucketDelaySecondsByReason,
   splitRegularOvertime, estimateHourlyGrossPay, estimateGrossPay, DEFAULT_PAY_POLICY,
-  buildDailyHoursRow, buildRangeSummary, type TimedEvent, type PayPolicy,
+  buildDailyHoursRow, buildRangeSummary, applyRevenueShareFloor, sumRangeSummaries, type TimedEvent, type PayPolicy, type RangeSummary,
 } from './hours'
 
 describe('getWeekRange', () => {
@@ -257,5 +257,68 @@ describe('buildRangeSummary', () => {
     expect(summary.totalMiles).toBe(220)
     expect(summary.estimatedGrossEarnings).toBe(608)
     expect(summary.payrollApprovedGrossEarnings).toBeNull()
+  })
+})
+
+describe('sumRangeSummaries', () => {
+  const summary = (overrides: Partial<RangeSummary>): RangeSummary => ({
+    daysWorked: 0, totalRegularHours: 0, totalOvertimeHours: 0, totalDoubleTimeHours: 0, totalDriveHours: 0,
+    totalCustodyHours: 0, totalLoads: 0, totalQuantity: 0, totalMiles: 0, totalFuelingHours: 0,
+    totalTrafficDelayHours: 0, totalMechanicalDelayHours: 0, totalOtherDelayHours: 0,
+    estimatedGrossEarnings: 0, payrollApprovedGrossEarnings: null, ...overrides,
+  })
+
+  it('sums each field across summaries', () => {
+    const result = sumRangeSummaries([
+      summary({ daysWorked: 5, totalRegularHours: 40, totalLoads: 20, estimatedGrossEarnings: 1400 }),
+      summary({ daysWorked: 4, totalRegularHours: 32, totalLoads: 15, estimatedGrossEarnings: 1000 }),
+    ])
+    expect(result.daysWorked).toBe(9)
+    expect(result.totalRegularHours).toBe(72)
+    expect(result.totalLoads).toBe(35)
+    expect(result.estimatedGrossEarnings).toBe(2400)
+  })
+
+  it('preserves a revenue-share-adjusted earnings figure rather than re-deriving from raw hours', () => {
+    // Simulates one driver whose per-driver summary was bumped by applyRevenueShareFloor
+    // above what their raw daily hourly rows alone would sum to.
+    const result = sumRangeSummaries([summary({ estimatedGrossEarnings: 1500 })])
+    expect(result.estimatedGrossEarnings).toBe(1500)
+  })
+
+  it('returns all zeros for an empty list', () => {
+    const result = sumRangeSummaries([])
+    expect(result.daysWorked).toBe(0)
+    expect(result.estimatedGrossEarnings).toBe(0)
+  })
+})
+
+describe('applyRevenueShareFloor', () => {
+  it('uses the hourly-based pay when it is larger than the revenue share', () => {
+    // 40 hrs * $35/hr = $1400 hourly floor; 25% of $4000 revenue = $1000
+    const result = applyRevenueShareFloor(1400, 4000, 25)
+    expect(result.finalPay).toBe(1400)
+    expect(result.usedRevenueShare).toBe(false)
+    expect(result.revenueShareAmount).toBe(1000)
+  })
+
+  it('uses the revenue share when it is larger than the hourly-based pay', () => {
+    // matches the uploaded proposal's own example: $150/h truck rate, 25% = $37.50/h > $35 floor
+    const result = applyRevenueShareFloor(1400, 6000, 25)
+    expect(result.finalPay).toBe(1500)
+    expect(result.usedRevenueShare).toBe(true)
+    expect(result.revenueShareAmount).toBe(1500)
+  })
+
+  it('falls back to the hourly floor when there is no revenue data', () => {
+    const result = applyRevenueShareFloor(1400, 0, 25)
+    expect(result.finalPay).toBe(1400)
+    expect(result.usedRevenueShare).toBe(false)
+  })
+
+  it('ties go to the hourly-based pay (never switches on an equal amount)', () => {
+    const result = applyRevenueShareFloor(1000, 4000, 25)
+    expect(result.finalPay).toBe(1000)
+    expect(result.usedRevenueShare).toBe(false)
   })
 })

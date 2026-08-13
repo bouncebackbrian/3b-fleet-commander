@@ -180,9 +180,22 @@ export interface PayPolicy {
   baseHourlyRate: number
   dailyOtThresholdHours: number
   otMultiplier: number
-  /** 2026-07-29: a driver can be paid hourly (default) or per-mile — see getPayPolicyForDriver. */
-  payType: 'hourly' | 'per_mile'
+  /**
+   * 2026-07-29: a driver can be paid hourly (default) or per-mile.
+   * 2026-08-13: 'greater_of_hourly_or_revenue_share' added for Cal-Neva's
+   * proposed comp structure (greater of $X/hr or Y% of the truck's billed
+   * revenue) — see applyRevenueShareFloor() below and getPayPolicyForDriver.
+   */
+  payType: 'hourly' | 'per_mile' | 'greater_of_hourly_or_revenue_share'
   ratePerMile?: number | null
+  /** Only used when payType is greater_of_hourly_or_revenue_share. */
+  revenueSharePct?: number | null
+  /** Minimum paid hours when dispatched but no truck/work is available
+   *  (spec: 4-hour dispatch/breakdown minimum). Not auto-applied anywhere
+   *  yet — no signal in this app distinguishes "no work available" from
+   *  any other non-shift day; apply manually via the "Other" hours entry
+   *  until that signal exists. */
+  dispatchMinimumHours?: number
 }
 
 export const DEFAULT_PAY_POLICY: PayPolicy = {
@@ -213,6 +226,28 @@ export function estimateGrossPay(split: HoursSplit, policy: PayPolicy, shiftMile
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
+}
+
+export interface RevenueShareFloorResult {
+  finalPay: number
+  usedRevenueShare: boolean
+  revenueShareAmount: number
+}
+
+/**
+ * The "greater of" comparison for payType = greater_of_hourly_or_revenue_share
+ * (spec: driver gets whichever is larger, the hourly-rate floor or their cut
+ * of the truck's billed revenue). This is inherently a weekly comparison
+ * (Cal-Neva's proposal's pay period is Monday-Sunday) — callers pass the
+ * driver's hourly-based pay already summed for the period, and the truck
+ * revenue for that same period, not per-day figures.
+ */
+export function applyRevenueShareFloor(hourlyBasedPay: number, periodRevenue: number, revenueSharePct: number): RevenueShareFloorResult {
+  const revenueShareAmount = round2(periodRevenue * (revenueSharePct / 100))
+  if (revenueShareAmount > hourlyBasedPay) {
+    return { finalPay: revenueShareAmount, usedRevenueShare: true, revenueShareAmount }
+  }
+  return { finalPay: round2(hourlyBasedPay), usedRevenueShare: false, revenueShareAmount }
 }
 
 // ── Daily row assembly ───────────────────────────────────────────────────────
@@ -403,4 +438,32 @@ export function buildRangeSummary(rows: DailyHoursRow[]): RangeSummary {
 
 function sum(nums: number[]): number {
   return nums.reduce((a, b) => a + b, 0)
+}
+
+/**
+ * Combines several already-built RangeSummary objects (e.g. one per driver)
+ * into one business-wide total — used instead of re-deriving from raw daily
+ * rows when a per-driver summary has been adjusted after the fact (e.g.
+ * applyRevenueShareFloor bumping estimatedGrossEarnings above what the raw
+ * daily rows alone would sum to). Re-deriving from rows would silently
+ * drop that adjustment from the business total.
+ */
+export function sumRangeSummaries(summaries: RangeSummary[]): RangeSummary {
+  return {
+    daysWorked: sum(summaries.map(s => s.daysWorked)),
+    totalRegularHours: round2(sum(summaries.map(s => s.totalRegularHours))),
+    totalOvertimeHours: round2(sum(summaries.map(s => s.totalOvertimeHours))),
+    totalDoubleTimeHours: round2(sum(summaries.map(s => s.totalDoubleTimeHours))),
+    totalDriveHours: round2(sum(summaries.map(s => s.totalDriveHours))),
+    totalCustodyHours: round2(sum(summaries.map(s => s.totalCustodyHours))),
+    totalLoads: sum(summaries.map(s => s.totalLoads)),
+    totalQuantity: round2(sum(summaries.map(s => s.totalQuantity))),
+    totalMiles: sum(summaries.map(s => s.totalMiles)),
+    totalFuelingHours: round2(sum(summaries.map(s => s.totalFuelingHours))),
+    totalTrafficDelayHours: round2(sum(summaries.map(s => s.totalTrafficDelayHours))),
+    totalMechanicalDelayHours: round2(sum(summaries.map(s => s.totalMechanicalDelayHours))),
+    totalOtherDelayHours: round2(sum(summaries.map(s => s.totalOtherDelayHours))),
+    estimatedGrossEarnings: round2(sum(summaries.map(s => s.estimatedGrossEarnings))),
+    payrollApprovedGrossEarnings: null,
+  }
 }

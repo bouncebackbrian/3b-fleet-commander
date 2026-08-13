@@ -43,6 +43,9 @@ export async function PUT(request: NextRequest) {
     if (body.payType === 'per_mile' && body.ratePerMile == null) {
       return NextResponse.json({ error: 'ratePerMile is required when payType is per_mile' }, { status: 400 })
     }
+    if (body.payType === 'greater_of_hourly_or_revenue_share' && body.revenueSharePct == null) {
+      return NextResponse.json({ error: 'revenueSharePct is required when payType is greater_of_hourly_or_revenue_share' }, { status: 400 })
+    }
     await upsertPayPolicy(auth.businessId, body, auth.userId, auth.email, body.driverId ?? null)
     return NextResponse.json({ ok: true })
   } catch (err) {
