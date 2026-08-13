@@ -40,6 +40,7 @@ export default function DumpTruckDriverPage() {
     loading, context, flowState, primaryAction, timeline,
     activeJobId, setActiveJobId, isOnline, queueSummary, fuelQueueSummary,
     driverName, businessName, truckUnitNumber, truckHoldStatus, truckHoldReason,
+    preferredLanguage, setLanguage,
     fireEvent, clockIn, submitDay, queueFuelEntry, refetch,
   } = useDumpTruckDriver()
   const { wx, weather, weatherLoading } = useWeather()
@@ -190,6 +191,8 @@ export default function DumpTruckDriverPage() {
         businessName={businessName}
         driverName={driverName}
         flowState={flowState}
+        preferredLanguage={preferredLanguage}
+        onLanguageChange={setLanguage}
       />
 
       <div className="dt-body">

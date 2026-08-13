@@ -15,11 +15,17 @@ export async function getThreebId(userId: string): Promise<string | null> {
   return data?.three_b_id ?? null
 }
 
+export type PreferredLanguage = 'en' | 'es'
+
 export interface DriverBusinessMeta {
   driverName: string
   threebId: string | null
   businessName: string
   threebBizId: string | null
+  /** Spec §6 EN/ES foundation — the driver's chosen UI language. Storage +
+   *  toggle only; a full translation pipeline for free-text content
+   *  (notes, defect descriptions, etc.) is not built yet. */
+  preferredLanguage: PreferredLanguage
 }
 
 /**
@@ -33,7 +39,7 @@ export interface DriverBusinessMeta {
  */
 export async function getDriverBusinessMeta(businessId: string, driverId: string): Promise<DriverBusinessMeta> {
   const [{ data: profile }, { data: business }] = await Promise.all([
-    fleetServiceClient.from('profiles').select('full_name, three_b_id').eq('id', driverId).maybeSingle(),
+    fleetServiceClient.from('profiles').select('full_name, three_b_id, preferred_language').eq('id', driverId).maybeSingle(),
     fleetServiceClient.from('businesses').select('name, three_b_biz_id').eq('id', businessId).maybeSingle(),
   ])
 
@@ -42,7 +48,13 @@ export async function getDriverBusinessMeta(businessId: string, driverId: string
     threebId: profile?.three_b_id ?? null,
     businessName: business?.name ?? 'Unknown Business',
     threebBizId: business?.three_b_biz_id ?? null,
+    preferredLanguage: (profile?.preferred_language as PreferredLanguage) ?? 'en',
   }
+}
+
+export async function setPreferredLanguage(userId: string, language: PreferredLanguage): Promise<void> {
+  const { error } = await fleetServiceClient.from('profiles').update({ preferred_language: language }).eq('id', userId)
+  if (error) throw error
 }
 
 export interface BusinessMeta {
