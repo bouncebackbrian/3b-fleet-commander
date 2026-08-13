@@ -21,6 +21,7 @@ interface DefectDTO {
   severity: DefectSeverity
   status: string
   createdAt: string
+  reportedBy: string | null
 }
 
 function toCategoryLabel(category: string): string {
@@ -53,6 +54,7 @@ export default function RecurringIssuesPage() {
 
   const input: RecurringIssueDefect[] = defects.map(d => ({
     id: d.id, truckId: d.truckId, description: d.description, severity: d.severity, status: d.status, createdAt: d.createdAt,
+    reportedBy: d.reportedBy,
   }))
   const groups: RecurringIssueGroup[] = groupRecurringIssues(input)
   const recurring = groups.filter(g => g.totalCount > 1)
@@ -65,7 +67,9 @@ export default function RecurringIssuesPage() {
         <p style={{ color: 'var(--muted)', fontSize: '.85rem', marginTop: 4 }}>
           How often each physical issue has been logged, grouped from the last 100 defect reports across the fleet —
           same data as the driver-facing override report, rolled up for corrective-action tracking instead of
-          per-shift dispatch. <Link href="/admin/dump-truck" style={{ color: 'var(--primary)', fontWeight: 700 }}>← Back to Dump Truck Setup</Link>
+          per-shift dispatch. See per-truck and per-driver breakdowns on the{' '}
+          <Link href="/admin/dump-truck/kpis" style={{ color: 'var(--primary)', fontWeight: 700 }}>Fleet KPIs</Link> page.{' '}
+          <Link href="/admin/dump-truck" style={{ color: 'var(--primary)', fontWeight: 700 }}>← Back to Dump Truck Setup</Link>
         </p>
       </div>
 
