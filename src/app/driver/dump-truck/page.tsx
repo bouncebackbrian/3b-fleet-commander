@@ -201,9 +201,7 @@ export default function DumpTruckDriverPage() {
             <DefectOverridePanel
               truckUnitNumber={truckUnitNumber}
               driverName={driverName}
-              defects={(context?.openDefects ?? [])
-                .filter(d => d.severity === 'safety_critical' || d.severity === 'out_of_service')
-                .map(d => ({ description: d.description, severity: d.severity }))}
+              defects={(context?.openDefects ?? []).map(d => ({ description: d.description, severity: d.severity }))}
               busy={overrideBusy}
               onContinue={handleOverrideContinue}
             />
