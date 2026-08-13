@@ -12,11 +12,12 @@
 
 import { fleetServiceClient } from '@/lib/fleet-service-client'
 import {
-  buildDailyHoursRow, buildRangeSummary, type DailyHoursRow, type RangeSummary,
+  buildDailyHoursRow, buildRangeSummary, applyRevenueShareFloor, type DailyHoursRow, type RangeSummary,
   type DateRange, type PayPolicy,
 } from '@/lib/dumpTruck/hours'
 import type { DriveSegmentCategory, DumpTruckEventType } from '@/lib/dumpTruck/types'
 import { getPayPolicyForDriver } from './payPolicy'
+import { computeRevenueForRange } from './revenue'
 
 function utcDateString(iso: string): string {
   return iso.slice(0, 10)
@@ -26,9 +27,18 @@ const EMPTY_CATEGORY_SECONDS: Record<DriveSegmentCategory, number> = {
   empty: 0, loaded: 0, yard_transfer: 0, fuel: 0, maintenance: 0, other: 0,
 }
 
+export interface RevenueShareApplied {
+  usedRevenueShare: boolean
+  revenueShareAmount: number
+  truckRevenue: number
+}
+
 export async function buildDriverHoursForRange(
   businessId: string, driverId: string, range: DateRange,
-): Promise<{ rows: DailyHoursRow[]; summary: RangeSummary; payPolicy: PayPolicy; isDefaultPayPolicy: boolean }> {
+): Promise<{
+  rows: DailyHoursRow[]; summary: RangeSummary; payPolicy: PayPolicy; isDefaultPayPolicy: boolean
+  revenueShareApplied: RevenueShareApplied | null
+}> {
   const payPolicy = await getPayPolicyForDriver(businessId, driverId)
 
   const { data: shifts, error: shiftsError } = await fleetServiceClient
@@ -41,7 +51,7 @@ export async function buildDriverHoursForRange(
     .order('clock_in_at', { ascending: true })
   if (shiftsError) throw shiftsError
   if (!shifts || shifts.length === 0) {
-    return { rows: [], summary: buildRangeSummary([]), payPolicy, isDefaultPayPolicy: payPolicy.isDefault }
+    return { rows: [], summary: buildRangeSummary([]), payPolicy, isDefaultPayPolicy: payPolicy.isDefault, revenueShareApplied: null }
   }
 
   const shiftIds = shifts.map(s => s.id)
@@ -125,5 +135,19 @@ export async function buildDriverHoursForRange(
     })
   })
 
-  return { rows, summary: buildRangeSummary(rows), payPolicy, isDefaultPayPolicy: payPolicy.isDefault }
+  const summary = buildRangeSummary(rows)
+  let revenueShareApplied: RevenueShareApplied | null = null
+
+  if (payPolicy.payType === 'greater_of_hourly_or_revenue_share' && payPolicy.revenueSharePct) {
+    const driverTruckIds = new Set(shifts.map(s => s.truck_id).filter(Boolean) as string[])
+    if (driverTruckIds.size > 0) {
+      const revenueRows = await computeRevenueForRange(businessId, range)
+      const truckRevenue = revenueRows.filter(r => r.truckId && driverTruckIds.has(r.truckId)).reduce((sum, r) => sum + r.revenue, 0)
+      const result = applyRevenueShareFloor(summary.estimatedGrossEarnings, truckRevenue, payPolicy.revenueSharePct)
+      summary.estimatedGrossEarnings = result.finalPay
+      revenueShareApplied = { usedRevenueShare: result.usedRevenueShare, revenueShareAmount: result.revenueShareAmount, truckRevenue }
+    }
+  }
+
+  return { rows, summary, payPolicy, isDefaultPayPolicy: payPolicy.isDefault, revenueShareApplied }
 }

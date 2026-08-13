@@ -920,27 +920,40 @@ function TicketTemplatesPanel({ brokers }: { brokers: BrokerOption[] }) {
 
 interface PayPolicyState {
   baseHourlyRate: string; dailyOtThresholdHours: string; otMultiplier: string
-  payType: 'hourly' | 'per_mile'; ratePerMile: string
+  payType: 'hourly' | 'per_mile' | 'greater_of_hourly_or_revenue_share'; ratePerMile: string
+  revenueSharePct: string; dispatchMinimumHours: string
 }
 
-const EMPTY_PAY_POLICY: PayPolicyState = { baseHourlyRate: '32.00', dailyOtThresholdHours: '8.00', otMultiplier: '1.50', payType: 'hourly', ratePerMile: '0.65' }
+const EMPTY_PAY_POLICY: PayPolicyState = {
+  baseHourlyRate: '32.00', dailyOtThresholdHours: '8.00', otMultiplier: '1.50', payType: 'hourly', ratePerMile: '0.65',
+  revenueSharePct: '25', dispatchMinimumHours: '4',
+}
 
 function PayPolicyFields({ state, onChange }: { state: PayPolicyState; onChange: (s: PayPolicyState) => void }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '.75rem' }}>
       <Field label="Pay Type">
-        <select style={inputStyle} value={state.payType} onChange={e => onChange({ ...state, payType: e.target.value as 'hourly' | 'per_mile' })}>
+        <select style={inputStyle} value={state.payType} onChange={e => onChange({ ...state, payType: e.target.value as PayPolicyState['payType'] })}>
           <option value="hourly">Hourly + Daily OT</option>
           <option value="per_mile">Per-Mile</option>
+          <option value="greater_of_hourly_or_revenue_share">Greater of Hourly or Revenue Share</option>
         </select>
       </Field>
       {state.payType === 'per_mile' ? (
         <Field label="Rate Per Mile ($)"><input style={inputStyle} type="number" step="0.01" value={state.ratePerMile} onChange={e => onChange({ ...state, ratePerMile: e.target.value })} /></Field>
       ) : (
         <>
-          <Field label="Base Hourly Rate ($)"><input style={inputStyle} type="number" step="0.01" value={state.baseHourlyRate} onChange={e => onChange({ ...state, baseHourlyRate: e.target.value })} /></Field>
+          <Field label={state.payType === 'greater_of_hourly_or_revenue_share' ? 'Minimum Hourly Rate ($)' : 'Base Hourly Rate ($)'}>
+            <input style={inputStyle} type="number" step="0.01" value={state.baseHourlyRate} onChange={e => onChange({ ...state, baseHourlyRate: e.target.value })} />
+          </Field>
           <Field label="Daily OT Threshold (hrs)"><input style={inputStyle} type="number" step="0.25" value={state.dailyOtThresholdHours} onChange={e => onChange({ ...state, dailyOtThresholdHours: e.target.value })} /></Field>
           <Field label="OT Multiplier"><input style={inputStyle} type="number" step="0.05" value={state.otMultiplier} onChange={e => onChange({ ...state, otMultiplier: e.target.value })} /></Field>
+        </>
+      )}
+      {state.payType === 'greater_of_hourly_or_revenue_share' && (
+        <>
+          <Field label="Revenue Share (%)"><input style={inputStyle} type="number" step="0.5" value={state.revenueSharePct} onChange={e => onChange({ ...state, revenueSharePct: e.target.value })} /></Field>
+          <Field label="Dispatch Minimum (hrs)"><input style={inputStyle} type="number" step="0.5" value={state.dispatchMinimumHours} onChange={e => onChange({ ...state, dispatchMinimumHours: e.target.value })} /></Field>
         </>
       )}
     </div>
@@ -959,6 +972,8 @@ function PayPolicyPanel({ drivers }: { drivers: DriverOption[] }) {
         baseHourlyRate: String(b.policy.baseHourlyRate), dailyOtThresholdHours: String(b.policy.dailyOtThresholdHours),
         otMultiplier: String(b.policy.otMultiplier), payType: b.policy.payType ?? 'hourly',
         ratePerMile: b.policy.ratePerMile != null ? String(b.policy.ratePerMile) : '0.65',
+        revenueSharePct: b.policy.revenueSharePct != null ? String(b.policy.revenueSharePct) : '25',
+        dispatchMinimumHours: b.policy.dispatchMinimumHours != null ? String(b.policy.dispatchMinimumHours) : '4',
       })
       setIsDefault(!!b.policy.isDefault)
     })
@@ -974,6 +989,8 @@ function PayPolicyPanel({ drivers }: { drivers: DriverOption[] }) {
           baseHourlyRate: Number(state.baseHourlyRate), dailyOtThresholdHours: Number(state.dailyOtThresholdHours),
           otMultiplier: Number(state.otMultiplier), payType: state.payType,
           ratePerMile: state.payType === 'per_mile' ? Number(state.ratePerMile) : null,
+          revenueSharePct: state.payType === 'greater_of_hourly_or_revenue_share' ? Number(state.revenueSharePct) : null,
+          dispatchMinimumHours: Number(state.dispatchMinimumHours),
         }),
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Could not save pay policy')
@@ -1006,7 +1023,11 @@ function PayPolicyPanel({ drivers }: { drivers: DriverOption[] }) {
 
 interface DriverPayRow {
   userId: string; name: string
-  override: { payType: 'hourly' | 'per_mile'; baseHourlyRate: number; dailyOtThresholdHours: number; otMultiplier: number; ratePerMile: number | null } | null
+  override: {
+    payType: 'hourly' | 'per_mile' | 'greater_of_hourly_or_revenue_share'
+    baseHourlyRate: number; dailyOtThresholdHours: number; otMultiplier: number; ratePerMile: number | null
+    revenueSharePct: number | null; dispatchMinimumHours: number
+  } | null
 }
 
 function DriverPayOverridesPanel({ drivers }: { drivers: DriverOption[] }) {
@@ -1028,6 +1049,8 @@ function DriverPayOverridesPanel({ drivers }: { drivers: DriverOption[] }) {
       baseHourlyRate: String(row.override.baseHourlyRate), dailyOtThresholdHours: String(row.override.dailyOtThresholdHours),
       otMultiplier: String(row.override.otMultiplier), payType: row.override.payType,
       ratePerMile: row.override.ratePerMile != null ? String(row.override.ratePerMile) : '0.65',
+      revenueSharePct: row.override.revenueSharePct != null ? String(row.override.revenueSharePct) : '25',
+      dispatchMinimumHours: String(row.override.dispatchMinimumHours ?? 4),
     } : EMPTY_PAY_POLICY)
   }
 
@@ -1041,6 +1064,8 @@ function DriverPayOverridesPanel({ drivers }: { drivers: DriverOption[] }) {
           baseHourlyRate: Number(editState.baseHourlyRate), dailyOtThresholdHours: Number(editState.dailyOtThresholdHours),
           otMultiplier: Number(editState.otMultiplier), payType: editState.payType,
           ratePerMile: editState.payType === 'per_mile' ? Number(editState.ratePerMile) : null,
+          revenueSharePct: editState.payType === 'greater_of_hourly_or_revenue_share' ? Number(editState.revenueSharePct) : null,
+          dispatchMinimumHours: Number(editState.dispatchMinimumHours),
         }),
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Could not save override')
@@ -1084,7 +1109,9 @@ function DriverPayOverridesPanel({ drivers }: { drivers: DriverOption[] }) {
                 <div style={{ fontWeight: 700, fontSize: '.85rem' }}>{row.name}</div>
                 <div style={{ fontSize: '.72rem', color: 'var(--muted)' }}>
                   {row.override
-                    ? row.override.payType === 'per_mile' ? `Per-mile — $${row.override.ratePerMile}/mi` : `Hourly — $${row.override.baseHourlyRate}/hr`
+                    ? row.override.payType === 'per_mile' ? `Per-mile — $${row.override.ratePerMile}/mi`
+                      : row.override.payType === 'greater_of_hourly_or_revenue_share' ? `Greater of $${row.override.baseHourlyRate}/hr or ${row.override.revenueSharePct}% of revenue`
+                        : `Hourly — $${row.override.baseHourlyRate}/hr`
                     : 'Using business default'}
                 </div>
               </div>

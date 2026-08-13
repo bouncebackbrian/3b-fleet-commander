@@ -16,6 +16,8 @@ interface DriverSummary {
   totalLoads: number
   totalMiles: number
   estimatedGrossEarnings: number
+  /** Set when payType = greater_of_hourly_or_revenue_share — null for hourly/per-mile drivers. */
+  revenueShareApplied: { usedRevenueShare: boolean; revenueShareAmount: number; truckRevenue: number } | null
 }
 
 interface BusinessSummary {
@@ -253,7 +255,14 @@ export default function AdminPayrollHoursPanel({ drivers }: { drivers: DriverOpt
                   <td>{s.totalOtherDelayHours}</td>
                   <td>{s.totalLoads}</td>
                   <td>{s.totalMiles}</td>
-                  <td>${s.estimatedGrossEarnings.toFixed(2)}</td>
+                  <td>
+                    ${s.estimatedGrossEarnings.toFixed(2)}
+                    {s.revenueShareApplied?.usedRevenueShare && (
+                      <span title={`Revenue share ($${s.revenueShareApplied.revenueShareAmount.toFixed(2)} on $${s.revenueShareApplied.truckRevenue.toFixed(2)} truck revenue) beat the hourly floor`} style={{ marginLeft: 4, fontSize: '.68rem', color: 'var(--primary)', fontWeight: 800 }}>
+                        ●%
+                      </span>
+                    )}
+                  </td>
                   <td>
                     <input
                       style={{ ...inputStyle, padding: '.3rem .4rem', fontSize: '.78rem', minWidth: 80 }}

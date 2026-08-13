@@ -14,14 +14,18 @@ import { fleetServiceClient } from '@/lib/fleet-service-client'
 import { audit } from '@/lib/fleet/audit'
 import { DEFAULT_PAY_POLICY, type PayPolicy } from '@/lib/dumpTruck/hours'
 
+const SELECT_COLUMNS = 'base_hourly_rate, daily_ot_threshold_hours, ot_multiplier, pay_type, rate_per_mile, revenue_share_pct, dispatch_minimum_hours'
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function fromRow(r: any): PayPolicy {
   return {
     baseHourlyRate: Number(r.base_hourly_rate),
     dailyOtThresholdHours: Number(r.daily_ot_threshold_hours),
     otMultiplier: Number(r.ot_multiplier),
-    payType: r.pay_type === 'per_mile' ? 'per_mile' : 'hourly',
+    payType: r.pay_type === 'per_mile' || r.pay_type === 'greater_of_hourly_or_revenue_share' ? r.pay_type : 'hourly',
     ratePerMile: r.rate_per_mile != null ? Number(r.rate_per_mile) : null,
+    revenueSharePct: r.revenue_share_pct != null ? Number(r.revenue_share_pct) : null,
+    dispatchMinimumHours: r.dispatch_minimum_hours != null ? Number(r.dispatch_minimum_hours) : 4,
   }
 }
 
@@ -29,7 +33,7 @@ function fromRow(r: any): PayPolicy {
 export async function getPayPolicy(businessId: string): Promise<PayPolicy & { isDefault: boolean }> {
   const { data } = await fleetServiceClient
     .from('fleet_dt_pay_policies')
-    .select('base_hourly_rate, daily_ot_threshold_hours, ot_multiplier, pay_type, rate_per_mile')
+    .select(SELECT_COLUMNS)
     .eq('business_id', businessId)
     .is('driver_id', null)
     .maybeSingle()
@@ -42,7 +46,7 @@ export async function getPayPolicy(businessId: string): Promise<PayPolicy & { is
 export async function getPayPolicyForDriver(businessId: string, driverId: string): Promise<PayPolicy & { isDefault: boolean; isOverride: boolean }> {
   const { data: override } = await fleetServiceClient
     .from('fleet_dt_pay_policies')
-    .select('base_hourly_rate, daily_ot_threshold_hours, ot_multiplier, pay_type, rate_per_mile')
+    .select(SELECT_COLUMNS)
     .eq('business_id', businessId)
     .eq('driver_id', driverId)
     .maybeSingle()
@@ -56,7 +60,7 @@ export async function getPayPolicyForDriver(businessId: string, driverId: string
 export async function listPayPolicyOverrides(businessId: string): Promise<(PayPolicy & { driverId: string })[]> {
   const { data, error } = await fleetServiceClient
     .from('fleet_dt_pay_policies')
-    .select('driver_id, base_hourly_rate, daily_ot_threshold_hours, ot_multiplier, pay_type, rate_per_mile')
+    .select(`driver_id, ${SELECT_COLUMNS}`)
     .eq('business_id', businessId)
     .not('driver_id', 'is', null)
   if (error) throw error
@@ -67,8 +71,10 @@ export interface UpsertPayPolicyInput {
   baseHourlyRate: number
   dailyOtThresholdHours: number
   otMultiplier: number
-  payType?: 'hourly' | 'per_mile'
+  payType?: 'hourly' | 'per_mile' | 'greater_of_hourly_or_revenue_share'
   ratePerMile?: number | null
+  revenueSharePct?: number | null
+  dispatchMinimumHours?: number
   notes?: string | null
 }
 
@@ -88,6 +94,8 @@ export async function upsertPayPolicy(
     ot_multiplier: input.otMultiplier,
     pay_type: input.payType ?? 'hourly',
     rate_per_mile: input.ratePerMile ?? null,
+    revenue_share_pct: input.revenueSharePct ?? null,
+    dispatch_minimum_hours: input.dispatchMinimumHours ?? 4,
     notes: input.notes ?? null,
     created_by: userId,
   }
