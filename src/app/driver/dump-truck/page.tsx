@@ -12,6 +12,7 @@ import ToastContainer from '@/components/shared/ToastContainer'
 import TopStatusBar from '@/components/dumpTruck/TopStatusBar'
 import LeftRail from '@/components/dumpTruck/LeftRail'
 import CenterAction from '@/components/dumpTruck/CenterAction'
+import DefectOverridePanel from '@/components/dumpTruck/DefectOverridePanel'
 import RightRail from '@/components/dumpTruck/RightRail'
 import ClockInSheet from '@/components/dumpTruck/ClockInSheet'
 import OdometerSheet from '@/components/dumpTruck/OdometerSheet'
@@ -38,13 +39,18 @@ export default function DumpTruckDriverPage() {
   const {
     loading, context, flowState, primaryAction, timeline,
     activeJobId, setActiveJobId, isOnline, queueSummary, fuelQueueSummary,
-    driverName, businessName,
+    driverName, businessName, truckUnitNumber,
     fireEvent, clockIn, submitDay, queueFuelEntry, refetch,
   } = useDumpTruckDriver()
   const { wx, weather, weatherLoading } = useWeather()
 
   const [sheet, setSheet] = useState<SheetKey>(null)
   const [navigateSite, setNavigateSite] = useState<DumpTruckSite | null>(null)
+  /** Set when the driver continues past a defect block via DefectOverridePanel
+   *  — attached as the fired event's notes so the override is documented on
+   *  the record, not just used to unlock the button client-side. */
+  const [overrideReportText, setOverrideReportText] = useState<string | null>(null)
+  const [overrideBusy, setOverrideBusy] = useState(false)
 
   const delayActive = useMemo(() => {
     let open = false
@@ -96,15 +102,29 @@ export default function DumpTruckDriverPage() {
     if (primaryAction.eventType === 'truck_picked_up') { setSheet('odometer_pickup'); return }
     if (primaryAction.eventType === 'truck_dropped_off') { setSheet('odometer_dropoff'); return }
     if (primaryAction.eventType) {
-      const result = await fireEvent(primaryAction.eventType)
-      if (result.ok) toast.success(result.siteLabel ? `Saved at ${result.siteLabel}` : 'Saved')
+      const result = await fireEvent(primaryAction.eventType, { notes: overrideReportText ?? undefined })
+      if (result.ok) { toast.success(result.siteLabel ? `Saved at ${result.siteLabel}` : 'Saved'); setOverrideReportText(null) }
     }
   }
 
   const handleSecondary = async () => {
     if (!primaryAction.secondary) return
-    const result = await fireEvent(primaryAction.secondary.eventType)
-    if (result.ok) toast.success(result.siteLabel ? `Saved at ${result.siteLabel}` : 'Saved')
+    const result = await fireEvent(primaryAction.secondary.eventType, { notes: overrideReportText ?? undefined })
+    if (result.ok) { toast.success(result.siteLabel ? `Saved at ${result.siteLabel}` : 'Saved'); setOverrideReportText(null) }
+  }
+
+  /** DefectOverridePanel's "Continue Anyway" — documents the override (report
+   *  text becomes the fired event's notes) then runs the exact same primary
+   *  action routing as a normal tap (still goes through the odometer sheet
+   *  for truck_picked_up, etc.) rather than firing a different, unaudited path. */
+  const handleOverrideContinue = async (reportText: string) => {
+    setOverrideBusy(true)
+    setOverrideReportText(reportText)
+    try {
+      await handlePrimary()
+    } finally {
+      setOverrideBusy(false)
+    }
   }
 
   const handlePinLocation = async (site: DumpTruckSite) => {
@@ -162,7 +182,7 @@ export default function DumpTruckDriverPage() {
           <LeftRail
             flowState={flowState}
             clockInAt={context?.shift ? (timeline.find(t => t.eventType === 'clock_in')?.effectiveAt ?? null) : null}
-            truckUnit={context?.shift?.truckId ? context.shift.truckId : null}
+            truckUnit={truckUnitNumber}
             trailerUnit={null}
             jobs={context?.jobs ?? []}
             activeJobId={activeJobId}
@@ -177,13 +197,25 @@ export default function DumpTruckDriverPage() {
         </div>
 
         <div className="dt-center">
-          <CenterAction
-            action={displayAction}
-            busy={false}
-            disabledReason={disabledReason}
-            onPrimary={handlePrimary}
-            onSecondary={handleSecondary}
-          />
+          {blockingDefectReason ? (
+            <DefectOverridePanel
+              truckUnitNumber={truckUnitNumber}
+              driverName={driverName}
+              defects={(context?.openDefects ?? [])
+                .filter(d => d.severity === 'safety_critical' || d.severity === 'out_of_service')
+                .map(d => ({ description: d.description, severity: d.severity }))}
+              busy={overrideBusy}
+              onContinue={handleOverrideContinue}
+            />
+          ) : (
+            <CenterAction
+              action={displayAction}
+              busy={false}
+              disabledReason={disabledReason}
+              onPrimary={handlePrimary}
+              onSecondary={handleSecondary}
+            />
+          )}
         </div>
 
         <div className="dt-right">
@@ -224,8 +256,8 @@ export default function DumpTruckDriverPage() {
           isDropOff={false}
           onClose={() => setSheet(null)}
           onConfirm={async odometer => {
-            const r = await fireEvent('truck_picked_up', { odometer })
-            if (r.ok) toast.success('Custody started')
+            const r = await fireEvent('truck_picked_up', { odometer, notes: overrideReportText ?? undefined })
+            if (r.ok) { toast.success('Custody started'); setOverrideReportText(null) }
           }}
         />
       )}

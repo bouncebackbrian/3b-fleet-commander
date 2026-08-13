@@ -17,6 +17,10 @@ export interface DriverContext {
   shift: Awaited<ReturnType<typeof getOpenShift>>
   driverName: string
   businessName: string
+  /** Human-readable unit number (e.g. "06") for shift.truckId — resolved
+   *  server-side so the driver cockpit never has to display the raw
+   *  fleet_equipment UUID (it did before this field existed). */
+  truckUnitNumber: string | null
   events: (Pick<DumpTruckEvent, 'id' | 'eventType' | 'effectiveAt' | 'notes'> & { lat: number | null; lng: number | null })[]
   sites: Awaited<ReturnType<typeof listSites>>
   jobs: Awaited<ReturnType<typeof listJobsForDriver>>
@@ -35,6 +39,16 @@ export async function getDriverContext(businessId: string, driverId: string): Pr
   let events: DriverContext['events'] = []
   let loadCycles: DriverContext['loadCycles'] = []
   let openDefects: DriverContext['openDefects'] = []
+  let truckUnitNumber: string | null = null
+
+  if (shift?.truckId) {
+    const { data: equipment } = await fleetServiceClient
+      .from('fleet_equipment')
+      .select('unit_number')
+      .eq('id', shift.truckId)
+      .maybeSingle()
+    truckUnitNumber = equipment?.unit_number ?? null
+  }
 
   if (shift) {
     const [eventsRes, loadCyclesRes] = await Promise.all([
@@ -69,7 +83,7 @@ export async function getDriverContext(businessId: string, driverId: string): Pr
   }
 
   return {
-    shift, events, sites, jobs, openDefects, loadCycles,
+    shift, events, sites, jobs, openDefects, loadCycles, truckUnitNumber,
     driverName: meta.driverName, businessName: meta.businessName,
   }
 }
