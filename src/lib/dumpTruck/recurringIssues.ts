@@ -8,6 +8,7 @@ export interface RecurringIssueDefect {
   severity: DefectSeverity
   status: string
   createdAt: string
+  reportedBy: string | null
 }
 
 export interface RecurringIssueGroup {
@@ -17,10 +18,18 @@ export interface RecurringIssueGroup {
   openCount: number
   highestSeverity: DefectSeverity
   truckIds: string[]
+  /** Driver user IDs who reported an instance of this category (nulls dropped). */
+  reportedByIds: string[]
   firstSeenAt: string
   lastSeenAt: string
   /** Most recent description logged for this category, for display. */
   sampleDescription: string
+}
+
+/** A category counts as a "team" issue — not one truck's or one driver's problem — once
+ *  it's shown up on more than one truck or been reported by more than one driver. */
+export function isTeamIssue(group: RecurringIssueGroup): boolean {
+  return group.truckIds.length > 1 || group.reportedByIds.length > 1
 }
 
 const SEVERITY_RANK: Record<DefectSeverity, number> = {
@@ -60,6 +69,7 @@ export function groupRecurringIssues(defects: RecurringIssueDefect[]): Recurring
         'monitor',
       ),
       truckIds: [...new Set(items.map(d => d.truckId))],
+      reportedByIds: [...new Set(items.map(d => d.reportedBy).filter((id): id is string => !!id))],
       firstSeenAt: oldest.createdAt,
       lastSeenAt: newest.createdAt,
       sampleDescription: newest.description,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { groupRecurringIssues, type RecurringIssueDefect } from './recurringIssues'
+import { groupRecurringIssues, isTeamIssue, type RecurringIssueDefect } from './recurringIssues'
 
 function defect(over: Partial<RecurringIssueDefect>): RecurringIssueDefect {
   return {
@@ -9,6 +9,7 @@ function defect(over: Partial<RecurringIssueDefect>): RecurringIssueDefect {
     severity: 'non_safety',
     status: 'open',
     createdAt: '2026-08-01T00:00:00Z',
+    reportedBy: 'driver-1',
     ...over,
   }
 }
@@ -65,7 +66,42 @@ describe('groupRecurringIssues', () => {
     expect(groups[0].truckIds.sort()).toEqual(['truck-1', 'truck-2'])
   })
 
+  it('tracks distinct drivers who reported the category, dropping nulls', () => {
+    const groups = groupRecurringIssues([
+      defect({ description: 'Tires — low tread', reportedBy: 'driver-1' }),
+      defect({ description: 'Tires — low tread', reportedBy: 'driver-2' }),
+      defect({ description: 'Tires — low tread', reportedBy: null }),
+    ])
+    expect(groups[0].reportedByIds.sort()).toEqual(['driver-1', 'driver-2'])
+  })
+
   it('returns an empty list for no defects', () => {
     expect(groupRecurringIssues([])).toEqual([])
+  })
+})
+
+describe('isTeamIssue', () => {
+  it('is false when a category is confined to one truck and one driver', () => {
+    const [group] = groupRecurringIssues([
+      defect({ description: 'Windshield — crack', truckId: 'truck-1', reportedBy: 'driver-1' }),
+      defect({ description: 'Windshield — crack', truckId: 'truck-1', reportedBy: 'driver-1' }),
+    ])
+    expect(isTeamIssue(group)).toBe(false)
+  })
+
+  it('is true when a category spans more than one truck', () => {
+    const [group] = groupRecurringIssues([
+      defect({ description: 'Tires — low tread', truckId: 'truck-1' }),
+      defect({ description: 'Tires — low tread', truckId: 'truck-2' }),
+    ])
+    expect(isTeamIssue(group)).toBe(true)
+  })
+
+  it('is true when a category is reported by more than one driver, even on one truck', () => {
+    const [group] = groupRecurringIssues([
+      defect({ description: 'Tires — low tread', truckId: 'truck-1', reportedBy: 'driver-1' }),
+      defect({ description: 'Tires — low tread', truckId: 'truck-1', reportedBy: 'driver-2' }),
+    ])
+    expect(isTeamIssue(group)).toBe(true)
   })
 })

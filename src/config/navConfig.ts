@@ -136,9 +136,17 @@ export const FLEET_NAV: NavEntry[] = [
     tier:  ['starter', 'pro', 'enterprise'],
   },
 
-  // ── Dump Truck Mode — recurring issues / KPI rollup ──────────────────────
+  // ── Dump Truck Mode — fleet KPIs (per-truck / per-driver + team) ─────────
   {
-    id: 'fleet-dump-truck-recurring-issues', label: 'Recurring Issues', href: '/admin/dump-truck/recurring-issues', icon: '📈',
+    id: 'fleet-dump-truck-kpis', label: 'Fleet KPIs', href: '/admin/dump-truck/kpis', icon: '📈',
+    family: 'fleet', enabled: true,
+    modes: ['dispatcher', 'owner_op', 'fleet_owner', 'fleet_manager', 'admin'],
+    tier:  ['starter', 'pro', 'enterprise'],
+  },
+
+  // ── Dump Truck Mode — recurring issues detail (all-time defect Pareto) ───
+  {
+    id: 'fleet-dump-truck-recurring-issues', label: 'Recurring Issues', href: '/admin/dump-truck/recurring-issues', icon: '🔧',
     family: 'fleet', enabled: true,
     modes: ['dispatcher', 'owner_op', 'fleet_owner', 'fleet_manager', 'admin'],
     tier:  ['starter', 'pro', 'enterprise'],
