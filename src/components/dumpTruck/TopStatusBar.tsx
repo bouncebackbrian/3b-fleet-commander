@@ -1,6 +1,8 @@
 'use client'
 import Link from 'next/link'
 import type { WeatherData, WeatherInfo } from '@/lib/dashboard/types'
+import type { FlowStateId } from '@/lib/dumpTruck/stateMachine'
+import { travelStatusFor, TRAVEL_STATUS_LABEL, TRAVEL_STATUS_ICON } from '@/lib/dumpTruck/travelStatus'
 
 interface Props {
   isOnline: boolean
@@ -12,27 +14,43 @@ interface Props {
   weatherLoading?: boolean
   businessName?: string | null
   driverName?: string | null
+  /** Spec §5.3 — explicit INBOUND/OUTBOUND/JOB SITE context, derived
+   *  read-only from the flow state (see travelStatus.ts), no new events. */
+  flowState?: FlowStateId | null
 }
 
 export default function TopStatusBar({
-  isOnline, pendingCount, failedCount, gpsPermission, wx, weather, weatherLoading, businessName, driverName,
+  isOnline, pendingCount, failedCount, gpsPermission, wx, weather, weatherLoading, businessName, driverName, flowState,
 }: Props) {
+  const travelStatus = flowState ? travelStatusFor(flowState) : null
+
   return (
     <div style={{
-      height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '0 1rem', background: 'var(--surface)', borderBottom: '1px solid var(--border)',
+      minHeight: 56, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      flexWrap: 'wrap', gap: '.5rem', padding: '.5rem 1rem', background: 'var(--surface)', borderBottom: '1px solid var(--border)',
     }}>
-      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
-        <div style={{ fontWeight: 900, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>🚛</span> Dump Truck Mode
-        </div>
-        {(businessName || driverName) && (
-          <div style={{
-            fontSize: '.68rem', color: 'var(--muted)', fontWeight: 600, marginLeft: 26,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-            {[businessName, driverName].filter(Boolean).join(' · ')}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
+          <div style={{ fontWeight: 900, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>🚛</span> Dump Truck Mode
           </div>
+          {(businessName || driverName) && (
+            <div style={{
+              fontSize: '.68rem', color: 'var(--muted)', fontWeight: 600, marginLeft: 26,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {[businessName, driverName].filter(Boolean).join(' · ')}
+            </div>
+          )}
+        </div>
+        {travelStatus && (
+          <span style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '.4rem .85rem', borderRadius: 999,
+            background: 'var(--primary)', color: '#04140f', fontWeight: 900, fontSize: '.85rem', letterSpacing: '.02em',
+          }}>
+            <span>{TRAVEL_STATUS_ICON[travelStatus]}</span>
+            {TRAVEL_STATUS_LABEL[travelStatus].toUpperCase()}
+          </span>
         )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '.8rem', fontWeight: 700 }}>

@@ -189,6 +189,7 @@ export default function DumpTruckDriverPage() {
         weatherLoading={weatherLoading}
         businessName={businessName}
         driverName={driverName}
+        flowState={flowState}
       />
 
       <div className="dt-body">
