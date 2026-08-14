@@ -5,6 +5,8 @@ import { usePathname, useRouter } from 'next/navigation'
 import { Gauge, BarChart2, Truck, FileCheck, Clock, Fuel, Settings, ChevronLeft, ChevronRight, MapPin, MessageSquare, LogOut, Receipt, HardHat, MapPinned, Timer } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
 import { createAuthClient } from '@/lib/auth-client'
+import { getCurrentUser, type OpsProfile } from '@/lib/auth-adapter'
+import { isHrefVisibleForOpsProfile } from '@/lib/userMode'
 
 const MODULES = [
   {
@@ -59,6 +61,7 @@ type Profile = {
 export default function Sidebar() {
   const [col,     setCol]     = useState(false)
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [opsProfile, setOpsProfile] = useState<OpsProfile | null>(null)
   const path    = usePathname()
   const router  = useRouter()
   const fleetDb = createClient()
@@ -77,7 +80,15 @@ export default function Sidebar() {
         setProfile({ email: data.user.email ?? null, full_name: null, role: null, three_b_id: null, three_b_biz_id: null, three_b_linked: false })
       }
     })
+    getCurrentUser().then(user => setOpsProfile(user?.opsProfile ?? null))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Hides OTR-only or dump-truck-only groups/items for the business's ops profile
+   *  (e.g. a dump-truck business never sees Mileage Intelligence / Trip Planner /
+   *  Dispatch Messages — see userMode.ts's OPS_PROFILE_HIDDEN_HREFS). */
+  const visibleModules = MODULES
+    .map(({ group, items }) => ({ group, items: items.filter(i => isHrefVisibleForOpsProfile(i.href, opsProfile)) }))
+    .filter(({ items }) => items.length > 0)
 
   const signOut = async () => {
     await createAuthClient().auth.signOut()
@@ -110,7 +121,7 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav style={{flex:1,padding:'.6rem .45rem',display:'flex',flexDirection:'column',gap:0,overflowY:'auto'}}>
-        {MODULES.map(({group, items}) => (
+        {visibleModules.map(({group, items}) => (
           <div key={group} style={{marginBottom:'.5rem'}}>
             {!col && (
               <div style={{fontSize:'var(--text-xs)',color:'var(--faint)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',padding:'.5rem .85rem .3rem',userSelect:'none'}}>

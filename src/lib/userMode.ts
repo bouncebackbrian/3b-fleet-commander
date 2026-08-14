@@ -21,7 +21,7 @@
  * reconciling/removing in a future pass, out of scope here.
  */
 
-import type { Portal, PortalGrants } from './auth-adapter'
+import type { Portal, PortalGrants, OpsProfile } from './auth-adapter'
 
 export type UserMode = Portal | 'all'
 
@@ -118,8 +118,29 @@ function tabsForHrefs(hrefs: string[]): NavTab[] {
   return hrefs.map(h => ALL_TABS.find(t => t.href === h)).filter((t): t is NavTab => !!t)
 }
 
-/** Union of tabs across every portal in the list, de-duplicated, in portal order. */
-export function getTabsForPortals(portals: Portal[]): NavTab[] {
+/** Tabs that don't apply to a given ops profile — hidden regardless of portal grants.
+ *  Anything not listed here (vault, compliance, maintenance, equipment, account,
+ *  settings) is universal and shows for every ops profile. */
+const OPS_PROFILE_HIDDEN_HREFS: Record<OpsProfile, string[]> = {
+  dump_truck: ['/dashboard', '/trips', '/dispatch', '/loads', '/trailer', '/expenses'],
+  /** /broker is Dump Truck Mode's own broker-rate desk (see /broker/page.tsx) — not OTR-relevant. */
+  otr:        ['/driver/dump-truck', '/driver/hours', '/admin/dump-truck', '/broker'],
+}
+
+/** Exported so other nav surfaces (e.g. the desktop Sidebar, which keeps its
+ *  own static module list rather than ALL_TABS) can apply the same filter. */
+export function isHrefVisibleForOpsProfile(href: string, opsProfile?: OpsProfile | null): boolean {
+  if (!opsProfile) return true
+  return !(OPS_PROFILE_HIDDEN_HREFS[opsProfile] ?? []).includes(href)
+}
+
+function filterForOpsProfile(tabs: NavTab[], opsProfile?: OpsProfile | null): NavTab[] {
+  return tabs.filter(t => isHrefVisibleForOpsProfile(t.href, opsProfile))
+}
+
+/** Union of tabs across every portal in the list, de-duplicated, in portal order,
+ *  filtered to the business's ops profile (omit to skip that filter). */
+export function getTabsForPortals(portals: Portal[], opsProfile?: OpsProfile | null): NavTab[] {
   const seen = new Set<string>()
   const ordered: NavTab[] = []
   for (const p of portals) {
@@ -127,13 +148,13 @@ export function getTabsForPortals(portals: Portal[]): NavTab[] {
       if (!seen.has(tab.href)) { seen.add(tab.href); ordered.push(tab) }
     }
   }
-  return ordered
+  return filterForOpsProfile(ordered, opsProfile)
 }
 
 /** Tabs for the current focus mode, given the portals the member actually holds. */
-export function getTabsForMode(mode: UserMode, grantedPortals: Portal[]): NavTab[] {
-  if (mode === 'all') return getTabsForPortals(grantedPortals)
-  return getTabsForPortals(grantedPortals.includes(mode) ? [mode] : [])
+export function getTabsForMode(mode: UserMode, grantedPortals: Portal[], opsProfile?: OpsProfile | null): NavTab[] {
+  if (mode === 'all') return getTabsForPortals(grantedPortals, opsProfile)
+  return getTabsForPortals(grantedPortals.includes(mode) ? [mode] : [], opsProfile)
 }
 
 // ── Primary vs overflow ("More") tabs ─────────────────────────────────────────
@@ -147,15 +168,15 @@ const PRIMARY_TAB_HREFS_BY_PORTAL: Partial<Record<Portal, string[]>> = {
   driver: ['/dashboard', '/driver/dump-truck', '/driver/hours'],
 }
 
-export function getPrimaryTabsForMode(mode: UserMode, grantedPortals: Portal[]): NavTab[] {
-  const full = getTabsForMode(mode, grantedPortals)
+export function getPrimaryTabsForMode(mode: UserMode, grantedPortals: Portal[], opsProfile?: OpsProfile | null): NavTab[] {
+  const full = getTabsForMode(mode, grantedPortals, opsProfile)
   const primaryHrefs = mode === 'all' ? undefined : PRIMARY_TAB_HREFS_BY_PORTAL[mode]
   if (!primaryHrefs) return full
   return full.filter(t => primaryHrefs.includes(t.href))
 }
 
-export function getOverflowTabsForMode(mode: UserMode, grantedPortals: Portal[]): NavTab[] {
-  const full = getTabsForMode(mode, grantedPortals)
+export function getOverflowTabsForMode(mode: UserMode, grantedPortals: Portal[], opsProfile?: OpsProfile | null): NavTab[] {
+  const full = getTabsForMode(mode, grantedPortals, opsProfile)
   const primaryHrefs = mode === 'all' ? undefined : PRIMARY_TAB_HREFS_BY_PORTAL[mode]
   if (!primaryHrefs) return []
   return full.filter(t => !primaryHrefs.includes(t.href))

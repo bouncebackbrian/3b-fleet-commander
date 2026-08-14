@@ -12,7 +12,7 @@
  */
 import { useState, useEffect } from 'react'
 import { MODE_CONFIG, writeUserMode, readUserMode, getTabsForMode, getAvailableModes, getDefaultMode, type UserMode } from '@/lib/userMode'
-import { getCurrentUser, type Portal, type PortalGrants } from '@/lib/auth-adapter'
+import { getCurrentUser, type Portal, type PortalGrants, type OpsProfile } from '@/lib/auth-adapter'
 
 interface Props {
   open:      boolean
@@ -22,6 +22,7 @@ interface Props {
 
 export default function UserModeSelectorSheet({ open, onClose, isFirstRun = false }: Props) {
   const [portals, setPortals] = useState<PortalGrants>({})
+  const [opsProfile, setOpsProfile] = useState<OpsProfile | null>(null)
   const [modes, setModes] = useState<UserMode[]>([])
   const [selected, setSelected] = useState<UserMode | null>(null)
   const [saving,   setSaving]   = useState(false)
@@ -33,6 +34,7 @@ export default function UserModeSelectorSheet({ open, onClose, isFirstRun = fals
       if (cancelled) return
       const grants = user?.portals ?? {}
       setPortals(grants)
+      setOpsProfile(user?.opsProfile ?? null)
       const available = getAvailableModes(grants)
       setModes(available)
       const stored = readUserMode()
@@ -72,7 +74,7 @@ export default function UserModeSelectorSheet({ open, onClose, isFirstRun = fals
 
   const current = selected ? MODE_CONFIG[selected] : null
   const grantedPortals = Object.keys(portals) as Portal[]
-  const tabs = selected ? getTabsForMode(selected, grantedPortals) : []
+  const tabs = selected ? getTabsForMode(selected, grantedPortals, opsProfile) : []
 
   return (
     <>

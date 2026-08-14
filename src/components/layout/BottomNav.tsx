@@ -18,7 +18,7 @@ import {
   readUserMode, writeUserMode, getPrimaryTabsForMode, getOverflowTabsForMode,
   getDefaultMode, getAvailableModes, type UserMode, type NavTab,
 } from '@/lib/userMode'
-import { getCurrentUser, type Portal, type PortalGrants } from '@/lib/auth-adapter'
+import { getCurrentUser, type Portal, type PortalGrants, type OpsProfile } from '@/lib/auth-adapter'
 
 const TAB_ICONS: Record<string, string> = {
   '/dashboard':  '🚛',
@@ -36,6 +36,7 @@ const TAB_ICONS: Record<string, string> = {
 export default function BottomNav() {
   const path = usePathname()
   const [portals, setPortals] = useState<PortalGrants>({})
+  const [opsProfile, setOpsProfile] = useState<OpsProfile | null>(null)
   const [mode, setMode] = useState<UserMode | null>(null)
   const [showMore, setShowMore] = useState(false)
 
@@ -47,6 +48,7 @@ export default function BottomNav() {
       if (cancelled) return
       const grants = user?.portals ?? {}
       setPortals(grants)
+      setOpsProfile(user?.opsProfile ?? null)
 
       const available = getAvailableModes(grants)
       const stored = readUserMode()
@@ -69,8 +71,8 @@ export default function BottomNav() {
   if (!mode) return null
 
   const grantedPortals = Object.keys(portals) as Portal[]
-  const primaryTabs = getPrimaryTabsForMode(mode, grantedPortals)
-  const overflowTabs = getOverflowTabsForMode(mode, grantedPortals)
+  const primaryTabs = getPrimaryTabsForMode(mode, grantedPortals, opsProfile)
+  const overflowTabs = getOverflowTabsForMode(mode, grantedPortals, opsProfile)
   const overflowActive = overflowTabs.some(t => path === t.href || path.startsWith(t.href))
 
   return (

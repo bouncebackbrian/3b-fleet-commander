@@ -25,7 +25,7 @@ export async function GET() {
 
   const { data: business } = await fleetServiceClient
     .from('businesses')
-    .select('slug, type')
+    .select('slug, type, ops_profile')
     .eq('id', auth.businessId)
     .maybeSingle()
 
@@ -36,6 +36,9 @@ export async function GET() {
       businessId:   auth.businessId,
       businessSlug: business?.slug ?? null,
       businessType: business?.type ?? null,
+      /** 'otr' | 'dump_truck' — drives nav filtering, see userMode.ts. Defaults
+       *  to 'otr' for businesses created before this column existed. */
+      opsProfile:   business?.ops_profile ?? 'otr',
       role:         auth.role,
       portals:      auth.portals,
     },

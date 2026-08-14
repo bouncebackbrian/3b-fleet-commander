@@ -29,6 +29,9 @@ import { createFleetClient } from '@/lib/fleet-db-client'   // Fleet DB — memb
 
 export type BusinessType = 'owner_op' | 'carrier' | 'brokerage' | 'fleet_management'
 
+/** Which nav surface a business operates — drives which tabs/modules show. See userMode.ts. */
+export type OpsProfile = 'otr' | 'dump_truck'
+
 export type MemberRole = 'owner' | 'driver' | 'dispatcher' | 'admin' | 'broker' | 'fleet_manager'
 
 /**
@@ -52,6 +55,8 @@ export interface FleetUser {
   businessId?:    string | null   // primary business UUID
   businessSlug?:  string | null   // e.g. 'star-freight-services'
   businessType?:  BusinessType | null
+  /** 'otr' | 'dump_truck' — defaults to 'otr' server-side for pre-existing businesses. */
+  opsProfile?:    OpsProfile | null
   role?:          MemberRole | null
   /** Real per-portal grants — drives nav + client-side gating. See Portal note above. */
   portals:        PortalGrants
@@ -113,17 +118,17 @@ export async function getCurrentUser(): Promise<FleetUser | null> {
     if (!res.ok) return null
     const { user: fleetUser } = await res.json() as { user: {
       id: string; email: string | null; businessId: string | null; businessSlug: string | null
-      businessType: BusinessType | null; role: MemberRole | null; portals: PortalGrants
+      businessType: BusinessType | null; opsProfile: OpsProfile | null; role: MemberRole | null; portals: PortalGrants
     } | null }
     if (!fleetUser) {
       return {
         id: user.id, email: user.email ?? null,
-        businessId: null, businessSlug: null, businessType: null, role: null,
+        businessId: null, businessSlug: null, businessType: null, opsProfile: null, role: null,
         portals: {}, isOwnerOp: false, displayMode: 'unknown',
       }
     }
 
-    const { businessId, businessSlug, businessType, role, portals } = fleetUser
+    const { businessId, businessSlug, businessType, opsProfile, role, portals } = fleetUser
 
     return {
       id:            user.id,
@@ -131,6 +136,7 @@ export async function getCurrentUser(): Promise<FleetUser | null> {
       businessId,
       businessSlug,
       businessType,
+      opsProfile,
       role,
       portals,
       isOwnerOp:     role === 'owner' && businessType === 'owner_op',
