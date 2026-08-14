@@ -67,6 +67,13 @@ export default function DumpTruckDriverPage() {
   const dumpSite = context?.sites.find(s => s.id === activeJob?.dumpSiteId)
   const yardSite = context?.sites.find(s => s.siteType === 'yard')
 
+  /** ADR-010 — dispatch-set daily load goal, only meaningful when the job's quantity is tracked in loads. */
+  const dailyLoadGoal = activeJob?.quantityUnit === 'loads' ? activeJob.estQuantity : null
+  const loadCount = context?.shift?.loadCount ?? 0
+  /** Proactive closing nudge: shown once the goal is met, right when the driver is deciding
+   *  between another load and heading back to the yard — never blocks the primary action. */
+  const showClosingAlert = !!dailyLoadGoal && loadCount >= dailyLoadGoal && flowState === 'driving_to_next'
+
   const siteLabelCtx = { pickupSiteName: pickupSite?.name, dumpSiteName: dumpSite?.name, yardSiteName: yardSite?.name, material: activeJob?.material }
   const displayAction = {
     ...primaryAction,
@@ -235,13 +242,27 @@ export default function DumpTruckDriverPage() {
               onContinue={handleOverrideContinue}
             />
           ) : (
-            <CenterAction
-              action={displayAction}
-              busy={false}
-              disabledReason={disabledReason}
-              onPrimary={handlePrimary}
-              onSecondary={handleSecondary}
-            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '.75rem', width: '100%', alignItems: 'center' }}>
+              {showClosingAlert && (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', gap: '.35rem', width: '100%', maxWidth: 480,
+                  background: 'rgba(11,78,162,.08)', border: '1px solid var(--primary)', borderRadius: 12, padding: '.85rem 1rem',
+                  textAlign: 'center',
+                }}>
+                  <div style={{ fontWeight: 800, color: 'var(--primary)' }}>🎯 Daily goal reached — {loadCount} of {dailyLoadGoal} loads</div>
+                  <div style={{ fontSize: '.78rem', color: 'var(--muted)' }}>
+                    Add another load if dispatch wants more, or head back to the yard to close out the day.
+                  </div>
+                </div>
+              )}
+              <CenterAction
+                action={displayAction}
+                busy={false}
+                disabledReason={disabledReason}
+                onPrimary={handlePrimary}
+                onSecondary={handleSecondary}
+              />
+            </div>
           )}
         </div>
 
