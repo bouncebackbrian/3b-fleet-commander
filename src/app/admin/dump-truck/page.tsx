@@ -648,6 +648,7 @@ function JobsPanel({ jobs, sites, equipment, drivers, brokers, onBrokersChanged,
     pickupSiteId: '', dumpSiteId: '', material: '',
     loadTime: '', orderDate: '', deliveryDate: '', cosigneeName: '', orderedBy: '', contactPhone: '',
     truckType: '', directions: '', travelTimeMinutes: '', fuelSurcharge: '', pricePerHour: '', pricePerTon: '', materialCost: '', freightBillNumber: '',
+    estQuantity: '', quantityUnit: 'loads' as DumpTruckJob['quantityUnit'],
   }
   const [form, setForm] = useState(emptyForm)
   const [busy, setBusy] = useState(false)
@@ -672,6 +673,8 @@ function JobsPanel({ jobs, sites, equipment, drivers, brokers, onBrokersChanged,
           pricePerTon: form.pricePerTon ? Number(form.pricePerTon) : null,
           materialCost: form.materialCost ? Number(form.materialCost) : null,
           freightBillNumber: form.freightBillNumber || null,
+          estQuantity: form.estQuantity ? Number(form.estQuantity) : null,
+          quantityUnit: form.quantityUnit,
         }),
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Could not create job')
@@ -706,6 +709,19 @@ function JobsPanel({ jobs, sites, equipment, drivers, brokers, onBrokersChanged,
           />
         </Field>
         <Field label="Material"><input style={inputStyle} value={form.material} onChange={e => setForm({ ...form, material: e.target.value })} /></Field>
+        <Field label="Est. Quantity (daily goal)">
+          <input style={inputStyle} type="number" min="0" value={form.estQuantity} onChange={e => setForm({ ...form, estQuantity: e.target.value })} placeholder="e.g. 5" />
+        </Field>
+        <Field label="Quantity Unit">
+          <select style={inputStyle} value={form.quantityUnit} onChange={e => setForm({ ...form, quantityUnit: e.target.value as DumpTruckJob['quantityUnit'] })}>
+            <option value="loads">Loads</option>
+            <option value="tons">Tons</option>
+            <option value="cubic_yards">Cubic Yards</option>
+            <option value="hours">Hours</option>
+            <option value="miles">Miles</option>
+            <option value="units">Units</option>
+          </select>
+        </Field>
         <Field label="Driver">
           <select style={inputStyle} value={form.driverId} onChange={e => setForm({ ...form, driverId: e.target.value })}>
             <option value="">Unassigned</option>

@@ -32,6 +32,8 @@ export default function LeftRail({
   const activeJob = jobs.find(j => j.id === activeJobId) ?? null
   const pickupSite = sites.find(s => s.id === activeJob?.pickupSiteId)
   const dumpSite = sites.find(s => s.id === activeJob?.dumpSiteId)
+  /** Dispatch-set target for the day — only meaningful when the job's quantity is tracked in loads. */
+  const dailyLoadGoal = activeJob?.quantityUnit === 'loads' ? activeJob.estQuantity : null
 
   const elapsed = clockInAt ? formatDuration(now - new Date(clockInAt).getTime()) : '—'
 
@@ -41,7 +43,7 @@ export default function LeftRail({
       <Field label="Truck / Unit" value={truckUnit ?? '—'} />
       {trailerUnit && <Field label="Trailer" value={trailerUnit} />}
       <Field label="Custody" value={isCustodyOpen(flowState) ? 'With Driver' : 'Not in Custody'} />
-      <Field label="Loads Completed" value={String(loadCount)} big />
+      <Field label="Loads Completed" value={dailyLoadGoal ? `${loadCount} of ${dailyLoadGoal}` : String(loadCount)} big />
 
       {jobs.length > 0 && (
         <div>
