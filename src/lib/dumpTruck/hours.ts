@@ -196,6 +196,22 @@ export interface PayPolicy {
    *  any other non-shift day; apply manually via the "Other" hours entry
    *  until that signal exists. */
   dispatchMinimumHours?: number
+  /**
+   * 2026-08-15: which threshold decides regular vs overtime.
+   *   'daily' (default, existing behavior) — dailyOtThresholdHours applies
+   *   independently to each day; a day past that threshold is OT regardless
+   *   of the week's total.
+   *   'weekly' — dailyOtThresholdHours is ignored for the split (a normal
+   *   day can run long with no OT triggered); instead the whole Mon-Sun
+   *   week's hours are pooled and everything past weeklyOtThresholdHours
+   *   for that week is OT. See applyWeeklyOvertimeSplit below — daily rows
+   *   still get an initial daily-mode split from buildDailyHoursRow, and
+   *   the range/week builder corrects it in a second pass once every day
+   *   in the week is known.
+   */
+  otMode?: 'daily' | 'weekly'
+  /** Only used when otMode is 'weekly'. */
+  weeklyOtThresholdHours?: number
 }
 
 export const DEFAULT_PAY_POLICY: PayPolicy = {
@@ -203,6 +219,8 @@ export const DEFAULT_PAY_POLICY: PayPolicy = {
   dailyOtThresholdHours: 8.00,
   otMultiplier: 1.50,
   payType: 'hourly',
+  otMode: 'daily',
+  weeklyOtThresholdHours: 40,
 }
 
 /** Single hourly-rate + daily-OT estimate only — see module doc for scope. */
@@ -438,6 +456,59 @@ export function buildRangeSummary(rows: DailyHoursRow[]): RangeSummary {
 
 function sum(nums: number[]): number {
   return nums.reduce((a, b) => a + b, 0)
+}
+
+/**
+ * Re-splits one driver's daily rows into regular/overtime using a weekly
+ * (not daily) threshold — for policy.otMode === 'weekly'. Each row already
+ * has a daily-mode split from buildDailyHoursRow (which has no visibility
+ * into sibling days); this corrects it once every row in the range is known.
+ *
+ * Rows are bucketed into their own Monday-Sunday workweek first (a range
+ * spanning multiple weeks must not pool hours across week boundaries), then
+ * walked in date order within each week accumulating total hours — whatever
+ * pushes the running total past the threshold becomes overtime. This
+ * allocates a week's overtime to its chronologically last hours rather than
+ * spreading it proportionally across days; FLSA only requires the total
+ * overtime pay for the week be correct, not which specific hours carry the
+ * OT label, and "OT starts once you cross the threshold" matches how most
+ * drivers already think about it.
+ *
+ * per_mile pay rows are left completely untouched — weekly overtime only
+ * applies to hourly-based pay. Returns new row objects (does not mutate
+ * the input), re-sorted to workDate order.
+ */
+export function applyWeeklyOvertimeSplit(rows: DailyHoursRow[], policy: PayPolicy): DailyHoursRow[] {
+  if (policy.payType === 'per_mile') return rows
+
+  const threshold = policy.weeklyOtThresholdHours ?? 40
+  const byWeek = new Map<string, DailyHoursRow[]>()
+  for (const row of rows) {
+    const weekKey = getWeekRange(new Date(`${row.workDate}T00:00:00Z`)).start
+    const list = byWeek.get(weekKey) ?? []
+    list.push(row)
+    byWeek.set(weekKey, list)
+  }
+
+  const result: DailyHoursRow[] = []
+  for (const weekRows of byWeek.values()) {
+    const sorted = [...weekRows].sort((a, b) => a.workDate.localeCompare(b.workDate))
+    let cumulative = 0
+    for (const row of sorted) {
+      const dayHours = row.totalShiftHours
+      const regularRoom = Math.max(0, threshold - cumulative)
+      const regularHours = round2(Math.min(dayHours, regularRoom))
+      const overtimeHours = round2(Math.max(0, dayHours - regularHours))
+      cumulative += dayHours
+
+      const hourlyEstimatedEarnings = estimateGrossPay({ regularHours, overtimeHours }, policy, row.shiftMiles)
+      result.push({
+        ...row, regularHours, overtimeHours,
+        hourlyEstimatedEarnings, estimatedGrossEarnings: hourlyEstimatedEarnings,
+      })
+    }
+  }
+  return result.sort((a, b) => a.workDate.localeCompare(b.workDate))
 }
 
 /**

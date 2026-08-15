@@ -12,7 +12,7 @@
 
 import { fleetServiceClient } from '@/lib/fleet-service-client'
 import {
-  buildDailyHoursRow, buildRangeSummary, applyRevenueShareFloor, type DailyHoursRow, type RangeSummary,
+  buildDailyHoursRow, buildRangeSummary, applyRevenueShareFloor, applyWeeklyOvertimeSplit, type DailyHoursRow, type RangeSummary,
   type DateRange, type PayPolicy,
 } from '@/lib/dumpTruck/hours'
 import type { DriveSegmentCategory, DumpTruckEventType } from '@/lib/dumpTruck/types'
@@ -135,7 +135,11 @@ export async function buildDriverHoursForRange(
     })
   })
 
-  const summary = buildRangeSummary(rows)
+  // Each row above got an initial daily-mode split (buildDailyHoursRow has no
+  // visibility into sibling days). For otMode 'weekly', correct that now that
+  // every day in the range is known — see applyWeeklyOvertimeSplit's doc.
+  const finalRows = payPolicy.otMode === 'weekly' ? applyWeeklyOvertimeSplit(rows, payPolicy) : rows
+  const summary = buildRangeSummary(finalRows)
   let revenueShareApplied: RevenueShareApplied | null = null
 
   if (payPolicy.payType === 'greater_of_hourly_or_revenue_share' && payPolicy.revenueSharePct) {
@@ -149,5 +153,5 @@ export async function buildDriverHoursForRange(
     }
   }
 
-  return { rows, summary, payPolicy, isDefaultPayPolicy: payPolicy.isDefault, revenueShareApplied }
+  return { rows: finalRows, summary, payPolicy, isDefaultPayPolicy: payPolicy.isDefault, revenueShareApplied }
 }
