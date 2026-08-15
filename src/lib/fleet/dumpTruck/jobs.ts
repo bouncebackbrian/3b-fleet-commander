@@ -117,18 +117,36 @@ export interface DriverOption {
  *
  * SCHEMA NOTE (2026-07-28): live `profiles` has a single `full_name` column,
  * not `first_name`/`last_name` — see docs/SCHEMA_RECONCILIATION.md.
+ *
+ * BUG FIX (2026-08-15): this used to be a single query with a nested
+ * `profiles(full_name, three_b_id)` select, relying on PostgREST
+ * auto-detecting a foreign key between fleet_business_members.user_id and
+ * profiles.id. No such FK actually exists in the schema (confirmed via
+ * information_schema — fleet_business_members only has a FK to
+ * businesses), so PostgREST always rejected it with PGRST200 ("Could not
+ * find a relationship..."). Every caller of listDrivers() has been 500ing
+ * silently since — SQCDP surfaced it first because it's the first caller
+ * with visible error handling. Two separate queries, joined in JS, like
+ * getDriverBusinessMeta in shared.ts already does for the same reason.
  */
 export async function listDrivers(businessId: string): Promise<DriverOption[]> {
-  const { data, error } = await fleetServiceClient
+  const { data: members, error } = await fleetServiceClient
     .from('fleet_business_members')
-    .select('user_id, profiles(full_name, three_b_id)')
+    .select('user_id')
     .eq('business_id', businessId)
     .eq('active', true)
   if (error) throw error
-  return (data ?? []).map(r => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const profile = r.profiles as any
-    return { userId: r.user_id, name: profile?.full_name || 'Unnamed driver', threebId: profile?.three_b_id ?? null }
+  const userIds = (members ?? []).map(m => m.user_id)
+  if (userIds.length === 0) return []
+
+  const { data: profiles, error: profilesError } = await fleetServiceClient
+    .from('profiles').select('id, full_name, three_b_id').in('id', userIds)
+  if (profilesError) throw profilesError
+  const profileById = new Map((profiles ?? []).map(p => [p.id, p]))
+
+  return userIds.map(userId => {
+    const profile = profileById.get(userId)
+    return { userId, name: profile?.full_name || 'Unnamed driver', threebId: profile?.three_b_id ?? null }
   })
 }
 

@@ -38,22 +38,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ review, trend })
   } catch (err) {
     console.error('[api/fleet/dump-truck/admin/sqcdp] GET error:', err)
-    // TEMPORARY (2026-08-14): surfacing the real error to diagnose a live blank-page
-    // report — this is an admin-only, single-tenant-owner route, so leaking a message
-    // string here is a reasonable tradeoff for a few minutes of live debugging.
-    // Revert to a generic message once the root cause is found and fixed.
-    // Supabase/Postgrest errors are plain objects (not Error instances) shaped like
-    // { message, code, details, hint } — pull those out explicitly, since
-    // `String(err)` on a plain object just gives "[object Object]".
-    let detail: string
-    if (err instanceof Error) {
-      detail = `${err.name}: ${err.message}`
-    } else if (err && typeof err === 'object') {
-      const e = err as Record<string, unknown>
-      detail = [e.message, e.code, e.details, e.hint].filter(Boolean).join(' | ') || JSON.stringify(err)
-    } else {
-      detail = String(err)
-    }
-    return NextResponse.json({ error: 'Internal server error', detail }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
