@@ -79,7 +79,7 @@ export default function SqcdpReviewPage() {
       fetch(`/api/fleet/dump-truck/admin/corrective-actions?month=${month}`).then(r => r.json()),
       fetch('/api/fleet/dump-truck/drivers').then(r => r.json()),
     ]).then(([sqcdp, correctiveActions, driversRes]) => {
-      if (sqcdp.error) { setLoadError(`Scorecard: ${sqcdp.error}`); return }
+      if (sqcdp.error) { setLoadError(`Scorecard: ${sqcdp.error}${sqcdp.detail ? ` — ${sqcdp.detail}` : ''}`); return }
       setReview(sqcdp.review); setTrend(sqcdp.trend ?? [])
       setActions(correctiveActions.actions ?? [])
       setDrivers(driversRes.drivers ?? [])
