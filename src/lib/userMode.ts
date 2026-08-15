@@ -15,6 +15,18 @@
  * the union of tabs across every portal they're granted, same idea as the
  * old owner_operator/fleet_admin "everything" modes.
  *
+ * 'office' is a second pseudo-mode (2026-08-14): Dispatch and Admin's tab
+ * sets overlap almost completely for a dump-truck business (both are
+ * essentially "the back office," just with slightly different edges — see
+ * OPS_PROFILE_HIDDEN_HREFS below). Offering them as two separate "focus"
+ * choices to someone who holds both looked like a bug ("they all have the
+ * same functions") rather than a real choice, so when a member holds both
+ * dispatch and admin they collapse into one 'office' entry instead. The
+ * underlying fleet_member_portal_grants stay completely separate — this is
+ * presentation-only. A member who holds only one of the two (e.g. a
+ * dispatcher-only hire with no admin grant) still sees that single portal
+ * labeled normally, no merging.
+ *
  * Note: src/config/navConfig.ts is an earlier, unused draft of a
  * next-gen nav system (keyed on a different DisplayMode enum). It was never
  * wired into BottomNav — this file remains the live system. Worth
@@ -23,7 +35,7 @@
 
 import type { Portal, PortalGrants, OpsProfile } from './auth-adapter'
 
-export type UserMode = Portal | 'all'
+export type UserMode = Portal | 'office' | 'all'
 
 export interface ModeConfig {
   id:          UserMode
@@ -66,6 +78,14 @@ export const MODE_CONFIG: Record<UserMode, ModeConfig> = {
     tagline:     'Full company command',
     description: 'Company setup — sites, jobs, pay policy, team, and fleet-wide reporting.',
     color:       '#ffd060',
+  },
+  office: {
+    id:          'office',
+    label:       'Office',
+    emoji:       '🏢',
+    tagline:     'Dispatch + Admin — full back-office command',
+    description: 'Everything dispatch and admin need in one place — sites, jobs, pay policy, team, equipment, and fleet-wide reporting. Shown when you hold both portals, since they overlap almost completely.',
+    color:       '#c890ff',
   },
   all: {
     id:          'all',
@@ -154,6 +174,10 @@ export function getTabsForPortals(portals: Portal[], opsProfile?: OpsProfile | n
 /** Tabs for the current focus mode, given the portals the member actually holds. */
 export function getTabsForMode(mode: UserMode, grantedPortals: Portal[], opsProfile?: OpsProfile | null): NavTab[] {
   if (mode === 'all') return getTabsForPortals(grantedPortals, opsProfile)
+  if (mode === 'office') {
+    const officePortals = (['dispatch', 'admin'] as const).filter(p => grantedPortals.includes(p))
+    return getTabsForPortals(officePortals, opsProfile)
+  }
   return getTabsForPortals(grantedPortals.includes(mode) ? [mode] : [], opsProfile)
 }
 
@@ -170,23 +194,38 @@ const PRIMARY_TAB_HREFS_BY_PORTAL: Partial<Record<Portal, string[]>> = {
 
 export function getPrimaryTabsForMode(mode: UserMode, grantedPortals: Portal[], opsProfile?: OpsProfile | null): NavTab[] {
   const full = getTabsForMode(mode, grantedPortals, opsProfile)
-  const primaryHrefs = mode === 'all' ? undefined : PRIMARY_TAB_HREFS_BY_PORTAL[mode]
+  const primaryHrefs = mode === 'all' || mode === 'office' ? undefined : PRIMARY_TAB_HREFS_BY_PORTAL[mode]
   if (!primaryHrefs) return full
   return full.filter(t => primaryHrefs.includes(t.href))
 }
 
 export function getOverflowTabsForMode(mode: UserMode, grantedPortals: Portal[], opsProfile?: OpsProfile | null): NavTab[] {
   const full = getTabsForMode(mode, grantedPortals, opsProfile)
-  const primaryHrefs = mode === 'all' ? undefined : PRIMARY_TAB_HREFS_BY_PORTAL[mode]
+  const primaryHrefs = mode === 'all' || mode === 'office' ? undefined : PRIMARY_TAB_HREFS_BY_PORTAL[mode]
   if (!primaryHrefs) return []
   return full.filter(t => !primaryHrefs.includes(t.href))
 }
 
-/** Which modes a member may select, given their real portal grants. */
+/** Which modes a member may select, given their real portal grants. Dispatch
+ *  and admin collapse into a single 'office' choice when both are held —
+ *  see the file-level doc comment for why. Fixed, sensible order rather
+ *  than raw grant-insertion order. */
 export function getAvailableModes(portals: PortalGrants): UserMode[] {
   const granted = Object.keys(portals) as Portal[]
-  const modes: UserMode[] = [...granted]
-  if (granted.length > 1) modes.push('all')
+  const hasDispatch = granted.includes('dispatch')
+  const hasAdmin = granted.includes('admin')
+
+  const modes: UserMode[] = []
+  if (granted.includes('driver')) modes.push('driver')
+  if (hasDispatch && hasAdmin) {
+    modes.push('office')
+  } else {
+    if (hasDispatch) modes.push('dispatch')
+    if (hasAdmin) modes.push('admin')
+  }
+  if (granted.includes('broker')) modes.push('broker')
+
+  if (modes.length > 1) modes.push('all')
   return modes
 }
 
