@@ -3,8 +3,27 @@ import {
   getWeekRange, getPreviousWeekRange, resolveRange,
   sumPairedDurationSeconds, buildCategoryTimeFromEvents, bucketDelaySecondsByReason,
   splitRegularOvertime, estimateHourlyGrossPay, estimateGrossPay, DEFAULT_PAY_POLICY,
-  buildDailyHoursRow, buildRangeSummary, applyRevenueShareFloor, sumRangeSummaries, type TimedEvent, type PayPolicy, type RangeSummary,
+  buildDailyHoursRow, buildRangeSummary, applyRevenueShareFloor, sumRangeSummaries, applyWeeklyOvertimeSplit,
+  type TimedEvent, type PayPolicy, type RangeSummary, type DailyHoursRow,
 } from './hours'
+
+/** Minimal valid DailyHoursRow for applyWeeklyOvertimeSplit tests — only
+ *  workDate/totalShiftHours/shiftMiles matter to that function; everything
+ *  else is a zeroed placeholder to satisfy the interface. */
+function makeRow(workDate: string, totalShiftHours: number, overrides: Partial<DailyHoursRow> = {}): DailyHoursRow {
+  return {
+    workDate, shiftId: `shift-${workDate}`, clockInAt: null, clockOutAt: null,
+    totalShiftHours, regularHours: totalShiftHours, overtimeHours: 0, doubleTimeHours: 0,
+    pretripHours: 0, posttripHours: 0, onDutyNotDrivingHours: 0, emptyDrivingHours: 0, loadedDrivingHours: 0,
+    loadingWaitingHours: 0, unloadingWaitingHours: 0, fuelingHours: 0, delayHours: 0, trafficDelayHours: 0,
+    mechanicalDelayHours: 0, otherDelayHours: 0, unpaidBreakHours: 0, paidBreakHours: 0, vehicleCustodyHours: 0,
+    manualYardTravelHours: 0, truckUnit: null, trailerUnit: null, jobsWorked: '', customersWorked: '', brokersWorked: '',
+    loadsCompleted: 0, quantityHauled: 0, startOdometer: null, endOdometer: null, shiftMiles: null,
+    hourlyEstimatedEarnings: 0, estimatedGrossEarnings: 0, payrollApprovedGrossEarnings: null,
+    submissionStatus: 'clocked_out', payrollApprovalStatus: 'not_implemented', exceptionStatus: 'none',
+    ...overrides,
+  }
+}
 
 describe('getWeekRange', () => {
   it('returns Monday–Sunday for a mid-week Wednesday', () => {
@@ -320,5 +339,74 @@ describe('applyRevenueShareFloor', () => {
     const result = applyRevenueShareFloor(1000, 4000, 25)
     expect(result.finalPay).toBe(1000)
     expect(result.usedRevenueShare).toBe(false)
+  })
+})
+
+describe('applyWeeklyOvertimeSplit', () => {
+  const weeklyPolicy: PayPolicy = { ...DEFAULT_PAY_POLICY, otMode: 'weekly', weeklyOtThresholdHours: 40 }
+
+  it('four 10-hour days (40 total) — no overtime', () => {
+    const rows = [
+      makeRow('2026-08-10', 10), makeRow('2026-08-11', 10),
+      makeRow('2026-08-12', 10), makeRow('2026-08-13', 10),
+    ]
+    const result = applyWeeklyOvertimeSplit(rows, weeklyPolicy)
+    for (const r of result) expect(r.overtimeHours).toBe(0)
+    expect(result.reduce((s, r) => s + r.regularHours, 0)).toBe(40)
+  })
+
+  it('five 10-hour days (50 total) — the last day carries the 10 OT hours', () => {
+    const rows = [
+      makeRow('2026-08-10', 10), makeRow('2026-08-11', 10), makeRow('2026-08-12', 10),
+      makeRow('2026-08-13', 10), makeRow('2026-08-14', 10),
+    ]
+    const result = applyWeeklyOvertimeSplit(rows, weeklyPolicy)
+    expect(result.map(r => r.regularHours)).toEqual([10, 10, 10, 10, 0])
+    expect(result.map(r => r.overtimeHours)).toEqual([0, 0, 0, 0, 10])
+    expect(result.reduce((s, r) => s + r.regularHours, 0)).toBe(40)
+    expect(result.reduce((s, r) => s + r.overtimeHours, 0)).toBe(10)
+  })
+
+  it('a day that straddles the 40-hour line splits within that single day', () => {
+    // 3 days * 10h = 30, then a 15h day -> 10 more regular (to reach 40) + 5 OT
+    const rows = [
+      makeRow('2026-08-10', 10), makeRow('2026-08-11', 10), makeRow('2026-08-12', 10),
+      makeRow('2026-08-13', 15),
+    ]
+    const result = applyWeeklyOvertimeSplit(rows, weeklyPolicy)
+    expect(result[3].regularHours).toBe(10)
+    expect(result[3].overtimeHours).toBe(5)
+  })
+
+  it('recomputes estimatedGrossEarnings to match the corrected split', () => {
+    const rows = [makeRow('2026-08-10', 45)] // single day over the weekly threshold
+    const result = applyWeeklyOvertimeSplit(rows, weeklyPolicy)
+    // 40 regular * $32 + 5 OT * $32 * 1.5 = 1280 + 240 = 1520
+    expect(result[0].estimatedGrossEarnings).toBe(1520)
+    expect(result[0].hourlyEstimatedEarnings).toBe(1520)
+  })
+
+  it('buckets separate weeks independently — no pooling across a week boundary', () => {
+    // 2026-08-13 is a Thursday (week of 8/10-8/16); 2026-08-17 is the next Monday
+    const rows = [
+      makeRow('2026-08-10', 10), makeRow('2026-08-11', 10), makeRow('2026-08-12', 10), makeRow('2026-08-13', 10),
+      makeRow('2026-08-17', 10), makeRow('2026-08-18', 10),
+    ]
+    const result = applyWeeklyOvertimeSplit(rows, weeklyPolicy)
+    for (const r of result) expect(r.overtimeHours).toBe(0) // 40 in week 1, 20 in week 2 -- neither crosses 40
+  })
+
+  it('leaves per_mile policies completely untouched', () => {
+    const rows = [makeRow('2026-08-10', 12, { shiftMiles: 100, estimatedGrossEarnings: 65, hourlyEstimatedEarnings: 65 })]
+    const policy: PayPolicy = { ...DEFAULT_PAY_POLICY, payType: 'per_mile', ratePerMile: 0.65, otMode: 'weekly' }
+    const result = applyWeeklyOvertimeSplit(rows, policy)
+    expect(result).toBe(rows) // same reference — early-returned unchanged
+  })
+
+  it('daily-mode split (8hr threshold) still works standalone, unaffected by weekly logic', () => {
+    // sanity check that splitRegularOvertime itself is untouched by this change
+    const split = splitRegularOvertime(10, 8)
+    expect(split.regularHours).toBe(8)
+    expect(split.overtimeHours).toBe(2)
   })
 })

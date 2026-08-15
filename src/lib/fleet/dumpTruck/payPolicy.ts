@@ -14,7 +14,7 @@ import { fleetServiceClient } from '@/lib/fleet-service-client'
 import { audit } from '@/lib/fleet/audit'
 import { DEFAULT_PAY_POLICY, type PayPolicy } from '@/lib/dumpTruck/hours'
 
-const SELECT_COLUMNS = 'base_hourly_rate, daily_ot_threshold_hours, ot_multiplier, pay_type, rate_per_mile, revenue_share_pct, dispatch_minimum_hours'
+const SELECT_COLUMNS = 'base_hourly_rate, daily_ot_threshold_hours, ot_multiplier, pay_type, rate_per_mile, revenue_share_pct, dispatch_minimum_hours, ot_mode, weekly_ot_threshold_hours'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function fromRow(r: any): PayPolicy {
@@ -26,6 +26,8 @@ function fromRow(r: any): PayPolicy {
     ratePerMile: r.rate_per_mile != null ? Number(r.rate_per_mile) : null,
     revenueSharePct: r.revenue_share_pct != null ? Number(r.revenue_share_pct) : null,
     dispatchMinimumHours: r.dispatch_minimum_hours != null ? Number(r.dispatch_minimum_hours) : 4,
+    otMode: r.ot_mode === 'weekly' ? 'weekly' : 'daily',
+    weeklyOtThresholdHours: r.weekly_ot_threshold_hours != null ? Number(r.weekly_ot_threshold_hours) : 40,
   }
 }
 
@@ -75,6 +77,8 @@ export interface UpsertPayPolicyInput {
   ratePerMile?: number | null
   revenueSharePct?: number | null
   dispatchMinimumHours?: number
+  otMode?: 'daily' | 'weekly'
+  weeklyOtThresholdHours?: number
   notes?: string | null
 }
 
@@ -96,6 +100,8 @@ export async function upsertPayPolicy(
     rate_per_mile: input.ratePerMile ?? null,
     revenue_share_pct: input.revenueSharePct ?? null,
     dispatch_minimum_hours: input.dispatchMinimumHours ?? 4,
+    ot_mode: input.otMode ?? 'daily',
+    weekly_ot_threshold_hours: input.weeklyOtThresholdHours ?? 40,
     notes: input.notes ?? null,
     created_by: userId,
   }
