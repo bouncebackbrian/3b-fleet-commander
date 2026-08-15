@@ -328,18 +328,32 @@ export interface SqcdpTrendPoint {
 
 /** Reuses computeSqcdpMonth per month rather than a separate lighter path —
  *  simplest-correct for this fleet's data volume; revisit if trend windows
- *  longer than 12 months become slow. */
+ *  longer than 12 months become slow.
+ *
+ *  Each month is computed independently and a failure in one (e.g. a data
+ *  edge case in an older month) doesn't take down the whole trend — that
+ *  month just renders with null scores (see `error` field) rather than
+ *  breaking the current month's real scorecard along with it. */
 export async function computeSqcdpTrend(businessId: string, latestMonth: string, monthsBack: number): Promise<SqcdpTrendPoint[]> {
   const months: string[] = [latestMonth]
   for (let i = 1; i < monthsBack; i++) months.unshift(previousMonth(months[0]))
 
-  const results = await Promise.all(months.map(m => computeSqcdpMonth(businessId, m)))
-  return results.map(r => ({
-    month: r.month,
-    overall: r.overall,
-    categoryScores: {
-      safety: r.categoryScores.safety.score, quality: r.categoryScores.quality.score, cost: r.categoryScores.cost.score,
-      delivery: r.categoryScores.delivery.score, people: r.categoryScores.people.score,
-    },
-  }))
+  const results = await Promise.allSettled(months.map(m => computeSqcdpMonth(businessId, m)))
+  return results.map((r, i) => {
+    if (r.status === 'rejected') {
+      console.error(`[computeSqcdpTrend] failed for ${months[i]}:`, r.reason)
+      return {
+        month: months[i], overall: null,
+        categoryScores: { safety: null, quality: null, cost: null, delivery: null, people: null },
+      }
+    }
+    return {
+      month: r.value.month,
+      overall: r.value.overall,
+      categoryScores: {
+        safety: r.value.categoryScores.safety.score, quality: r.value.categoryScores.quality.score, cost: r.value.categoryScores.cost.score,
+        delivery: r.value.categoryScores.delivery.score, people: r.value.categoryScores.people.score,
+      },
+    }
+  })
 }

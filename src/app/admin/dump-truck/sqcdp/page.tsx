@@ -68,18 +68,23 @@ export default function SqcdpReviewPage() {
   const [actions, setActions] = useState<CorrectiveActionDTO[]>([])
   const [drivers, setDrivers] = useState<DriverOption[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [showActionForm, setShowActionForm] = useState<{ category: SqcdpCategory; sourceKpi?: string; sourceCause?: string } | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
+    setLoadError(null)
     Promise.all([
       fetch(`/api/fleet/dump-truck/admin/sqcdp?month=${month}&trendMonths=6`).then(r => r.json()),
       fetch(`/api/fleet/dump-truck/admin/corrective-actions?month=${month}`).then(r => r.json()),
       fetch('/api/fleet/dump-truck/drivers').then(r => r.json()),
     ]).then(([sqcdp, correctiveActions, driversRes]) => {
-      if (!sqcdp.error) { setReview(sqcdp.review); setTrend(sqcdp.trend ?? []) }
+      if (sqcdp.error) { setLoadError(`Scorecard: ${sqcdp.error}`); return }
+      setReview(sqcdp.review); setTrend(sqcdp.trend ?? [])
       setActions(correctiveActions.actions ?? [])
       setDrivers(driversRes.drivers ?? [])
+    }).catch(err => {
+      setLoadError(err instanceof Error ? err.message : 'Could not load this page — check your connection and try again')
     }).finally(() => setLoading(false))
   }, [month])
   useEffect(load, [load])
@@ -120,7 +125,15 @@ export default function SqcdpReviewPage() {
 
       {loading && <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>Loading…</div>}
 
-      {!loading && review && (
+      {!loading && loadError && (
+        <div style={{ ...cardStyle, border: '1px solid var(--error)', display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
+          <div style={{ fontWeight: 800, color: 'var(--error)' }}>Couldn&apos;t load this month&apos;s review</div>
+          <div style={{ fontSize: '.82rem', color: 'var(--muted)' }}>{loadError}</div>
+          <button style={{ ...btnSecondaryStyle, alignSelf: 'flex-start' }} onClick={load}>Try again</button>
+        </div>
+      )}
+
+      {!loading && !loadError && review && (
         <>
           <OverallCard overall={review.overall} categoryScores={review.categoryScores} />
           <TrendCard trend={trend} />

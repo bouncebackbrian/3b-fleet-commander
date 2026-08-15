@@ -140,9 +140,15 @@ function tabsForHrefs(hrefs: string[]): NavTab[] {
 
 /** Tabs that don't apply to a given ops profile — hidden regardless of portal grants.
  *  Anything not listed here (vault, compliance, maintenance, equipment, account,
- *  settings) is universal and shows for every ops profile. */
+ *  settings) is universal and shows for every ops profile.
+ *
+ *  /mis, /audit, /delays, /fuel are Sidebar-only routes (not in PORTAL_TAB_HREFS/
+ *  ALL_TABS above, since BottomNav never linked to them) — all four are legacy
+ *  OTR pages built on the old SAMPLE_LOADS/Load model, not fleet_dt_*. Missed
+ *  in the original pass because this list was derived from ALL_TABS instead of
+ *  cross-checking Sidebar.tsx's separate static MODULES list. */
 const OPS_PROFILE_HIDDEN_HREFS: Record<OpsProfile, string[]> = {
-  dump_truck: ['/dashboard', '/trips', '/dispatch', '/loads', '/trailer', '/expenses'],
+  dump_truck: ['/dashboard', '/trips', '/dispatch', '/loads', '/trailer', '/expenses', '/mis', '/audit', '/delays', '/fuel'],
   /** /broker is Dump Truck Mode's own broker-rate desk (see /broker/page.tsx) — not OTR-relevant. */
   otr:        ['/driver/dump-truck', '/driver/hours', '/admin/dump-truck', '/broker'],
 }
