@@ -120,6 +120,7 @@ const ALL_TABS: NavTab[] = [
   { href: '/maintenance', label: 'Maintenance', emoji: '🔧', command: 'Maintenance' },
   { href: '/driver/dump-truck', label: 'Dump Truck', emoji: '🏗️', command: 'Dump Truck' },
   { href: '/driver/hours',      label: 'My Hours',   emoji: '⏱️', command: 'Dump Truck' },
+  { href: '/driver/documents',  label: 'My Docs',    emoji: '🪪', command: 'Dump Truck' },
   { href: '/admin/dump-truck',  label: 'DT Setup',   emoji: '🧭', command: 'Dump Truck' },
   { href: '/admin/equipment',   label: 'Equipment',  emoji: '🚛', command: 'Equipment'   },
   { href: '/account',     label: 'Team',        emoji: '👥', command: 'System'      },
@@ -128,7 +129,7 @@ const ALL_TABS: NavTab[] = [
 
 // Which tabs each portal grants (ordered for display).
 const PORTAL_TAB_HREFS: Record<Portal, string[]> = {
-  driver:   ['/dashboard', '/trips', '/driver/dump-truck', '/driver/hours', '/trailer', '/maintenance', '/compliance', '/vault'],
+  driver:   ['/dashboard', '/trips', '/driver/dump-truck', '/driver/hours', '/driver/documents', '/trailer', '/maintenance', '/compliance', '/vault'],
   dispatch: ['/dispatch', '/loads', '/trips', '/admin/dump-truck', '/admin/equipment', '/maintenance', '/compliance', '/vault'],
   broker:   ['/broker', '/loads', '/vault'],
   admin:    ['/dashboard', '/admin/dump-truck', '/admin/equipment', '/account', '/maintenance', '/compliance', '/settings'],

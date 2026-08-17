@@ -313,7 +313,73 @@ function EquipmentDetail({ equipment, onUpdated }: { equipment: EquipmentRecord;
         <button style={{ ...btnStyle, opacity: saving ? .5 : 1 }} disabled={saving} onClick={saveCompliance}>{saving ? 'Saving…' : 'Save'}</button>
       </div>
 
+      <EquipmentDocumentsPanel equipmentId={equipment.id} />
+
       <ServiceRecordsPanel equipmentId={equipment.id} records={records} loading={recordsLoading} onAdded={() => { loadRecords(); onUpdated() }} />
+    </div>
+  )
+}
+
+interface EquipmentDocument { id: string; docType: string; fileName: string; createdAt: string; signedUrl: string | null }
+const EQUIPMENT_DOC_LABELS: Record<string, string> = { registration: 'Registration', insurance: 'Insurance', other: 'Other' }
+
+function EquipmentDocumentsPanel({ equipmentId }: { equipmentId: string }) {
+  const [documents, setDocuments] = useState<EquipmentDocument[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState<string | null>(null)
+  const fileRefs = { registration: useRef<HTMLInputElement>(null), insurance: useRef<HTMLInputElement>(null), other: useRef<HTMLInputElement>(null) }
+
+  const load = useCallback(() => {
+    setLoading(true)
+    fetch(`/api/fleet/equipment/${equipmentId}/documents`).then(r => r.json()).then(b => setDocuments(b.documents ?? [])).finally(() => setLoading(false))
+  }, [equipmentId])
+  useEffect(load, [load])
+
+  const upload = async (docType: 'registration' | 'insurance' | 'other', file: File) => {
+    setUploading(docType)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('docType', docType)
+      const res = await fetch(`/api/fleet/equipment/${equipmentId}/documents`, { method: 'POST', body: fd })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Upload failed')
+      toast.success('Saved')
+      load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setUploading(null)
+    }
+  }
+
+  const docsFor = (docType: string) => documents.filter(d => d.docType === docType)
+
+  return (
+    <div>
+      <div style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8 }}>Documents</div>
+      {loading && <div style={{ color: 'var(--muted)', fontSize: '.8rem' }}>Loading…</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '.6rem' }}>
+        {(['registration', 'insurance', 'other'] as const).map(docType => (
+          <div key={docType}>
+            <input
+              ref={fileRefs[docType]} type="file" accept="image/*,application/pdf" capture="environment" style={{ display: 'none' }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) upload(docType, f); e.target.value = '' }}
+            />
+            <button
+              style={{ ...btnStyle, width: '100%', background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', opacity: uploading === docType ? .5 : 1 }}
+              disabled={uploading === docType}
+              onClick={() => fileRefs[docType].current?.click()}
+            >
+              {uploading === docType ? 'Uploading…' : `📎 ${EQUIPMENT_DOC_LABELS[docType]}`}
+            </button>
+            {docsFor(docType).map(d => (
+              <a key={d.id} href={d.signedUrl ?? '#'} target="_blank" rel="noreferrer" style={{ fontSize: '.7rem', color: 'var(--primary)', display: 'block', marginTop: 4 }}>
+                {new Date(d.createdAt).toLocaleDateString()} — view
+              </a>
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
