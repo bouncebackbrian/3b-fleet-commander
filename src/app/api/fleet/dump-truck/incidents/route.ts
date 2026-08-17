@@ -1,13 +1,28 @@
 /**
- * POST /api/fleet/dump-truck/incidents — driver incident quick action
+ * /api/fleet/dump-truck/incidents
+ * POST — driver incident quick action
+ * GET  — admin/dispatch Safety panel listing
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireFleetAuth } from '@/lib/fleet-auth-guard'
-import { createIncident } from '@/lib/fleet/dumpTruck/incidents'
+import { createIncident, listIncidents } from '@/lib/fleet/dumpTruck/incidents'
 import { DumpTruckError } from '@/lib/fleet/dumpTruck/shared'
 
 export const dynamic = 'force-dynamic'
+
+export async function GET() {
+  const auth = await requireFleetAuth()
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  try {
+    const incidents = await listIncidents(auth.businessId)
+    return NextResponse.json({ incidents })
+  } catch (err) {
+    console.error('[api/fleet/dump-truck/incidents] GET error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
 
 export async function POST(request: NextRequest) {
   const auth = await requireFleetAuth()

@@ -151,7 +151,7 @@ function tabsForHrefs(hrefs: string[]): NavTab[] {
 const OPS_PROFILE_HIDDEN_HREFS: Record<OpsProfile, string[]> = {
   dump_truck: ['/dashboard', '/trips', '/dispatch', '/loads', '/trailer', '/expenses', '/mis', '/audit', '/delays', '/fuel'],
   /** /broker is Dump Truck Mode's own broker-rate desk (see /broker/page.tsx) — not OTR-relevant. */
-  otr:        ['/driver/dump-truck', '/driver/hours', '/admin/dump-truck', '/broker'],
+  otr:        ['/driver/dump-truck', '/driver/hours', '/admin/dump-truck', '/admin/dump-truck/safety', '/broker'],
 }
 
 /** Exported so other nav surfaces (e.g. the desktop Sidebar, which keeps its

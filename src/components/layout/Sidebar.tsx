@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Gauge, BarChart2, Truck, FileCheck, Clock, Fuel, Settings, ChevronLeft, ChevronRight, MapPin, MessageSquare, LogOut, Receipt, HardHat, MapPinned, Timer } from 'lucide-react'
+import { Gauge, BarChart2, Truck, FileCheck, Clock, Fuel, Settings, ChevronLeft, ChevronRight, MapPin, MessageSquare, LogOut, Receipt, HardHat, MapPinned, Timer, ShieldAlert } from 'lucide-react'
 import { createClient } from '@/lib/supabase-browser'
 import { createAuthClient } from '@/lib/auth-client'
 import { getCurrentUser, type OpsProfile } from '@/lib/auth-adapter'
@@ -40,6 +40,7 @@ const MODULES = [
       {href:'/driver/hours',      label:'My Hours',       icon:Timer},
       {href:'/driver/documents',  label:'My Documents',   icon:FileCheck},
       {href:'/admin/dump-truck',  label:'Sites & Jobs',   icon:MapPinned},
+      {href:'/admin/dump-truck/safety', label:'Safety',   icon:ShieldAlert},
     ]
   },
   {

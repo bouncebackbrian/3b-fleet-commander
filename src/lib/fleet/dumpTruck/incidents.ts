@@ -387,6 +387,57 @@ export async function recordDefectDisposition(
   }
 }
 
+export interface IncidentRow {
+  id: string
+  incidentType: CreateIncidentInput['incidentType']
+  description: string
+  occurredAt: string
+  truckId: string | null
+  jobId: string | null
+  driverId: string
+  lat: number | null
+  lng: number | null
+  injuries: boolean
+  immediateSafetyStatus: 'safe' | 'needs_assistance' | 'emergency'
+  policeReportNumber: string | null
+  policeAgency: string | null
+  photoDocumentId: string | null
+  createdAt: string
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function incidentFromRow(r: any, photoDocumentId: string | null): IncidentRow {
+  return {
+    id: r.id, incidentType: r.incident_type, description: r.description, occurredAt: r.occurred_at,
+    truckId: r.truck_id, jobId: r.job_id, driverId: r.driver_id, lat: r.lat, lng: r.lng,
+    injuries: r.injuries, immediateSafetyStatus: r.immediate_safety_status,
+    policeReportNumber: r.police_report_number, policeAgency: r.police_agency,
+    photoDocumentId, createdAt: r.created_at,
+  }
+}
+
+/** Recent incidents for the admin Safety panel — most recent first, capped. */
+export async function listIncidents(businessId: string): Promise<IncidentRow[]> {
+  const { data, error } = await fleetServiceClient
+    .from('fleet_dt_incidents')
+    .select('*')
+    .eq('business_id', businessId)
+    .order('created_at', { ascending: false })
+    .limit(100)
+  if (error) throw error
+  const rows = data ?? []
+  if (rows.length === 0) return []
+
+  const { data: docs } = await fleetServiceClient
+    .from('fleet_dt_documents')
+    .select('id, linked_entity_id')
+    .eq('linked_entity_type', 'incident')
+    .in('linked_entity_id', rows.map(r => r.id))
+  const photoByIncident = new Map((docs ?? []).map(d => [d.linked_entity_id, d.id]))
+
+  return rows.map(r => incidentFromRow(r, photoByIncident.get(r.id) ?? null))
+}
+
 export async function listDefectDispositions(businessId: string, defectId: string): Promise<DefectDispositionRow[]> {
   const { data, error } = await fleetServiceClient
     .from('fleet_dt_defect_dispositions')

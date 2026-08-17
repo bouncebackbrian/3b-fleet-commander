@@ -2,6 +2,7 @@
 import { useRef, useState } from 'react'
 import Sheet, { inputStyle, primaryBtnStyle } from './Sheet'
 import { captureGeolocation } from '@/lib/dumpTruck/events'
+import { stampPhotoWithGeoTag } from '@/lib/dumpTruck/photoStamp'
 import { toast } from '@/hooks/useToast'
 
 const TYPES: { key: string; label: string }[] = [
@@ -34,19 +35,24 @@ export default function IncidentQuickSheet({ shiftId, truckId, jobId, onClose, o
   const submit = async () => {
     setBusy(true)
     try {
+      const geo = await captureGeolocation()
+
       let photoDocumentId: string | null = null
       if (photo) {
+        const capturedAt = new Date()
+        const stamped = geo.lat != null && geo.lng != null
+          ? await stampPhotoWithGeoTag(photo, { lat: geo.lat, lng: geo.lng, capturedAt })
+          : photo
         const form = new FormData()
-        form.append('file', photo)
+        form.append('file', stamped)
         form.append('docType', 'incident_photo')
         form.append('shiftId', shiftId)
-        form.append('capturedAt', new Date().toISOString())
+        form.append('capturedAt', capturedAt.toISOString())
         const uploadRes = await fetch('/api/fleet/dump-truck/documents', { method: 'POST', body: form })
         if (!uploadRes.ok) throw new Error((await uploadRes.json()).error ?? 'Photo upload failed')
         photoDocumentId = (await uploadRes.json()).id
       }
 
-      const geo = await captureGeolocation()
       const res = await fetch('/api/fleet/dump-truck/incidents', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
