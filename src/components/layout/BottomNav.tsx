@@ -37,6 +37,7 @@ export default function BottomNav() {
   const path = usePathname()
   const [portals, setPortals] = useState<PortalGrants>({})
   const [opsProfile, setOpsProfile] = useState<OpsProfile | null>(null)
+  const [driverOpsProfile, setDriverOpsProfile] = useState<OpsProfile | null>(null)
   const [mode, setMode] = useState<UserMode | null>(null)
   const [showMore, setShowMore] = useState(false)
 
@@ -49,6 +50,7 @@ export default function BottomNav() {
       const grants = user?.portals ?? {}
       setPortals(grants)
       setOpsProfile(user?.opsProfile ?? null)
+      setDriverOpsProfile(user?.driverOpsProfile ?? user?.opsProfile ?? null)
 
       const available = getAvailableModes(grants)
       const stored = readUserMode()
@@ -71,8 +73,11 @@ export default function BottomNav() {
   if (!mode) return null
 
   const grantedPortals = Object.keys(portals) as Portal[]
-  const primaryTabs = getPrimaryTabsForMode(mode, grantedPortals, opsProfile)
-  const overflowTabs = getOverflowTabsForMode(mode, grantedPortals, opsProfile)
+  // Driver focus resolves per-truck (mixed-fleet aware); every other focus
+  // (office/broker/all) uses the plain business default — see auth-adapter.ts.
+  const effectiveOpsProfile = mode === 'driver' ? driverOpsProfile : opsProfile
+  const primaryTabs = getPrimaryTabsForMode(mode, grantedPortals, effectiveOpsProfile)
+  const overflowTabs = getOverflowTabsForMode(mode, grantedPortals, effectiveOpsProfile)
   const overflowActive = overflowTabs.some(t => path === t.href || path.startsWith(t.href))
 
   return (

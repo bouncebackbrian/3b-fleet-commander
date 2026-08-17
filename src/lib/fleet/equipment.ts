@@ -16,6 +16,12 @@ export interface EquipmentRecord {
   businessId: string
   unitNumber: string
   equipmentType: string
+  /** Per-truck trucking-type classification (2026-08-15) — distinct from
+   *  equipmentType (body style, e.g. super_10). Null inherits the business
+   *  default (businesses.ops_profile); set explicitly to let one business
+   *  run mixed equipment. Drives which nav/cockpit a driver on this truck sees
+   *  — see getEffectiveOpsProfileForDriver in fleet/dumpTruck/shared.ts. */
+  opsProfile: 'otr' | 'dump_truck' | null
   status: string
   vin: string | null
   licensePlate: string | null
@@ -44,6 +50,7 @@ function fromRow(r: any): EquipmentRecord {
     businessId: r.business_id,
     unitNumber: r.unit_number,
     equipmentType: r.equipment_type,
+    opsProfile: r.ops_profile === 'otr' || r.ops_profile === 'dump_truck' ? r.ops_profile : null,
     status: r.status,
     vin: r.vin,
     licensePlate: r.license_plate,
@@ -79,6 +86,7 @@ export async function listEquipment(businessId: string): Promise<EquipmentRecord
 export interface EquipmentInput {
   unitNumber: string
   equipmentType: string
+  opsProfile?: 'otr' | 'dump_truck' | null
   status?: string
   vin?: string | null
   licensePlate?: string | null
@@ -100,6 +108,7 @@ function toRow(input: EquipmentInput): Record<string, unknown> {
   const row: Record<string, unknown> = {}
   if (input.unitNumber !== undefined) row.unit_number = input.unitNumber
   if (input.equipmentType !== undefined) row.equipment_type = input.equipmentType
+  if (input.opsProfile !== undefined) row.ops_profile = input.opsProfile
   if (input.status !== undefined) row.status = input.status
   if (input.vin !== undefined) row.vin = input.vin
   if (input.licensePlate !== undefined) row.license_plate = input.licensePlate
