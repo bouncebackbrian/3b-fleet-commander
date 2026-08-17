@@ -38,6 +38,7 @@ const MODULES = [
     items: [
       {href:'/driver/dump-truck', label:'Driver Cockpit', icon:HardHat},
       {href:'/driver/hours',      label:'My Hours',       icon:Timer},
+      {href:'/driver/documents',  label:'My Documents',   icon:FileCheck},
       {href:'/admin/dump-truck',  label:'Sites & Jobs',   icon:MapPinned},
     ]
   },

@@ -10,6 +10,7 @@
 
 import { fleetServiceClient } from '@/lib/fleet-service-client'
 import { audit } from '@/lib/fleet/audit'
+import { uploadDocument, getSignedDocumentUrl, type UploadDocumentInput } from '@/lib/fleet/dumpTruck/documents'
 
 export interface EquipmentRecord {
   id: string
@@ -277,4 +278,52 @@ export async function listEquipmentLocations(businessId: string): Promise<Pick<E
     id: r.id, unitNumber: r.unit_number, equipmentType: r.equipment_type,
     currentLat: Number(r.current_lat), currentLng: Number(r.current_lng), locationUpdatedAt: r.location_updated_at,
   }))
+}
+
+// ── Truck documents (registration, insurance, other) ───────────────────────
+// Reuses the same fleet_dt_documents pipeline as driver CDL/medical docs and
+// load tickets/fuel receipts — private storage, dedup by content hash, signed
+// URLs for viewing. linkedEntityType 'equipment', shiftId null.
+
+export type EquipmentDocType = 'registration' | 'insurance' | 'other'
+
+export interface EquipmentDocumentRow {
+  id: string
+  docType: string
+  fileName: string
+  createdAt: string
+  signedUrl: string | null
+}
+
+export async function listEquipmentDocuments(businessId: string, equipmentId: string): Promise<EquipmentDocumentRow[]> {
+  const { data, error } = await fleetServiceClient
+    .from('fleet_dt_documents')
+    .select('id, doc_type, file_name, created_at')
+    .eq('business_id', businessId)
+    .eq('linked_entity_type', 'equipment')
+    .eq('linked_entity_id', equipmentId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+
+  return Promise.all((data ?? []).map(async r => ({
+    id: r.id,
+    docType: r.doc_type,
+    fileName: r.file_name,
+    createdAt: r.created_at,
+    signedUrl: await getSignedDocumentUrl(businessId, r.id),
+  })))
+}
+
+export async function uploadEquipmentDocument(
+  businessId: string, equipmentId: string, docType: EquipmentDocType,
+  fileName: string, mimeType: string, bytes: Buffer,
+  userId: string, email: string | null,
+): Promise<{ id: string }> {
+  const input: UploadDocumentInput = {
+    businessId, shiftId: null, docType,
+    linkedEntityType: 'equipment', linkedEntityId: equipmentId,
+    fileName, mimeType, bytes,
+  }
+  const result = await uploadDocument(input, userId, email)
+  return { id: result.id }
 }
