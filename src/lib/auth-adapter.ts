@@ -57,6 +57,12 @@ export interface FleetUser {
   businessType?:  BusinessType | null
   /** 'otr' | 'dump_truck' — defaults to 'otr' server-side for pre-existing businesses. */
   opsProfile?:    OpsProfile | null
+  /** Per-truck resolved (2026-08-15): the caller's most-recent truck's own
+   *  ops_profile if set, else falls back to opsProfile — for a business
+   *  running mixed equipment. Use this (not opsProfile) for the driver-focus
+   *  nav specifically; dispatch/admin/broker keep using the plain opsProfile
+   *  since they manage the whole fleet, not one truck. */
+  driverOpsProfile?: OpsProfile | null
   role?:          MemberRole | null
   /** Real per-portal grants — drives nav + client-side gating. See Portal note above. */
   portals:        PortalGrants
@@ -118,17 +124,18 @@ export async function getCurrentUser(): Promise<FleetUser | null> {
     if (!res.ok) return null
     const { user: fleetUser } = await res.json() as { user: {
       id: string; email: string | null; businessId: string | null; businessSlug: string | null
-      businessType: BusinessType | null; opsProfile: OpsProfile | null; role: MemberRole | null; portals: PortalGrants
+      businessType: BusinessType | null; opsProfile: OpsProfile | null; driverOpsProfile: OpsProfile | null
+      role: MemberRole | null; portals: PortalGrants
     } | null }
     if (!fleetUser) {
       return {
         id: user.id, email: user.email ?? null,
-        businessId: null, businessSlug: null, businessType: null, opsProfile: null, role: null,
+        businessId: null, businessSlug: null, businessType: null, opsProfile: null, driverOpsProfile: null, role: null,
         portals: {}, isOwnerOp: false, displayMode: 'unknown',
       }
     }
 
-    const { businessId, businessSlug, businessType, opsProfile, role, portals } = fleetUser
+    const { businessId, businessSlug, businessType, opsProfile, driverOpsProfile, role, portals } = fleetUser
 
     return {
       id:            user.id,
@@ -136,6 +143,7 @@ export async function getCurrentUser(): Promise<FleetUser | null> {
       businessId,
       businessSlug,
       businessType,
+      driverOpsProfile,
       opsProfile,
       role,
       portals,

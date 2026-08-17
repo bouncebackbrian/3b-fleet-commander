@@ -23,6 +23,7 @@ interface Props {
 export default function UserModeSelectorSheet({ open, onClose, isFirstRun = false }: Props) {
   const [portals, setPortals] = useState<PortalGrants>({})
   const [opsProfile, setOpsProfile] = useState<OpsProfile | null>(null)
+  const [driverOpsProfile, setDriverOpsProfile] = useState<OpsProfile | null>(null)
   const [modes, setModes] = useState<UserMode[]>([])
   const [selected, setSelected] = useState<UserMode | null>(null)
   const [saving,   setSaving]   = useState(false)
@@ -35,6 +36,7 @@ export default function UserModeSelectorSheet({ open, onClose, isFirstRun = fals
       const grants = user?.portals ?? {}
       setPortals(grants)
       setOpsProfile(user?.opsProfile ?? null)
+      setDriverOpsProfile(user?.driverOpsProfile ?? user?.opsProfile ?? null)
       const available = getAvailableModes(grants)
       setModes(available)
       const stored = readUserMode()
@@ -74,7 +76,7 @@ export default function UserModeSelectorSheet({ open, onClose, isFirstRun = fals
 
   const current = selected ? MODE_CONFIG[selected] : null
   const grantedPortals = Object.keys(portals) as Portal[]
-  const tabs = selected ? getTabsForMode(selected, grantedPortals, opsProfile) : []
+  const tabs = selected ? getTabsForMode(selected, grantedPortals, selected === 'driver' ? driverOpsProfile : opsProfile) : []
 
   return (
     <>

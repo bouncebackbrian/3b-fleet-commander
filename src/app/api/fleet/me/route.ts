@@ -16,6 +16,7 @@
 import { NextResponse } from 'next/server'
 import { requireFleetAuth } from '@/lib/fleet-auth-guard'
 import { fleetServiceClient } from '@/lib/fleet-service-client'
+import { getEffectiveOpsProfileForDriver } from '@/lib/fleet/dumpTruck/shared'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +30,15 @@ export async function GET() {
     .eq('id', auth.businessId)
     .maybeSingle()
 
+  /** 'otr' | 'dump_truck' — drives nav filtering, see userMode.ts. Defaults
+   *  to 'otr' for businesses created before this column existed. */
+  const opsProfile: 'otr' | 'dump_truck' = business?.ops_profile === 'dump_truck' ? 'dump_truck' : 'otr'
+
+  // Per-truck override (2026-08-15): a business can run mixed equipment, so the
+  // driver-focus nav resolves from the caller's own most-recent truck instead
+  // of always using the flat business default — see getEffectiveOpsProfileForDriver.
+  const driverOpsProfile = await getEffectiveOpsProfileForDriver(auth.businessId, auth.userId, opsProfile)
+
   return NextResponse.json({
     user: {
       id:           auth.userId,
@@ -36,9 +46,8 @@ export async function GET() {
       businessId:   auth.businessId,
       businessSlug: business?.slug ?? null,
       businessType: business?.type ?? null,
-      /** 'otr' | 'dump_truck' — drives nav filtering, see userMode.ts. Defaults
-       *  to 'otr' for businesses created before this column existed. */
-      opsProfile:   business?.ops_profile ?? 'otr',
+      opsProfile,
+      driverOpsProfile,
       role:         auth.role,
       portals:      auth.portals,
     },
