@@ -40,6 +40,37 @@ function hasOpenCorrectionRequest(events: { eventType: DumpTruckEventType; effec
   return relevant[relevant.length - 1].eventType === 'correction_requested'
 }
 
+/**
+ * Cross-shift check the pure per-row builder can't do on its own: flags any
+ * shift whose clock-in/out window overlaps a sibling shift's — a sign of a
+ * duplicate/misattributed clock event (found while auditing 7/21-8/17 for
+ * the 2026-08 payroll reconciliation). Mutates each affected row's
+ * integrityWarnings in place; rows/shifts must be the same array (order and
+ * length) produced by the same shifts.map() call above.
+ */
+function applyOverlappingShiftWarnings(
+  rows: DailyHoursRow[],
+  shifts: { id: string; clock_in_at: string | null; clock_out_at: string | null }[],
+): void {
+  for (let i = 0; i < shifts.length; i++) {
+    const a = shifts[i]
+    if (!a.clock_in_at) continue
+    const aStart = new Date(a.clock_in_at).getTime()
+    const aEnd = a.clock_out_at ? new Date(a.clock_out_at).getTime() : Date.now()
+    for (let j = i + 1; j < shifts.length; j++) {
+      const b = shifts[j]
+      if (!b.clock_in_at) continue
+      const bStart = new Date(b.clock_in_at).getTime()
+      const bEnd = b.clock_out_at ? new Date(b.clock_out_at).getTime() : Date.now()
+      if (aStart < bEnd && bStart < aEnd) {
+        const message = `Shift overlaps another shift's clock-in/out window (${a.id.slice(0, 8)}… vs ${b.id.slice(0, 8)}…).`
+        rows[i].integrityWarnings.push({ code: 'overlapping_shift', message })
+        rows[j].integrityWarnings.push({ code: 'overlapping_shift', message })
+      }
+    }
+  }
+}
+
 const EMPTY_CATEGORY_SECONDS: Record<DriveSegmentCategory, number> = {
   empty: 0, loaded: 0, yard_transfer: 0, fuel: 0, maintenance: 0, other: 0,
 }
@@ -74,7 +105,7 @@ export async function buildDriverHoursForRange(
   const shiftIds = shifts.map(s => s.id)
   const equipmentIds = [...new Set(shifts.flatMap(s => [s.truck_id, s.trailer_id]).filter(Boolean))] as string[]
 
-  const [eventsRes, segmentsRes, custodyRes, loadCyclesRes, equipmentRes] = await Promise.all([
+  const [eventsRes, segmentsRes, custodyRes, loadCyclesRes, equipmentRes, overridesRes] = await Promise.all([
     fleetServiceClient.from('fleet_dt_events').select('shift_id, event_type, effective_at, notes').in('shift_id', shiftIds),
     fleetServiceClient.from('fleet_dt_drive_segments').select('shift_id, category, duration_seconds').in('shift_id', shiftIds),
     fleetServiceClient.from('fleet_dt_vehicle_custody').select('shift_id, started_at, ended_at, start_odometer, end_odometer').in('shift_id', shiftIds),
@@ -82,7 +113,15 @@ export async function buildDriverHoursForRange(
     equipmentIds.length
       ? fleetServiceClient.from('fleet_equipment').select('id, unit_number').in('id', equipmentIds)
       : Promise.resolve({ data: [] as { id: string; unit_number: string }[] }),
+    fleetServiceClient.from('fleet_dt_shift_hour_overrides')
+      .select('shift_id, verified_hours, reason, source_document').in('shift_id', shiftIds).is('superseded_at', null),
   ])
+
+  const overrideByShift = new Map(
+    (overridesRes.data ?? []).map(o => [o.shift_id, {
+      hours: Number(o.verified_hours), reason: o.reason, sourceDocument: o.source_document as string | null,
+    }]),
+  )
 
   const jobIds = [...new Set((loadCyclesRes.data ?? []).map(lc => lc.job_id).filter(Boolean))]
   const { data: jobs } = jobIds.length
@@ -149,8 +188,11 @@ export async function buildDriverHoursForRange(
       payPolicy,
       manualStartTravelMinutes: shift.manual_start_travel_minutes,
       manualEndTravelMinutes: shift.manual_end_travel_minutes,
+      verifiedHoursOverride: overrideByShift.get(shift.id) ?? null,
     })
   })
+
+  applyOverlappingShiftWarnings(rows, shifts)
 
   // Each row above got an initial daily-mode split (buildDailyHoursRow has no
   // visibility into sibling days). For otMode 'weekly', correct that now that

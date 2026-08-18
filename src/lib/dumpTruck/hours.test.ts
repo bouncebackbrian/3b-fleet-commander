@@ -14,10 +14,11 @@ import {
 function makeRow(workDate: string, totalShiftHours: number, overrides: Partial<DailyHoursRow> = {}): DailyHoursRow {
   return {
     workDate, shiftId: `shift-${workDate}`, clockInAt: null, clockOutAt: null,
-    totalShiftHours, regularHours: totalShiftHours, overtimeHours: 0, doubleTimeHours: 0,
+    totalShiftHours, rawCalculatedHours: totalShiftHours, verifiedHoursOverride: null,
+    regularHours: totalShiftHours, overtimeHours: 0, doubleTimeHours: 0,
     pretripHours: 0, posttripHours: 0, onDutyNotDrivingHours: 0, emptyDrivingHours: 0, loadedDrivingHours: 0,
     loadingWaitingHours: 0, unloadingWaitingHours: 0, fuelingHours: 0, delayHours: 0, trafficDelayHours: 0,
-    mechanicalDelayHours: 0, otherDelayHours: 0, unpaidBreakHours: 0, paidBreakHours: 0, vehicleCustodyHours: 0,
+    mechanicalDelayHours: 0, adminDelayHours: 0, otherDelayHours: 0, unpaidBreakHours: 0, paidBreakHours: 0, vehicleCustodyHours: 0,
     manualYardTravelHours: 0, truckUnit: null, trailerUnit: null, jobsWorked: '', customersWorked: '', brokersWorked: '',
     loadsCompleted: 0, quantityHauled: 0, startOdometer: null, endOdometer: null, shiftMiles: null,
     hourlyEstimatedEarnings: 0, estimatedGrossEarnings: 0, payrollApprovedGrossEarnings: null,
@@ -265,6 +266,7 @@ describe('buildRangeSummary', () => {
       trafficDelayHours: 0, mechanicalDelayHours: 0, otherDelayHours: 0,
       unpaidBreakHours: 0, paidBreakHours: 0, doubleTimeHours: 0, hourlyEstimatedEarnings: 0,
       manualYardTravelHours: 0, integrityWarnings: [] as ShiftIntegrityWarning[],
+      rawCalculatedHours: 0, verifiedHoursOverride: null as DailyHoursRow['verifiedHoursOverride'], adminDelayHours: 0,
     }
     const rows = [
       { ...base, workDate: '2026-07-27', shiftId: 's1', totalShiftHours: 10, regularHours: 8, overtimeHours: 2, emptyDrivingHours: 1, loadedDrivingHours: 2, vehicleCustodyHours: 9, loadsCompleted: 4, quantityHauled: 80, startOdometer: null, endOdometer: null, shiftMiles: 120, estimatedGrossEarnings: 352 },
@@ -481,5 +483,82 @@ describe('detectShiftIntegrityWarnings', () => {
       events: [{ eventType: 'depart_yard', effectiveAt: '2026-08-14T17:00:00Z' }],
     })
     expect(warnings.map(w => w.code)).toContain('event_outside_shift_window')
+  })
+
+  it('flags unusually_long_custody when custody outlasts the paid shift by more than 2h', () => {
+    const warnings = detectShiftIntegrityWarnings({
+      clockInAt: '2026-08-14T06:00:00Z', clockOutAt: '2026-08-14T16:00:00Z', totalShiftHours: 10,
+      events: [], custodyHours: 13,
+    })
+    expect(warnings.map(w => w.code)).toContain('unusually_long_custody')
+  })
+
+  it('does not flag custody a normal amount longer than the shift', () => {
+    const warnings = detectShiftIntegrityWarnings({
+      clockInAt: '2026-08-14T06:00:00Z', clockOutAt: '2026-08-14T16:00:00Z', totalShiftHours: 10,
+      events: [], custodyHours: 10.5,
+    })
+    expect(warnings.map(w => w.code)).not.toContain('unusually_long_custody')
+  })
+
+  it('flags hours_overridden when a verified override is active', () => {
+    const warnings = detectShiftIntegrityWarnings({
+      clockInAt: '2026-07-27T15:00:00Z', clockOutAt: '2026-07-27T15:00:00Z', totalShiftHours: 4,
+      events: [], hasVerifiedOverride: true,
+    })
+    expect(warnings.map(w => w.code)).toContain('hours_overridden')
+  })
+})
+
+describe('verifiedHoursOverride — paper-sheet reconciliation', () => {
+  it('uses the override for totalShiftHours/pay while keeping rawCalculatedHours untouched', () => {
+    // July 27: truck down, no driving, but paid 4.00h per dispatcher agreement.
+    const row = buildDailyHoursRow({
+      workDate: '2026-07-27', shiftId: 's', shiftState: 'submitted',
+      clockInAt: '2026-07-27T15:00:00Z', clockOutAt: '2026-07-27T15:00:00Z', // zero-duration, no driving occurred
+      events: [], driveSecondsByCategory: { empty: 0, loaded: 0, yard_transfer: 0, fuel: 0, maintenance: 0, other: 0 },
+      custodySeconds: 0, truckUnit: 'DT-06', trailerUnit: null,
+      jobNumbers: [], customerNames: [], brokerNames: [],
+      loadsCompleted: 0, quantityHauled: 0, startOdometer: null, endOdometer: null,
+      hasOpenCorrectionRequest: false, payPolicy: DEFAULT_PAY_POLICY,
+      verifiedHoursOverride: { hours: 4, reason: 'Truck down; paid per dispatcher agreement', sourceDocument: 'Dispatcher verbal agreement' },
+    })
+    expect(row.rawCalculatedHours).toBe(0)
+    expect(row.totalShiftHours).toBe(4)
+    expect(row.regularHours).toBe(4)
+    expect(row.estimatedGrossEarnings).toBe(128) // 4 * $32, no OT
+    expect(row.verifiedHoursOverride?.hours).toBe(4)
+    expect(row.integrityWarnings.map(w => w.code)).toContain('hours_overridden')
+  })
+
+  it('leaves totalShiftHours as the raw calculation when no override is present', () => {
+    const row = buildDailyHoursRow({
+      workDate: '2026-08-13', shiftId: 's', shiftState: 'submitted',
+      clockInAt: '2026-08-13T06:00:00Z', clockOutAt: '2026-08-13T16:30:00Z', // 10.5h
+      events: [], driveSecondsByCategory: { empty: 0, loaded: 0, yard_transfer: 0, fuel: 0, maintenance: 0, other: 0 },
+      custodySeconds: 0, truckUnit: null, trailerUnit: null,
+      jobNumbers: [], customerNames: [], brokerNames: [],
+      loadsCompleted: 0, quantityHauled: 0, startOdometer: null, endOdometer: null,
+      hasOpenCorrectionRequest: false, payPolicy: DEFAULT_PAY_POLICY,
+    })
+    expect(row.totalShiftHours).toBe(10.5)
+    expect(row.rawCalculatedHours).toBe(10.5)
+    expect(row.verifiedHoursOverride).toBeNull()
+    expect(row.integrityWarnings.map(w => w.code)).not.toContain('hours_overridden')
+  })
+})
+
+describe('adminDelayHours — drug testing / administrative time bucket', () => {
+  it('buckets a drug-test delay separately from mechanical and other delay', () => {
+    const events: TimedEvent[] = [
+      { eventType: 'delay_started', effectiveAt: '2026-08-04T13:30:00Z', notes: 'Drug Test — LabCorp Reno' },
+      { eventType: 'delay_ended', effectiveAt: '2026-08-04T14:00:00Z' },
+      { eventType: 'delay_started', effectiveAt: '2026-08-04T14:00:00Z', notes: 'Waiting for Mechanic — air bag' },
+      { eventType: 'delay_ended', effectiveAt: '2026-08-04T18:00:00Z' },
+    ]
+    const cat = buildCategoryTimeFromEvents(events)
+    expect(cat.adminDelaySeconds).toBe(30 * 60)
+    expect(cat.mechanicalDelaySeconds).toBe(4 * 3600)
+    expect(cat.otherDelaySeconds).toBe(0)
   })
 })

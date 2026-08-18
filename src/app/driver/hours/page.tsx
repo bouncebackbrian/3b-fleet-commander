@@ -20,6 +20,8 @@ interface DailyHoursRow {
   clockInAt: string | null
   clockOutAt: string | null
   totalShiftHours: number
+  rawCalculatedHours: number
+  verifiedHoursOverride: { hours: number; reason: string; sourceDocument: string | null } | null
   regularHours: number
   overtimeHours: number
   pretripHours: number
@@ -267,7 +269,17 @@ export default function DriverHoursPage() {
                       <tr key={r.shiftId} style={{ borderBottom: '1px solid var(--border)' }}>
                         <td style={td}>{r.workDate}</td>
                         <td style={td}>{r.truckUnit ?? '—'}</td>
-                        <td style={td}>{r.totalShiftHours.toFixed(2)}</td>
+                        <td style={td}>
+                          {r.totalShiftHours.toFixed(2)}
+                          {r.verifiedHoursOverride && (
+                            <span
+                              style={{ color: 'var(--primary)', marginLeft: 4, fontSize: '.7rem', cursor: 'default' }}
+                              title={`Verified/payroll hours — raw clocked time was ${r.rawCalculatedHours.toFixed(2)}h. Reason: ${r.verifiedHoursOverride.reason}${r.verifiedHoursOverride.sourceDocument ? ` (${r.verifiedHoursOverride.sourceDocument})` : ''}`}
+                            >
+                              ✓ verified
+                            </span>
+                          )}
+                        </td>
                         <td style={td}>{r.regularHours.toFixed(2)}</td>
                         <td style={td}>{r.overtimeHours.toFixed(2)}</td>
                         <td style={td}>{r.loadsCompleted}</td>

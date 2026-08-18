@@ -97,6 +97,7 @@ export function sumPairedDurationSeconds(events: TimedEvent[], startType: DumpTr
 
 const TRAFFIC_DELAY_REASONS = ['traffic']
 const MECHANICAL_DELAY_REASONS = ['waiting for mechanic', 'breakdown']
+const ADMIN_DELAY_REASONS = ['drug test', 'labcorp', 'dot physical', 'administrative']
 
 function delayReason(notes: string | null | undefined): string {
   if (!notes) return 'Other'
@@ -140,6 +141,7 @@ export interface CategoryTimeSeconds {
   breakSeconds: number
   trafficDelaySeconds: number
   mechanicalDelaySeconds: number
+  adminDelaySeconds: number
   otherDelaySeconds: number
 }
 
@@ -148,6 +150,7 @@ export function buildCategoryTimeFromEvents(events: TimedEvent[]): CategoryTimeS
   const delayByReason = bucketDelaySecondsByReason(events)
   const trafficDelaySeconds = sumReasonBucket(delayByReason, TRAFFIC_DELAY_REASONS)
   const mechanicalDelaySeconds = sumReasonBucket(delayByReason, MECHANICAL_DELAY_REASONS)
+  const adminDelaySeconds = sumReasonBucket(delayByReason, ADMIN_DELAY_REASONS)
 
   return {
     pretripSeconds: sumPairedDurationSeconds(events, 'pretrip_started', 'pretrip_completed'),
@@ -159,7 +162,8 @@ export function buildCategoryTimeFromEvents(events: TimedEvent[]): CategoryTimeS
     breakSeconds: sumPairedDurationSeconds(events, 'break_started', 'break_ended'),
     trafficDelaySeconds,
     mechanicalDelaySeconds,
-    otherDelaySeconds: Math.max(0, delaySeconds - trafficDelaySeconds - mechanicalDelaySeconds),
+    adminDelaySeconds,
+    otherDelaySeconds: Math.max(0, delaySeconds - trafficDelaySeconds - mechanicalDelaySeconds - adminDelaySeconds),
   }
 }
 
@@ -259,6 +263,9 @@ export type ShiftIntegrityWarningCode =
   | 'duplicate_clock_in'
   | 'duplicate_clock_out'
   | 'event_outside_shift_window'
+  | 'unusually_long_custody'
+  | 'hours_overridden'
+  | 'overlapping_shift'
 
 export interface ShiftIntegrityWarning {
   code: ShiftIntegrityWarningCode
@@ -270,6 +277,8 @@ export function detectShiftIntegrityWarnings(input: {
   clockOutAt: string | null
   totalShiftHours: number
   events: TimedEvent[]
+  custodyHours?: number
+  hasVerifiedOverride?: boolean
 }): ShiftIntegrityWarning[] {
   const warnings: ShiftIntegrityWarning[] = []
 
@@ -277,6 +286,20 @@ export function detectShiftIntegrityWarnings(input: {
     warnings.push({
       code: 'shift_over_16h',
       message: `Shift duration is ${input.totalShiftHours.toFixed(2)}h, over the 16h sanity threshold — verify clock-in/out times.`,
+    })
+  }
+
+  if (input.custodyHours != null && input.custodyHours - input.totalShiftHours > 2) {
+    warnings.push({
+      code: 'unusually_long_custody',
+      message: `Vehicle custody (${input.custodyHours.toFixed(2)}h) runs ${(input.custodyHours - input.totalShiftHours).toFixed(2)}h longer than the paid shift (${input.totalShiftHours.toFixed(2)}h) — check for an unclosed custody record from a prior shift.`,
+    })
+  }
+
+  if (input.hasVerifiedOverride) {
+    warnings.push({
+      code: 'hours_overridden',
+      message: 'This shift’s hours were set by a verified paper-sheet/dispatcher override — see rawCalculatedHours for the raw clock-derived total.',
     })
   }
 
@@ -377,6 +400,14 @@ export interface DailyHoursRowInput {
   manualStartTravelMinutes?: number | null
   manualEndTravelMinutes?: number | null
   now?: Date
+  /**
+   * A verified paper-sheet/dispatcher-confirmed hours total that overrides
+   * the raw clock+manual-travel calculation for payroll purposes (spec:
+   * fleet_dt_shift_hour_overrides). Raw operational timestamps are never
+   * edited to force a match — rawCalculatedHours on the output row always
+   * reflects the actual clock-derived total, separately from totalShiftHours.
+   */
+  verifiedHoursOverride?: { hours: number; reason: string; sourceDocument: string | null } | null
 }
 
 export interface DailyHoursRow {
@@ -385,6 +416,11 @@ export interface DailyHoursRow {
   clockInAt: string | null
   clockOutAt: string | null
   totalShiftHours: number
+  /** The raw clock_in/clock_out + manual-travel calculation, before any
+   *  verified-hours override is applied. Equal to totalShiftHours when no
+   *  override is active. */
+  rawCalculatedHours: number
+  verifiedHoursOverride: { hours: number; reason: string; sourceDocument: string | null } | null
   regularHours: number
   overtimeHours: number
   doubleTimeHours: number
@@ -399,6 +435,7 @@ export interface DailyHoursRow {
   delayHours: number
   trafficDelayHours: number
   mechanicalDelayHours: number
+  adminDelayHours: number
   otherDelayHours: number
   unpaidBreakHours: number
   paidBreakHours: number
@@ -431,7 +468,11 @@ export function buildDailyHoursRow(input: DailyHoursRowInput): DailyHoursRow {
   const manualYardTravelHours = round2(
     ((input.manualStartTravelMinutes ?? 0) + (input.manualEndTravelMinutes ?? 0)) / 60,
   )
-  const totalShiftHours = round2(clockedHours + manualYardTravelHours)
+  const rawCalculatedHours = round2(clockedHours + manualYardTravelHours)
+  // A verified paper-sheet/dispatcher override supplies the payroll-facing
+  // total; rawCalculatedHours (above) always keeps the untouched clock-derived
+  // figure so the two are never conflated (see DailyHoursRowInput doc).
+  const totalShiftHours = input.verifiedHoursOverride ? round2(input.verifiedHoursOverride.hours) : rawCalculatedHours
 
   const split = splitRegularOvertime(totalShiftHours, input.payPolicy.dailyOtThresholdHours)
   const cat = buildCategoryTimeFromEvents(input.events)
@@ -442,7 +483,7 @@ export function buildDailyHoursRow(input: DailyHoursRowInput): DailyHoursRow {
     cat.fuelingSeconds + cat.delaySeconds + cat.breakSeconds
   const onDutyNotDrivingSeconds = Math.max(
     0,
-    totalShiftHours * 3600 - driveTotalSeconds - nonDrivingKnownSeconds,
+    rawCalculatedHours * 3600 - driveTotalSeconds - nonDrivingKnownSeconds,
   )
 
   const shiftMiles =
@@ -458,6 +499,8 @@ export function buildDailyHoursRow(input: DailyHoursRowInput): DailyHoursRow {
     clockInAt: input.clockInAt,
     clockOutAt: input.clockOutAt,
     totalShiftHours,
+    rawCalculatedHours,
+    verifiedHoursOverride: input.verifiedHoursOverride ?? null,
     regularHours: split.regularHours,
     overtimeHours: split.overtimeHours,
     doubleTimeHours: 0,
@@ -472,6 +515,7 @@ export function buildDailyHoursRow(input: DailyHoursRowInput): DailyHoursRow {
     delayHours: round2(cat.delaySeconds / 3600),
     trafficDelayHours: round2(cat.trafficDelaySeconds / 3600),
     mechanicalDelayHours: round2(cat.mechanicalDelaySeconds / 3600),
+    adminDelayHours: round2(cat.adminDelaySeconds / 3600),
     otherDelayHours: round2(cat.otherDelaySeconds / 3600),
     unpaidBreakHours: round2(cat.breakSeconds / 3600),
     paidBreakHours: 0,
@@ -498,6 +542,8 @@ export function buildDailyHoursRow(input: DailyHoursRowInput): DailyHoursRow {
       clockOutAt: input.clockOutAt,
       totalShiftHours,
       events: input.events,
+      custodyHours: round2(input.custodySeconds / 3600),
+      hasVerifiedOverride: !!input.verifiedHoursOverride,
     }),
   }
 }
