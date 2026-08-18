@@ -74,6 +74,16 @@ export function useDumpTruckDriver() {
   const contextPollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const locationPingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const seenJobIdsRef = useRef<Set<string> | null>(null)
+  // fetchContext is memoized with an empty dep array (see its own comment)
+  // so it can't read activeJobId directly without going stale — this ref is
+  // kept in sync via the effect below so the auto-pick-first-job fallback
+  // only fires when nothing is *currently* selected, not whatever activeJobId
+  // was on the render that created the closure. Without it, every 60s poll
+  // (and every post-sync refetch) silently reverted a driver's manual job
+  // selection back to jobs[0] — found 2026-08-18 when a driver's job picker
+  // kept "kicking back" to the wrong job mid-shift.
+  const activeJobIdRef = useRef<string | null>(null)
+  useEffect(() => { activeJobIdRef.current = activeJobId }, [activeJobId])
 
   const refreshQueueSummary = useCallback(() => setQueueSummary(summarizeQueue()), [])
   const refreshFuelQueueSummary = useCallback(() => { summarizeFuelQueue().then(setFuelQueueSummary) }, [])
@@ -84,7 +94,7 @@ export function useDumpTruckDriver() {
       if (!res.ok) throw new Error('Failed to load driver context')
       const body = await res.json()
       setContext(body.context)
-      if (!activeJobId && body.context.jobs?.length) setActiveJobId(body.context.jobs[0].id)
+      if (!activeJobIdRef.current && body.context.jobs?.length) setActiveJobId(body.context.jobs[0].id)
 
       // New-job notification: diff against the last-seen id set (first load
       // just establishes the baseline — nothing is "new" on mount).
