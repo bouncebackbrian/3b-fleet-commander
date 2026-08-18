@@ -44,6 +44,7 @@ interface DailyHoursRow {
   estimatedGrossEarnings: number
   submissionStatus: string
   exceptionStatus: 'none' | 'correction_requested'
+  integrityWarnings: { code: string; message: string }[]
 }
 
 interface RangeSummary {
@@ -276,6 +277,14 @@ export default function DriverHoursPage() {
                           {r.submissionStatus}
                           {r.exceptionStatus === 'correction_requested' && (
                             <span style={{ color: 'var(--warn)', marginLeft: 6 }}>⚠️ correction requested</span>
+                          )}
+                          {r.integrityWarnings.length > 0 && (
+                            <span
+                              style={{ color: 'var(--warn)', marginLeft: 6, cursor: 'default' }}
+                              title={r.integrityWarnings.map(w => w.message).join('\n')}
+                            >
+                              🚩 flagged for review
+                            </span>
                           )}
                         </td>
                         <td style={{ ...td, display: 'flex', gap: 6 }}>

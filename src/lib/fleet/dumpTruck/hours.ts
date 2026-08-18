@@ -23,6 +23,23 @@ function utcDateString(iso: string): string {
   return iso.slice(0, 10)
 }
 
+/**
+ * A correction request is "open" only if the most recent of its
+ * correction_requested/event_corrected events (chronologically) is the
+ * request itself. Previously this checked only for the *existence* of a
+ * correction_requested event, so a shift could never leave
+ * exceptionStatus 'correction_requested' even after being reconciled and
+ * marked with event_corrected — found during the 2026-08 payroll
+ * reconciliation (Aug 13 stayed flagged after its underlying data was fixed).
+ */
+function hasOpenCorrectionRequest(events: { eventType: DumpTruckEventType; effectiveAt: string }[]): boolean {
+  const relevant = events
+    .filter(e => e.eventType === 'correction_requested' || e.eventType === 'event_corrected')
+    .sort((a, b) => a.effectiveAt.localeCompare(b.effectiveAt))
+  if (relevant.length === 0) return false
+  return relevant[relevant.length - 1].eventType === 'correction_requested'
+}
+
 const EMPTY_CATEGORY_SECONDS: Record<DriveSegmentCategory, number> = {
   empty: 0, loaded: 0, yard_transfer: 0, fuel: 0, maintenance: 0, other: 0,
 }
@@ -128,7 +145,7 @@ export async function buildDriverHoursForRange(
       quantityHauled,
       startOdometer,
       endOdometer,
-      hasOpenCorrectionRequest: events.some(e => e.eventType === 'correction_requested'),
+      hasOpenCorrectionRequest: hasOpenCorrectionRequest(events),
       payPolicy,
       manualStartTravelMinutes: shift.manual_start_travel_minutes,
       manualEndTravelMinutes: shift.manual_end_travel_minutes,

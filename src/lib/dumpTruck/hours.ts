@@ -246,6 +246,87 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
+// ── Shift integrity warnings ─────────────────────────────────────────────────
+// Flags obviously-implausible shifts for dispatch review (spec follow-up from
+// the 2026-08 payroll reconciliation, where a stale offline-sync timestamp on
+// one shift silently produced a 19-hour "workday"). Never auto-corrects —
+// only surfaces a warning alongside the (still as-calculated) hours.
+
+export type ShiftIntegrityWarningCode =
+  | 'shift_over_16h'
+  | 'multi_day_span'
+  | 'open_shift'
+  | 'duplicate_clock_in'
+  | 'duplicate_clock_out'
+  | 'event_outside_shift_window'
+
+export interface ShiftIntegrityWarning {
+  code: ShiftIntegrityWarningCode
+  message: string
+}
+
+export function detectShiftIntegrityWarnings(input: {
+  clockInAt: string | null
+  clockOutAt: string | null
+  totalShiftHours: number
+  events: TimedEvent[]
+}): ShiftIntegrityWarning[] {
+  const warnings: ShiftIntegrityWarning[] = []
+
+  if (input.totalShiftHours > 16) {
+    warnings.push({
+      code: 'shift_over_16h',
+      message: `Shift duration is ${input.totalShiftHours.toFixed(2)}h, over the 16h sanity threshold — verify clock-in/out times.`,
+    })
+  }
+
+  if (input.clockInAt && input.clockOutAt) {
+    const startDate = input.clockInAt.slice(0, 10)
+    const endDate = input.clockOutAt.slice(0, 10)
+    if (startDate !== endDate) {
+      const daysApart = Math.round(
+        (new Date(`${endDate}T00:00:00Z`).getTime() - new Date(`${startDate}T00:00:00Z`).getTime()) / 86400000,
+      )
+      if (daysApart >= 2) {
+        warnings.push({
+          code: 'multi_day_span',
+          message: `Shift spans ${daysApart} calendar days (${startDate} to ${endDate}) — check for a missed clock-out.`,
+        })
+      }
+    }
+  }
+
+  if (!input.clockOutAt) {
+    warnings.push({ code: 'open_shift', message: 'Shift has no clock-out time recorded.' })
+  }
+
+  const clockInCount = input.events.filter(e => e.eventType === 'clock_in').length
+  if (clockInCount > 1) {
+    warnings.push({ code: 'duplicate_clock_in', message: `${clockInCount} clock_in events recorded on this shift.` })
+  }
+  const clockOutCount = input.events.filter(e => e.eventType === 'clock_out').length
+  if (clockOutCount > 1) {
+    warnings.push({ code: 'duplicate_clock_out', message: `${clockOutCount} clock_out events recorded on this shift.` })
+  }
+
+  if (input.clockInAt) {
+    const startMs = new Date(input.clockInAt).getTime()
+    const endMs = input.clockOutAt ? new Date(input.clockOutAt).getTime() : null
+    const outOfWindow = input.events.find(e => {
+      const t = new Date(e.effectiveAt).getTime()
+      return t < startMs || (endMs != null && t > endMs)
+    })
+    if (outOfWindow) {
+      warnings.push({
+        code: 'event_outside_shift_window',
+        message: `${outOfWindow.eventType} at ${outOfWindow.effectiveAt} falls outside the shift's clock-in/out window.`,
+      })
+    }
+  }
+
+  return warnings
+}
+
 export interface RevenueShareFloorResult {
   finalPay: number
   usedRevenueShare: boolean
@@ -339,6 +420,7 @@ export interface DailyHoursRow {
   submissionStatus: string
   payrollApprovalStatus: 'not_implemented'
   exceptionStatus: 'none' | 'correction_requested'
+  integrityWarnings: ShiftIntegrityWarning[]
 }
 
 export function buildDailyHoursRow(input: DailyHoursRowInput): DailyHoursRow {
@@ -411,6 +493,12 @@ export function buildDailyHoursRow(input: DailyHoursRowInput): DailyHoursRow {
     submissionStatus: input.shiftState,
     payrollApprovalStatus: 'not_implemented',
     exceptionStatus: input.hasOpenCorrectionRequest ? 'correction_requested' : 'none',
+    integrityWarnings: detectShiftIntegrityWarnings({
+      clockInAt: input.clockInAt,
+      clockOutAt: input.clockOutAt,
+      totalShiftHours,
+      events: input.events,
+    }),
   }
 }
 

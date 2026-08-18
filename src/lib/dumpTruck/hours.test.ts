@@ -4,7 +4,8 @@ import {
   sumPairedDurationSeconds, buildCategoryTimeFromEvents, bucketDelaySecondsByReason,
   splitRegularOvertime, estimateHourlyGrossPay, estimateGrossPay, DEFAULT_PAY_POLICY,
   buildDailyHoursRow, buildRangeSummary, applyRevenueShareFloor, sumRangeSummaries, applyWeeklyOvertimeSplit,
-  type TimedEvent, type PayPolicy, type RangeSummary, type DailyHoursRow,
+  detectShiftIntegrityWarnings,
+  type TimedEvent, type PayPolicy, type RangeSummary, type DailyHoursRow, type ShiftIntegrityWarning,
 } from './hours'
 
 /** Minimal valid DailyHoursRow for applyWeeklyOvertimeSplit tests — only
@@ -21,6 +22,7 @@ function makeRow(workDate: string, totalShiftHours: number, overrides: Partial<D
     loadsCompleted: 0, quantityHauled: 0, startOdometer: null, endOdometer: null, shiftMiles: null,
     hourlyEstimatedEarnings: 0, estimatedGrossEarnings: 0, payrollApprovedGrossEarnings: null,
     submissionStatus: 'clocked_out', payrollApprovalStatus: 'not_implemented', exceptionStatus: 'none',
+    integrityWarnings: [],
     ...overrides,
   }
 }
@@ -262,7 +264,7 @@ describe('buildRangeSummary', () => {
       loadingWaitingHours: 0, unloadingWaitingHours: 0, fuelingHours: 0, delayHours: 0,
       trafficDelayHours: 0, mechanicalDelayHours: 0, otherDelayHours: 0,
       unpaidBreakHours: 0, paidBreakHours: 0, doubleTimeHours: 0, hourlyEstimatedEarnings: 0,
-      manualYardTravelHours: 0,
+      manualYardTravelHours: 0, integrityWarnings: [] as ShiftIntegrityWarning[],
     }
     const rows = [
       { ...base, workDate: '2026-07-27', shiftId: 's1', totalShiftHours: 10, regularHours: 8, overtimeHours: 2, emptyDrivingHours: 1, loadedDrivingHours: 2, vehicleCustodyHours: 9, loadsCompleted: 4, quantityHauled: 80, startOdometer: null, endOdometer: null, shiftMiles: 120, estimatedGrossEarnings: 352 },
@@ -408,5 +410,76 @@ describe('applyWeeklyOvertimeSplit', () => {
     const split = splitRegularOvertime(10, 8)
     expect(split.regularHours).toBe(8)
     expect(split.overtimeHours).toBe(2)
+  })
+})
+
+describe('detectShiftIntegrityWarnings', () => {
+  it('flags nothing for a normal same-day shift', () => {
+    const warnings = detectShiftIntegrityWarnings({
+      clockInAt: '2026-08-14T06:00:00Z', clockOutAt: '2026-08-14T16:30:00Z', totalShiftHours: 10.5,
+      events: [
+        { eventType: 'clock_in', effectiveAt: '2026-08-14T06:00:00Z' },
+        { eventType: 'clock_out', effectiveAt: '2026-08-14T16:30:00Z' },
+      ],
+    })
+    expect(warnings).toEqual([])
+  })
+
+  it('does not flag a normal late-night shift that crosses one midnight', () => {
+    // Cal-Neva's real shifts routinely clock out after midnight for a ~12h day; this must stay quiet.
+    const warnings = detectShiftIntegrityWarnings({
+      clockInAt: '2026-08-11T13:00:00Z', clockOutAt: '2026-08-12T01:00:00Z', totalShiftHours: 12,
+      events: [],
+    })
+    expect(warnings).toEqual([])
+  })
+
+  it('flags shift_over_16h', () => {
+    const warnings = detectShiftIntegrityWarnings({
+      clockInAt: '2026-08-14T06:00:00Z', clockOutAt: '2026-08-14T23:00:00Z', totalShiftHours: 17,
+      events: [],
+    })
+    expect(warnings.map(w => w.code)).toContain('shift_over_16h')
+  })
+
+  it('flags multi_day_span when the shift spans 2+ calendar days — the Jul 31 / Aug 5 bug pattern', () => {
+    const warnings = detectShiftIntegrityWarnings({
+      clockInAt: '2026-07-31T16:36:16.455Z', clockOutAt: '2026-08-03T13:32:40.942Z', totalShiftHours: 68.94,
+      events: [],
+    })
+    const codes = warnings.map(w => w.code)
+    expect(codes).toContain('multi_day_span')
+    expect(codes).toContain('shift_over_16h')
+  })
+
+  it('flags open_shift when there is no clock-out', () => {
+    const warnings = detectShiftIntegrityWarnings({
+      clockInAt: '2026-08-14T06:00:00Z', clockOutAt: null, totalShiftHours: 3,
+      events: [],
+    })
+    expect(warnings.map(w => w.code)).toContain('open_shift')
+  })
+
+  it('flags duplicate_clock_in and duplicate_clock_out', () => {
+    const warnings = detectShiftIntegrityWarnings({
+      clockInAt: '2026-08-14T06:00:00Z', clockOutAt: '2026-08-14T16:00:00Z', totalShiftHours: 10,
+      events: [
+        { eventType: 'clock_in', effectiveAt: '2026-08-14T06:00:00Z' },
+        { eventType: 'clock_in', effectiveAt: '2026-08-14T06:05:00Z' },
+        { eventType: 'clock_out', effectiveAt: '2026-08-14T15:55:00Z' },
+        { eventType: 'clock_out', effectiveAt: '2026-08-14T16:00:00Z' },
+      ],
+    })
+    const codes = warnings.map(w => w.code)
+    expect(codes).toContain('duplicate_clock_in')
+    expect(codes).toContain('duplicate_clock_out')
+  })
+
+  it('flags event_outside_shift_window for a timestamp before clock-in or after clock-out', () => {
+    const warnings = detectShiftIntegrityWarnings({
+      clockInAt: '2026-08-14T06:00:00Z', clockOutAt: '2026-08-14T16:00:00Z', totalShiftHours: 10,
+      events: [{ eventType: 'depart_yard', effectiveAt: '2026-08-14T17:00:00Z' }],
+    })
+    expect(warnings.map(w => w.code)).toContain('event_outside_shift_window')
   })
 })
