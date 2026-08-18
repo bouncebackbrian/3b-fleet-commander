@@ -20,6 +20,8 @@ interface EquipmentRecord {
   id: string
   unitNumber: string
   equipmentType: string
+  /** Per-truck trucking-type override — null inherits the business default. */
+  opsProfile: 'otr' | 'dump_truck' | null
   status: string
   vin: string | null
   licensePlate: string | null
@@ -118,7 +120,9 @@ export default function EquipmentAdminPage() {
                       {eq.unitNumber} {eq.make || eq.model ? `— ${[eq.year, eq.make, eq.model].filter(Boolean).join(' ')}` : ''}
                     </div>
                     <div style={{ fontSize: '.72rem', color: 'var(--muted)' }}>
-                      {eq.equipmentType} · {eq.status} {eq.currentOdometer != null ? `· ${eq.currentOdometer.toLocaleString()} mi` : ''}
+                      {eq.equipmentType} · {eq.status}
+                      {eq.opsProfile ? ` · ${eq.opsProfile === 'dump_truck' ? 'Dump Truck' : 'OTR'}` : ''}
+                      {eq.currentOdometer != null ? `· ${eq.currentOdometer.toLocaleString()} mi` : ''}
                     </div>
                   </div>
                   <span style={{ fontSize: '.72rem', fontWeight: 800, color: cs.color, padding: '.25rem .6rem', borderRadius: 6, background: 'var(--surface)', border: `1px solid ${cs.color}` }}>
@@ -182,7 +186,7 @@ function TruckLocationsPanel({ equipment }: { equipment: EquipmentRecord[] }) {
 
 function NewEquipmentPanel({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false)
-  const [form, setForm] = useState({ unitNumber: '', equipmentType: 'tractor', vin: '', licensePlate: '', make: '', model: '', year: '' })
+  const [form, setForm] = useState({ unitNumber: '', equipmentType: 'tractor', opsProfile: '', vin: '', licensePlate: '', make: '', model: '', year: '' })
   const [busy, setBusy] = useState(false)
 
   const submit = async () => {
@@ -191,11 +195,11 @@ function NewEquipmentPanel({ onCreated }: { onCreated: () => void }) {
     try {
       const res = await fetch('/api/fleet/equipment', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, year: form.year ? Number(form.year) : null }),
+        body: JSON.stringify({ ...form, opsProfile: form.opsProfile || null, year: form.year ? Number(form.year) : null }),
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Could not create equipment')
       toast.success('Equipment added')
-      setForm({ unitNumber: '', equipmentType: 'tractor', vin: '', licensePlate: '', make: '', model: '', year: '' })
+      setForm({ unitNumber: '', equipmentType: 'tractor', opsProfile: '', vin: '', licensePlate: '', make: '', model: '', year: '' })
       setOpen(false)
       onCreated()
     } catch (err) {
@@ -222,6 +226,14 @@ function NewEquipmentPanel({ onCreated }: { onCreated: () => void }) {
             {['tractor', 'straight_dump_truck', 'super_10', 'trailer_dump', 'pup_trailer', 'other'].map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
+        <div>
+          <div style={labelStyle}>Trucking Type</div>
+          <select style={inputStyle} value={form.opsProfile} onChange={e => setForm({ ...form, opsProfile: e.target.value })}>
+            <option value="">Same as business default</option>
+            <option value="dump_truck">Dump Truck</option>
+            <option value="otr">OTR</option>
+          </select>
+        </div>
         <div><div style={labelStyle}>VIN</div><input style={inputStyle} value={form.vin} onChange={e => setForm({ ...form, vin: e.target.value })} /></div>
         <div><div style={labelStyle}>License Plate</div><input style={inputStyle} value={form.licensePlate} onChange={e => setForm({ ...form, licensePlate: e.target.value })} /></div>
         <div><div style={labelStyle}>Make</div><input style={inputStyle} value={form.make} onChange={e => setForm({ ...form, make: e.target.value })} /></div>
@@ -241,6 +253,7 @@ function EquipmentDetail({ equipment, onUpdated }: { equipment: EquipmentRecord;
     registrationExp: equipment.registrationExp ?? '', insuranceExp: equipment.insuranceExp ?? '',
     inspectionExp: equipment.inspectionExp ?? '', currentOdometer: equipment.currentOdometer != null ? String(equipment.currentOdometer) : '',
     nextServiceDueDate: equipment.nextServiceDueDate ?? '', nextServiceDueMiles: equipment.nextServiceDueMiles != null ? String(equipment.nextServiceDueMiles) : '',
+    opsProfile: equipment.opsProfile ?? '',
   })
   const [saving, setSaving] = useState(false)
   const [records, setRecords] = useState<ServiceRecord[]>([])
@@ -264,6 +277,7 @@ function EquipmentDetail({ equipment, onUpdated }: { equipment: EquipmentRecord;
           currentOdometer: form.currentOdometer ? Number(form.currentOdometer) : null,
           nextServiceDueDate: form.nextServiceDueDate || null,
           nextServiceDueMiles: form.nextServiceDueMiles ? Number(form.nextServiceDueMiles) : null,
+          opsProfile: form.opsProfile || null,
         }),
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Could not save')
@@ -281,6 +295,14 @@ function EquipmentDetail({ equipment, onUpdated }: { equipment: EquipmentRecord;
       <div>
         <div style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8 }}>Compliance &amp; Mileage</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '.6rem', marginBottom: '.75rem' }}>
+          <div>
+            <div style={labelStyle}>Trucking Type</div>
+            <select style={inputStyle} value={form.opsProfile} onChange={e => setForm({ ...form, opsProfile: e.target.value })}>
+              <option value="">Same as business default</option>
+              <option value="dump_truck">Dump Truck</option>
+              <option value="otr">OTR</option>
+            </select>
+          </div>
           <div><div style={labelStyle}>Registration Exp.</div><input style={inputStyle} type="date" value={form.registrationExp} onChange={e => setForm({ ...form, registrationExp: e.target.value })} /></div>
           <div><div style={labelStyle}>Insurance Exp.</div><input style={inputStyle} type="date" value={form.insuranceExp} onChange={e => setForm({ ...form, insuranceExp: e.target.value })} /></div>
           <div><div style={labelStyle}>Inspection Exp.</div><input style={inputStyle} type="date" value={form.inspectionExp} onChange={e => setForm({ ...form, inspectionExp: e.target.value })} /></div>
@@ -291,7 +313,73 @@ function EquipmentDetail({ equipment, onUpdated }: { equipment: EquipmentRecord;
         <button style={{ ...btnStyle, opacity: saving ? .5 : 1 }} disabled={saving} onClick={saveCompliance}>{saving ? 'Saving…' : 'Save'}</button>
       </div>
 
+      <EquipmentDocumentsPanel equipmentId={equipment.id} />
+
       <ServiceRecordsPanel equipmentId={equipment.id} records={records} loading={recordsLoading} onAdded={() => { loadRecords(); onUpdated() }} />
+    </div>
+  )
+}
+
+interface EquipmentDocument { id: string; docType: string; fileName: string; createdAt: string; signedUrl: string | null }
+const EQUIPMENT_DOC_LABELS: Record<string, string> = { registration: 'Registration', insurance: 'Insurance', other: 'Other' }
+
+function EquipmentDocumentsPanel({ equipmentId }: { equipmentId: string }) {
+  const [documents, setDocuments] = useState<EquipmentDocument[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState<string | null>(null)
+  const fileRefs = { registration: useRef<HTMLInputElement>(null), insurance: useRef<HTMLInputElement>(null), other: useRef<HTMLInputElement>(null) }
+
+  const load = useCallback(() => {
+    setLoading(true)
+    fetch(`/api/fleet/equipment/${equipmentId}/documents`).then(r => r.json()).then(b => setDocuments(b.documents ?? [])).finally(() => setLoading(false))
+  }, [equipmentId])
+  useEffect(load, [load])
+
+  const upload = async (docType: 'registration' | 'insurance' | 'other', file: File) => {
+    setUploading(docType)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('docType', docType)
+      const res = await fetch(`/api/fleet/equipment/${equipmentId}/documents`, { method: 'POST', body: fd })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Upload failed')
+      toast.success('Saved')
+      load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setUploading(null)
+    }
+  }
+
+  const docsFor = (docType: string) => documents.filter(d => d.docType === docType)
+
+  return (
+    <div>
+      <div style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8 }}>Documents</div>
+      {loading && <div style={{ color: 'var(--muted)', fontSize: '.8rem' }}>Loading…</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '.6rem' }}>
+        {(['registration', 'insurance', 'other'] as const).map(docType => (
+          <div key={docType}>
+            <input
+              ref={fileRefs[docType]} type="file" accept="image/*,application/pdf" capture="environment" style={{ display: 'none' }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) upload(docType, f); e.target.value = '' }}
+            />
+            <button
+              style={{ ...btnStyle, width: '100%', background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)', opacity: uploading === docType ? .5 : 1 }}
+              disabled={uploading === docType}
+              onClick={() => fileRefs[docType].current?.click()}
+            >
+              {uploading === docType ? 'Uploading…' : `📎 ${EQUIPMENT_DOC_LABELS[docType]}`}
+            </button>
+            {docsFor(docType).map(d => (
+              <a key={d.id} href={d.signedUrl ?? '#'} target="_blank" rel="noreferrer" style={{ fontSize: '.7rem', color: 'var(--primary)', display: 'block', marginTop: 4 }}>
+                {new Date(d.createdAt).toLocaleDateString()} — view
+              </a>
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

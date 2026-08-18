@@ -57,6 +57,39 @@ export async function setPreferredLanguage(userId: string, language: PreferredLa
   if (error) throw error
 }
 
+/**
+ * 2026-08-15 — per-truck trucking-type resolution (fleet_equipment.ops_profile),
+ * for a business that might run mixed equipment (e.g. some dump trucks, some
+ * OTR tractors) rather than one type company-wide. Looks at the driver's most
+ * recent shift (fleet_dt_shifts is the only "which truck is this driver on"
+ * signal that exists today) and uses that truck's own ops_profile if set;
+ * falls back to businessOpsProfile — the plain business default — when the
+ * driver has no shift history yet, or their truck doesn't have an explicit
+ * override. Used only for the driver-focus nav; dispatch/admin/broker still
+ * see the full business-wide default since they manage the whole fleet, not
+ * one truck.
+ */
+export async function getEffectiveOpsProfileForDriver(
+  businessId: string, driverId: string, businessOpsProfile: 'otr' | 'dump_truck',
+): Promise<'otr' | 'dump_truck'> {
+  const { data: shift } = await fleetServiceClient
+    .from('fleet_dt_shifts')
+    .select('truck_id')
+    .eq('business_id', businessId)
+    .eq('driver_id', driverId)
+    .not('truck_id', 'is', null)
+    .order('clock_in_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (!shift?.truck_id) return businessOpsProfile
+
+  const { data: truck } = await fleetServiceClient
+    .from('fleet_equipment').select('ops_profile').eq('id', shift.truck_id).maybeSingle()
+
+  return truck?.ops_profile === 'otr' || truck?.ops_profile === 'dump_truck' ? truck.ops_profile : businessOpsProfile
+}
+
 export interface BusinessMeta {
   businessName: string
   threebBizId: string | null
