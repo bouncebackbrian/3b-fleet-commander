@@ -204,26 +204,13 @@ pre code{background:none;padding:0}
   .cc-landscape-only { display:none !important; }
 }
 
-/* ── Cal-Neva Trucking branding pass (master build spec §4) ─────────────── */
-/* Scoped to .dt-shell only — the dump-truck driver cockpit — not the whole
-   app, which serves other businesses/OTR too. Deliberately always-light
-   regardless of the viewer's app-wide dark/light preference: the spec's own
-   palette (white/silver surfaces, deep-blue accent) and its explicit
-   "sunlight readable" requirement both point at a light industrial look, not
-   a dark glow that washes out in a truck cab. Status colors (red/amber/
-   green/gray) reuse the app's already-shipped light-theme values — no new
-   unvalidated hexes — paired with icon+label everywhere they're used
-   (existing convention throughout the DT components), never color alone. */
-.dt-shell {
-  --bg: #ffffff; --surface: #ffffff; --surface-2: #f1f3f6; --surface-off: #e6e9ee;
-  --border: #c4cbd4; --text: #172033; --muted: #5b6478; --faint: #94a0b4;
-  --primary: #0b4ea2; --primary-h: #082f63; --blue: #0b4ea2;
-  --success: #1a8e34; --warn: #b07000; --error: #d03b3b;
-  --shadow-sm: 0 1px 2px rgba(11,32,51,.08); --shadow-md: 0 4px 12px rgba(11,32,51,.1); --shadow-lg: 0 12px 32px rgba(11,32,51,.14);
-  --dt-on-primary: #ffffff;
-}
-
 /* ── Dump Truck Mode — iPad landscape driver shell ───────────────────────── */
+/* No color-token override here — the cockpit uses the same --bg/--surface/
+   --primary/etc as the rest of Fleet Commander (dark teal-on-black by
+   default, or light if the driver has switched app-wide), not a separate
+   branding pass. --dt-on-primary is left undefined so every usage falls
+   back to its own `, #04140f` default — matching the near-black text the
+   rest of the app already hardcodes on top of --primary buttons. */
 /* Three-region layout: left rail (shift context), center (primary action),
    right rail (day activity + quick actions). Landscape-first — stacks on
    narrow/portrait screens rather than truncating. */
