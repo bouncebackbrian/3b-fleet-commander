@@ -30,6 +30,7 @@ import NewSiteSheet from '@/components/dumpTruck/NewSiteSheet'
 import FullLogSheet from '@/components/dumpTruck/FullLogSheet'
 import EditJobSheet from '@/components/dumpTruck/EditJobSheet'
 import TicketSheet from '@/components/dumpTruck/TicketSheet'
+import DispatchCard from '@/components/dumpTruck/DispatchCard'
 
 type SheetKey =
   | 'clock_in' | 'odometer_pickup' | 'odometer_dropoff' | 'pretrip' | 'posttrip'
@@ -201,6 +202,16 @@ export default function DumpTruckDriverPage() {
         preferredLanguage={preferredLanguage}
         onLanguageChange={setLanguage}
       />
+
+      <div style={{ padding: '0 1rem' }}>
+        <DispatchCard
+          truckUnitNumber={truckUnitNumber}
+          onStartDispatch={jobId => {
+            setActiveJobId(jobId)
+            toast.success("Today's dispatch loaded — verify truck and odometer, then start pre-trip")
+          }}
+        />
+      </div>
 
       <div className="dt-body">
         <div className="dt-left">

@@ -12,7 +12,7 @@ function makeSite(overrides: Partial<DumpTruckSite> = {}): DumpTruckSite {
     customerName: null, brokerName: null, instructions: null, routeNotes: null,
     gateCode: null, gateInstructions: null, restrictions: {}, approachDirection: null, avoidNotes: null,
     contactName: null, contactPhone: null, operatingHours: {},
-    active: true, verified: true,
+    active: true, verified: true, aliases: [],
     ...overrides,
   }
 }

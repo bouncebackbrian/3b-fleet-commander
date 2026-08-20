@@ -143,6 +143,8 @@ export interface DumpTruckSite {
   operatingHours: Record<string, unknown>
   active: boolean
   verified: boolean
+  /** Alternate names dispatch/drivers use for this site in free text ("White Fir", "the Lockwood pit") — matched by resolveLocationText. */
+  aliases: string[]
 }
 
 // ── Jobs / shifts / load cycles ────────────────────────────────────────────

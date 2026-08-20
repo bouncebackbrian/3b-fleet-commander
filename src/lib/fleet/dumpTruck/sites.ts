@@ -10,6 +10,7 @@
 import { fleetServiceClient } from '@/lib/fleet-service-client'
 import { audit } from '@/lib/fleet/audit'
 import { DumpTruckError } from './shared'
+import { geocodeAddress } from '@/lib/dumpTruck/routing'
 import type { DumpTruckSite, SiteType, PreferredNavPoint } from '@/lib/dumpTruck/types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -47,6 +48,7 @@ function fromRow(r: any): DumpTruckSite {
     operatingHours: r.operating_hours ?? {},
     active: !!r.active,
     verified: !!r.verified,
+    aliases: r.aliases ?? [],
   }
 }
 
@@ -101,6 +103,7 @@ export interface CreateSiteInput {
   routeNotes?: string | null
   gateCode?: string | null
   gateInstructions?: string | null
+  aliases?: string[]
 }
 
 export async function createSite(
@@ -130,6 +133,7 @@ export async function createSite(
       route_notes: input.routeNotes ?? null,
       gate_code: input.gateCode ?? null,
       gate_instructions: input.gateInstructions ?? null,
+      aliases: input.aliases ?? [],
       created_by: userId,
     })
     .select('*')
@@ -169,4 +173,107 @@ export async function updateSiteLocation(
   const site = fromRow(data)
   audit.log({ userId, email, action: 'dump_truck.site.pin_location', resource: 'fleet_dt_sites', resourceId: site.id, after: { lat, lng } })
   return site
+}
+
+/** Record another wording dispatch/AI parsing used for a site so future free-text mentions match it directly. */
+export async function addSiteAlias(
+  businessId: string, siteId: string, alias: string, userId: string, email: string | null,
+): Promise<DumpTruckSite> {
+  const { data: existing } = await fleetServiceClient
+    .from('fleet_dt_sites').select('id, business_id, aliases').eq('id', siteId).maybeSingle()
+  if (!existing || existing.business_id !== businessId) throw new DumpTruckError('Site not found', 404)
+
+  const normalized = alias.trim()
+  const current: string[] = existing.aliases ?? []
+  if (!normalized || current.some(a => a.toLowerCase() === normalized.toLowerCase())) {
+    const { data } = await fleetServiceClient.from('fleet_dt_sites').select('*').eq('id', siteId).single()
+    return fromRow(data)
+  }
+
+  const { data, error } = await fleetServiceClient
+    .from('fleet_dt_sites')
+    .update({ aliases: [...current, normalized] })
+    .eq('id', siteId)
+    .select('*')
+    .single()
+  if (error) throw error
+  const site = fromRow(data)
+  audit.log({ userId, email, action: 'dump_truck.site.add_alias', resource: 'fleet_dt_sites', resourceId: site.id, after: { alias: normalized } })
+  return site
+}
+
+export type LocationMatchConfidence = 'high' | 'medium' | 'low'
+
+export interface ResolvedLocation {
+  /** Set when an existing verified/unverified site matched by name or alias. */
+  siteId: string | null
+  siteName: string | null
+  /** Coordinates — from the matched site, or freshly geocoded when nothing matched. */
+  lat: number | null
+  lng: number | null
+  address: string | null
+  confidence: LocationMatchConfidence
+  /** True when this came from an existing Fleet Commander site rather than a fresh geocode. */
+  matchedExisting: boolean
+  rawText: string
+}
+
+function normalizeForMatch(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+/**
+ * Resolve a free-text location mention (from Hector's paste or the AI
+ * parser) against known sites first, then fall back to geocoding — spec
+ * §"Location Normalization": reuse a verified site whenever possible,
+ * otherwise geocode, and let the caller show/confirm before publishing.
+ *
+ * Matching is deliberately simple (exact / substring, case-insensitive)
+ * rather than fuzzy-scored — dispatch site names and aliases are short and
+ * specific ("White Fir", "Lockwood"), and a wrong fuzzy match on a real
+ * jobsite is worse than asking Hector to confirm an unmatched one.
+ */
+export async function resolveLocationText(businessId: string, rawText: string): Promise<ResolvedLocation | null> {
+  const text = rawText?.trim()
+  if (!text) return null
+  const needle = normalizeForMatch(text)
+
+  const { data: sites, error } = await fleetServiceClient
+    .from('fleet_dt_sites')
+    .select('id, name, aliases, lat, lng, address_line1, city, state, postal_code')
+    .eq('business_id', businessId)
+    .eq('active', true)
+  if (error) throw error
+
+  let best: { site: (typeof sites)[number]; exact: boolean } | null = null
+  for (const site of sites ?? []) {
+    const candidates = [site.name, ...(site.aliases ?? [])].map(normalizeForMatch)
+    const exact = candidates.includes(needle)
+    const partial = !exact && candidates.some(c => c.length > 2 && (needle.includes(c) || c.includes(needle)))
+    if (exact) { best = { site, exact: true }; break }
+    if (partial && !best) best = { site, exact: false }
+  }
+
+  if (best) {
+    const address = [best.site.address_line1, best.site.city, best.site.state, best.site.postal_code].filter(Boolean).join(', ') || null
+    return {
+      siteId: best.site.id,
+      siteName: best.site.name,
+      lat: best.site.lat != null ? Number(best.site.lat) : null,
+      lng: best.site.lng != null ? Number(best.site.lng) : null,
+      address,
+      confidence: best.exact ? 'high' : 'medium',
+      matchedExisting: true,
+      rawText: text,
+    }
+  }
+
+  const geocoded = await geocodeAddress(text)
+  if (!geocoded) {
+    return { siteId: null, siteName: null, lat: null, lng: null, address: null, confidence: 'low', matchedExisting: false, rawText: text }
+  }
+  return {
+    siteId: null, siteName: null, lat: geocoded.lat, lng: geocoded.lng, address: text,
+    confidence: 'low', matchedExisting: false, rawText: text,
+  }
 }

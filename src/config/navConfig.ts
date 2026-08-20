@@ -136,6 +136,14 @@ export const FLEET_NAV: NavEntry[] = [
     tier:  ['starter', 'pro', 'enterprise'],
   },
 
+  // ── Dump Truck Mode — AI dispatch intake + trip planning board ───────────
+  {
+    id: 'fleet-dump-truck-dispatch', label: 'Dispatch', href: '/admin/dump-truck/dispatch', icon: '📣',
+    family: 'fleet', enabled: true,
+    modes: ['dispatcher', 'owner_op', 'fleet_owner', 'fleet_manager', 'admin'],
+    tier:  ['starter', 'pro', 'enterprise'],
+  },
+
   // ── Dump Truck Mode — fleet KPIs (per-truck / per-driver + team) ─────────
   {
     id: 'fleet-dump-truck-kpis', label: 'Fleet KPIs', href: '/admin/dump-truck/kpis', icon: '📈',
