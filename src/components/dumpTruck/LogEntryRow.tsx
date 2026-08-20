@@ -24,14 +24,14 @@ export default function LogEntryRow({ entry, labelCtx, size = 'sm' }: { entry: T
 
   return (
     <>
-      <div style={{
+      <div className={big ? 'dt-log-row-lg' : 'dt-log-row-sm'} style={{
         display: 'flex', alignItems: 'center', gap: big ? 10 : 8, padding: big ? '.75rem .9rem' : '.5rem .6rem',
         borderRadius: big ? 10 : 8, background: 'var(--surface-2)', border: '1px solid var(--border)',
         opacity: entry.pending ? .65 : 1,
       }}>
         <span style={{ fontSize: big ? '1.15rem' : '.9rem' }}>{entry.pending ? '⏳' : '✅'}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: big ? '1rem' : '.82rem', fontWeight: 700 }}>{label}</div>
+          <div className="dt-log-row-label" style={{ fontSize: big ? '1rem' : '.82rem', fontWeight: 700 }}>{label}</div>
           {entry.notes && <div style={{ fontSize: big ? '.82rem' : '.72rem', color: 'var(--muted)' }}>{entry.notes}</div>}
         </div>
         {hasLocation && (

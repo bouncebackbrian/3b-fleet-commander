@@ -68,10 +68,7 @@ export default function CenterAction({
       )}
 
       {(loadCount != null || hasJobInfo) && (
-        <div style={{
-          display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '.5rem',
-          width: '100%', maxWidth: 480,
-        }}>
+        <div className="dt-stat-row" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '.5rem' }}>
           {loadCount != null && <StatPill label="Loads" value={String(loadCount)} highlight />}
           {job?.customerName && <StatPill label="Customer" value={job.customerName} />}
           {job?.jobNumber && <StatPill label="Job #" value={job.jobNumber} />}
@@ -100,11 +97,13 @@ export default function CenterAction({
       )}
 
       {recentLog.length > 0 && (
-        <div style={{ width: '100%', maxWidth: 480, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="dt-recent-activity" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
             Recent Activity
           </div>
-          {recentLog.map(entry => <LogEntryRow key={entry.id} entry={entry} labelCtx={labelCtx} size="lg" />)}
+          <div className="dt-recent-activity-rows" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {recentLog.map(entry => <LogEntryRow key={entry.id} entry={entry} labelCtx={labelCtx} size="lg" />)}
+          </div>
           {onViewFullLog && (
             <button
               onClick={onViewFullLog}
@@ -137,7 +136,7 @@ function StatPill({ label, value, highlight }: { label: string; value: string; h
       textAlign: 'center', minWidth: 76,
     }}>
       <div style={{ fontSize: '.6rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' }}>{label}</div>
-      <div style={{ fontSize: '.95rem', fontWeight: 800, color: highlight ? 'var(--primary)' : 'var(--text)' }}>{value}</div>
+      <div className="dt-stat-pill-value" style={{ fontSize: '.95rem', fontWeight: 800, color: highlight ? 'var(--primary)' : 'var(--text)' }}>{value}</div>
     </div>
   )
 }
