@@ -285,6 +285,9 @@ export default function DumpTruckDriverPage() {
                   poNumber: activeJob.poNumber,
                   totalTons: activeJob.quantityUnit === 'tons' ? activeJob.estQuantity : null,
                 } : null}
+                timeline={timeline}
+                labelCtx={siteLabelCtx}
+                onViewFullLog={() => setSheet('full_log')}
               />
             </div>
           )}
@@ -292,11 +295,7 @@ export default function DumpTruckDriverPage() {
 
         <div className="dt-right">
           <RightRail
-            timeline={timeline}
-            loadCount={context?.shift?.loadCount ?? 0}
             quickActions={quickActions}
-            labelCtx={siteLabelCtx}
-            onViewFullLog={() => setSheet('full_log')}
             onQuickAction={key => {
               if (key === 'correction') {
                 fireEvent('correction_requested', { notes: 'Driver requested a correction — see timeline for context.' })

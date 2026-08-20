@@ -1,6 +1,11 @@
 'use client'
 import { useEffect, useState } from 'react'
 import type { PrimaryActionSpec } from '@/lib/dumpTruck/stateMachine'
+import type { TimelineEntry } from '@/hooks/useDumpTruckDriver'
+import type { SiteAwareLabelContext } from '@/lib/dumpTruck/actionLabels'
+import LogEntryRow from './LogEntryRow'
+
+const RECENT_COUNT = 3
 
 interface JobSummary {
   customerName: string | null
@@ -19,6 +24,10 @@ interface Props {
   clockInAt?: string | null
   loadCount?: number
   job?: JobSummary | null
+  /** Last few events, shown right under the button so the driver sees confirmation without hunting the side rail. */
+  timeline?: TimelineEntry[]
+  labelCtx?: SiteAwareLabelContext
+  onViewFullLog?: () => void
 }
 
 function formatClock(d: Date): string {
@@ -30,7 +39,9 @@ function formatClock(d: Date): string {
   return `${h}:${m}:${s} ${ampm}`
 }
 
-export default function CenterAction({ action, busy, disabledReason, onPrimary, onSecondary, clockInAt, loadCount, job }: Props) {
+export default function CenterAction({
+  action, busy, disabledReason, onPrimary, onSecondary, clockInAt, loadCount, job, timeline, labelCtx, onViewFullLog,
+}: Props) {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000)
@@ -38,6 +49,7 @@ export default function CenterAction({ action, busy, disabledReason, onPrimary, 
   }, [])
 
   const hasJobInfo = job && (job.customerName || job.jobNumber || job.poNumber || job.totalTons != null)
+  const recentLog = timeline ? [...timeline].reverse().slice(0, RECENT_COUNT) : []
 
   return (
     <div className="dt-center-stack" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', width: '100%' }}>
@@ -84,6 +96,26 @@ export default function CenterAction({ action, busy, disabledReason, onPrimary, 
           color: 'var(--error)', background: 'rgba(232,64,0,.1)', padding: '.6rem 1rem', borderRadius: 10,
         }}>
           ⚠️ {disabledReason}
+        </div>
+      )}
+
+      {recentLog.length > 0 && (
+        <div style={{ width: '100%', maxWidth: 480, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+            Recent Activity
+          </div>
+          {recentLog.map(entry => <LogEntryRow key={entry.id} entry={entry} labelCtx={labelCtx} size="lg" />)}
+          {onViewFullLog && (
+            <button
+              onClick={onViewFullLog}
+              style={{
+                padding: '.5rem', borderRadius: 8, background: 'var(--surface-2)',
+                border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.8rem', fontWeight: 700,
+              }}
+            >
+              View Full Log ({timeline?.length ?? 0})
+            </button>
+          )}
         </div>
       )}
 
