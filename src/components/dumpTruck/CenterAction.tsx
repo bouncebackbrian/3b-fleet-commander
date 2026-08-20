@@ -21,35 +21,37 @@ interface Props {
   job?: JobSummary | null
 }
 
-function formatElapsed(ms: number): string {
-  if (ms < 0) return '0:00:00'
-  const totalSec = Math.floor(ms / 1000)
-  const h = Math.floor(totalSec / 3600)
-  const m = Math.floor((totalSec % 3600) / 60)
-  const s = totalSec % 60
-  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+function formatClock(d: Date): string {
+  let h = d.getHours()
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  h = h % 12 || 12
+  const m = String(d.getMinutes()).padStart(2, '0')
+  const s = String(d.getSeconds()).padStart(2, '0')
+  return `${h}:${m}:${s} ${ampm}`
 }
 
 export default function CenterAction({ action, busy, disabledReason, onPrimary, onSecondary, clockInAt, loadCount, job }: Props) {
-  const [now, setNow] = useState(() => Date.now())
+  const [now, setNow] = useState(() => new Date())
   useEffect(() => {
-    if (!clockInAt) return
-    const t = setInterval(() => setNow(Date.now()), 1000)
+    const t = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(t)
-  }, [clockInAt])
+  }, [])
 
   const hasJobInfo = job && (job.customerName || job.jobNumber || job.poNumber || job.totalTons != null)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', width: '100%' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+          Current Time
+        </div>
+        <div style={{ fontSize: '2.6rem', fontWeight: 900, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
+          {formatClock(now)}
+        </div>
+      </div>
       {clockInAt && (
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
-            Running Time
-          </div>
-          <div style={{ fontSize: '2.6rem', fontWeight: 900, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
-            {formatElapsed(now - new Date(clockInAt).getTime())}
-          </div>
+        <div style={{ fontSize: '.85rem', fontWeight: 700, color: 'var(--muted)' }}>
+          Shift running since {new Date(clockInAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
         </div>
       )}
 
