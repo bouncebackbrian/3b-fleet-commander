@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { toast } from '@/hooks/useToast'
 import ToastContainer from '@/components/shared/ToastContainer'
 import type { DumpTruckSite } from '@/lib/dumpTruck/types'
@@ -91,6 +91,7 @@ function fieldsToForm(f: ParsedDispatchFields): FormState {
 }
 
 export default function DispatchIntakePage() {
+  const screenshotFileRef = useRef<HTMLInputElement>(null)
   const [drivers, setDrivers] = useState<DriverOption[]>([])
   const [equipment, setEquipment] = useState<{ trucks: EquipmentOption[]; trailers: EquipmentOption[] }>({ trucks: [], trailers: [] })
   const [sites, setSites] = useState<DumpTruckSite[]>([])
@@ -122,6 +123,17 @@ export default function DispatchIntakePage() {
     setDraft(null); setStops([])
   }
 
+  const applyParseResult = (body: { parsed: ParsedDispatchFields; confidence?: Record<string, FieldConfidence>; warnings?: string[]; model?: string | null; rawInput?: string }) => {
+    setForm(fieldsToForm(body.parsed))
+    setConfidence(body.confidence ?? {})
+    setWarnings(body.warnings ?? [])
+    setAiParseMeta({ parsedJson: body.parsed, confidenceJson: body.confidence, warnings: body.warnings, model: body.model ?? null })
+    // createDraft() below reads rawText for the draft's audit-trail rawInput —
+    // a screenshot parse has no typed text, so carry the server's placeholder
+    // (or the caption typed alongside the screenshot) into it.
+    if (body.rawInput && !rawText.trim()) setRawText(body.rawInput)
+  }
+
   const parseWithAi = async () => {
     if (!rawText.trim()) { toast.error('Paste or type the job info first'); return }
     setParsing(true)
@@ -136,13 +148,30 @@ export default function DispatchIntakePage() {
       })
       const body = await res.json()
       if (!res.ok) throw new Error(body.error ?? 'Could not parse dispatch')
-      setForm(fieldsToForm(body.parsed))
-      setConfidence(body.confidence ?? {})
-      setWarnings(body.warnings ?? [])
-      setAiParseMeta({ parsedJson: body.parsed, confidenceJson: body.confidence, warnings: body.warnings, model: body.model ?? null })
+      applyParseResult(body)
       toast.success('Parsed — review the fields below before publishing')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not parse dispatch')
+    } finally {
+      setParsing(false)
+    }
+  }
+
+  const parseFromScreenshot = async (file: File) => {
+    setParsing(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      if (rawText.trim()) fd.append('text', rawText.trim())
+      fd.append('knownDrivers', drivers.map(d => d.name).join('; '))
+      fd.append('knownTrucks', equipment.trucks.map(t => t.unitNumber).join(', '))
+      const res = await fetch('/api/fleet/dump-truck/dispatch/parse', { method: 'POST', body: fd })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error ?? 'Could not read screenshot')
+      applyParseResult(body)
+      toast.success('Parsed from screenshot — review the fields below before publishing')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not read screenshot')
     } finally {
       setParsing(false)
     }
@@ -287,15 +316,30 @@ export default function DispatchIntakePage() {
           value={rawText}
           onChange={e => setRawText(e.target.value)}
         />
-        <div style={{ display: 'flex', gap: 8, marginTop: '.75rem' }}>
-          <button style={{ ...btnStyle, opacity: parsing ? .5 : 1 }} disabled={parsing} onClick={parseWithAi}>
+        <div style={{ display: 'flex', gap: 8, marginTop: '.75rem', flexWrap: 'wrap' }}>
+          <button style={{ ...btnStyle, opacity: parsing ? .5 : 1 }} disabled={parsing || !rawText.trim()} onClick={parseWithAi}>
             {parsing ? 'Parsing…' : '✨ Parse with AI'}
           </button>
+          <button
+            style={{ ...ghostBtnStyle, opacity: parsing ? .5 : 1 }}
+            disabled={parsing}
+            onClick={() => screenshotFileRef.current?.click()}
+          >
+            📷 Upload Screenshot
+          </button>
+          <input
+            ref={screenshotFileRef} type="file" accept="image/*" style={{ display: 'none' }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) parseFromScreenshot(f); e.target.value = '' }}
+          />
           <button style={ghostBtnStyle} onClick={() => { setConfidence({}); setWarnings([]); setAiParseMeta(null) }}>
             Fill in manually instead
           </button>
           {(draft || rawText || form !== EMPTY_FORM) && <button style={ghostBtnStyle} onClick={resetIntake}>Start Over</button>}
         </div>
+        <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: '.5rem' }}>
+          Screenshot a text message, email, or dispatch note — AI reads it the same way as pasted text. You can
+          type a quick note in the box above too if the screenshot needs extra context.
+        </p>
       </div>
 
       {(aiParseMeta || form.dispatchDate || form.pickupText || draft) && (

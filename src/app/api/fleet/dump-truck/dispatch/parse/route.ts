@@ -114,17 +114,14 @@ const JSON_SHAPE = `{
   "warnings": [ "short strings flagging anything important that is missing, ambiguous, or should be double-checked before publishing" ]
 }`
 
-function buildPrompt(text: string, todayIso: string, knownDrivers: string, knownTrucks: string): string {
+function buildPrompt(source: string, todayIso: string, knownDrivers: string, knownTrucks: string): string {
   return `You are extracting a structured dispatch assignment from a message a dump-truck
 dispatcher (Hector, at Cal-Neva Trucking) typed, pasted, or dictated. Today's
 date is ${todayIso}. Resolve relative dates ("tomorrow", "Monday") against
 that. Known drivers and their DEFAULT truck (only a default — the message may
 override it): ${knownDrivers || 'none on file yet'}. Known trucks: ${knownTrucks || 'none on file yet'}.
 
-Message:
-"""
-${text}
-"""
+${source}
 
 Extract ONLY what is actually stated or clearly implied by the message. Do
 NOT invent an address, phone number, time, quantity, or any other fact that
@@ -153,6 +150,25 @@ function parseModelJson(raw: string): ParseDispatchResponse | { error: string } 
   return JSON.parse(cleaned)
 }
 
+function textSource(text: string): string {
+  return `Message:\n"""\n${text}\n"""`
+}
+
+function screenshotSource(caption: string | null): string {
+  return `The message is a screenshot (attached below) — a text message, email, or note`
+    + ` containing the dispatch job info. Read whatever text is visible in the image.`
+    + (caption ? `\n\nThe dispatcher also added this note alongside the screenshot: "${caption}"` : '')
+}
+
+async function callClaude(
+  client: Anthropic, prompt: string, image: { base64: string; mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif' } | null,
+) {
+  const content: Anthropic.MessageParam['content'] = image
+    ? [{ type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.base64 } }, { type: 'text', text: prompt }]
+    : prompt
+  return client.messages.create({ model: 'claude-opus-4-7', max_tokens: 1536, messages: [{ role: 'user', content }] })
+}
+
 export async function POST(req: NextRequest) {
   const auth = await requireFleetAuth()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -161,23 +177,50 @@ export async function POST(req: NextRequest) {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 503 })
 
-  const body = await req.json().catch(() => null)
-  const text = body?.text
-  if (typeof text !== 'string' || !text.trim()) {
-    return NextResponse.json({ error: 'text is required' }, { status: 400 })
-  }
-  const knownDrivers: string = Array.isArray(body?.knownDrivers) ? body.knownDrivers.join('; ') : ''
-  const knownTrucks: string = Array.isArray(body?.knownTrucks) ? body.knownTrucks.join(', ') : ''
-
+  const contentType = req.headers.get('content-type') ?? ''
   const todayIso = new Date().toISOString().slice(0, 10)
   const client = new Anthropic({ apiKey })
 
+  let prompt: string
+  let image: { base64: string; mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif' } | null = null
+  let rawInputForAudit: string
+
+  if (contentType.includes('multipart/form-data')) {
+    // Screenshot mode — same shape as scan-site's file branch, but the whole
+    // dispatch field set instead of just a location.
+    const form = await req.formData().catch(() => null)
+    if (!form) return NextResponse.json({ error: 'Invalid form data' }, { status: 400 })
+    const file = form.get('file') as File | null
+    if (!file) return NextResponse.json({ error: 'file is required' }, { status: 400 })
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif']
+    if (!allowedTypes.includes(file.type) && !file.type.startsWith('image/')) {
+      return NextResponse.json({ error: 'Unsupported file type. Use a screenshot.' }, { status: 400 })
+    }
+    const bytes = await file.arrayBuffer()
+    const base64 = Buffer.from(bytes).toString('base64')
+    const mediaType = (file.type === 'image/heic' || file.type === 'image/heif')
+      ? 'image/jpeg' : (file.type as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif')
+    image = { base64, mediaType }
+
+    const caption = typeof form.get('text') === 'string' ? String(form.get('text')).trim() || null : null
+    const knownDrivers = String(form.get('knownDrivers') ?? '')
+    const knownTrucks = String(form.get('knownTrucks') ?? '')
+    prompt = buildPrompt(screenshotSource(caption), todayIso, knownDrivers, knownTrucks)
+    rawInputForAudit = caption ? `[Screenshot] ${caption}` : '[Parsed from screenshot]'
+  } else {
+    const body = await req.json().catch(() => null)
+    const text = body?.text
+    if (typeof text !== 'string' || !text.trim()) {
+      return NextResponse.json({ error: 'text is required' }, { status: 400 })
+    }
+    const knownDrivers: string = Array.isArray(body?.knownDrivers) ? body.knownDrivers.join('; ') : ''
+    const knownTrucks: string = Array.isArray(body?.knownTrucks) ? body.knownTrucks.join(', ') : ''
+    prompt = buildPrompt(textSource(text), todayIso, knownDrivers, knownTrucks)
+    rawInputForAudit = text
+  }
+
   try {
-    const message = await client.messages.create({
-      model: 'claude-opus-4-7',
-      max_tokens: 1536,
-      messages: [{ role: 'user', content: buildPrompt(text, todayIso, knownDrivers, knownTrucks) }],
-    })
+    const message = await callClaude(client, prompt, image)
     const raw = message.content[0].type === 'text' ? message.content[0].text.trim() : ''
     const data = parseModelJson(raw)
     if ('error' in data) return NextResponse.json({ error: data.error }, { status: 422 })
@@ -187,7 +230,7 @@ export async function POST(req: NextRequest) {
     const confidence = data.confidence ?? {}
     const warnings = Array.isArray(data.warnings) ? data.warnings : []
 
-    return NextResponse.json({ parsed, confidence, warnings, rawInput: text, model: message.model } as ParseDispatchResponse & { rawInput: string; model: string })
+    return NextResponse.json({ parsed, confidence, warnings, rawInput: rawInputForAudit, model: message.model } as ParseDispatchResponse & { rawInput: string; model: string })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json({ error: msg }, { status: 500 })
