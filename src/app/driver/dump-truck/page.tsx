@@ -224,14 +224,12 @@ export default function DumpTruckDriverPage() {
         <div className="dt-left">
           <LeftRail
             flowState={flowState}
-            clockInAt={clockInAt}
             truckUnit={truckUnitNumber}
             trailerUnit={null}
             jobs={context?.jobs ?? []}
             activeJobId={activeJobId}
             onChangeJob={setActiveJobId}
             sites={context?.sites ?? []}
-            loadCount={context?.shift?.loadCount ?? 0}
             onNavigate={setNavigateSite}
             onPinLocation={handlePinLocation}
             onEditJob={() => setSheet('edit_job')}

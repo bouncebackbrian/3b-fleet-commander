@@ -1,19 +1,16 @@
 'use client'
-import { useEffect, useState } from 'react'
 import type { FlowStateId } from '@/lib/dumpTruck/stateMachine'
 import { isCustodyOpen } from '@/lib/dumpTruck/stateMachine'
 import type { DumpTruckJob, DumpTruckSite } from '@/lib/dumpTruck/types'
 
 interface Props {
   flowState: FlowStateId
-  clockInAt: string | null
   truckUnit: string | null
   trailerUnit: string | null
   jobs: DumpTruckJob[]
   activeJobId: string | null
   onChangeJob: (id: string) => void
   sites: DumpTruckSite[]
-  loadCount: number
   onNavigate: (site: DumpTruckSite) => void
   onPinLocation: (site: DumpTruckSite) => void
   onEditJob: () => void
@@ -21,31 +18,29 @@ interface Props {
 }
 
 export default function LeftRail({
-  flowState, clockInAt, truckUnit, trailerUnit, jobs, activeJobId, onChangeJob, sites, loadCount, onNavigate, onPinLocation, onEditJob, onViewTicket,
+  flowState, truckUnit, trailerUnit, jobs, activeJobId, onChangeJob, sites, onNavigate, onPinLocation, onEditJob, onViewTicket,
 }: Props) {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(t)
-  }, [])
-
   const activeJob = jobs.find(j => j.id === activeJobId) ?? null
   const pickupSite = sites.find(s => s.id === activeJob?.pickupSiteId)
   const dumpSite = sites.find(s => s.id === activeJob?.dumpSiteId)
-  /** Dispatch-set target for the day — only meaningful when the job's quantity is tracked in loads. */
-  const dailyLoadGoal = activeJob?.quantityUnit === 'loads' ? activeJob.estQuantity : null
 
-  const elapsed = clockInAt ? formatDuration(now - new Date(clockInAt).getTime()) : '—'
+  // Only today's dated jobs are real candidates for the picker — older
+  // undated jobs that never got closed out (see the "multiple PO dropdown"
+  // bug history) shouldn't resurface here just because they're still
+  // technically active/scheduled. Falls back to all jobs only when nothing
+  // is dated for today, so a genuinely undated standing job still shows.
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const pickableJobs = jobs.some(j => j.deliveryDate === todayIso)
+    ? jobs.filter(j => j.deliveryDate === todayIso)
+    : jobs
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
-      <Field label="Shift Elapsed" value={elapsed} big />
       <Field label="Truck / Unit" value={truckUnit ?? '—'} />
       {trailerUnit && <Field label="Trailer" value={trailerUnit} />}
       <Field label="Custody" value={isCustodyOpen(flowState) ? 'With Driver' : 'Not in Custody'} />
-      <Field label="Loads Completed" value={dailyLoadGoal ? `${loadCount} of ${dailyLoadGoal}` : String(loadCount)} big />
 
-      {jobs.length > 0 && (
+      {pickableJobs.length > 0 && (
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={fieldLabelStyle}>Job</div>
@@ -70,8 +65,8 @@ export default function LeftRail({
               </button>
             </div>
           </div>
-          {jobs.length === 1 ? (
-            <div style={fieldValueStyle}>{jobs[0].jobNumber}</div>
+          {pickableJobs.length === 1 ? (
+            <div style={fieldValueStyle}>{pickableJobs[0].jobNumber}</div>
           ) : (
             <select
               value={activeJobId ?? ''}
@@ -81,13 +76,12 @@ export default function LeftRail({
                 background: 'var(--surface-2)', color: 'var(--text)',
               }}
             >
-              {jobs.map(j => <option key={j.id} value={j.id}>{j.jobNumber}</option>)}
+              {pickableJobs.map(j => <option key={j.id} value={j.id}>{j.jobNumber}</option>)}
             </select>
           )}
         </div>
       )}
 
-      {activeJob?.customerName && <Field label="Customer" value={activeJob.customerName} />}
       {activeJob?.brokerName && <Field label="Broker" value={activeJob.brokerName} />}
       {activeJob?.material && <Field label="Material" value={activeJob.material} />}
       {pickupSite && <SiteField label="Pickup Site" site={pickupSite} onNavigate={onNavigate} onPinLocation={onPinLocation} />}
@@ -134,19 +128,11 @@ function SiteField({ label, site, onNavigate, onPinLocation }: {
 const fieldLabelStyle: React.CSSProperties = { fontSize: '.68rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }
 const fieldValueStyle: React.CSSProperties = { fontSize: '.95rem', fontWeight: 700 }
 
-function Field({ label, value, big }: { label: string; value: string; big?: boolean }) {
+function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <div style={fieldLabelStyle}>{label}</div>
-      <div style={{ ...fieldValueStyle, fontSize: big ? '1.4rem' : '.95rem', fontWeight: big ? 900 : 700 }}>{value}</div>
+      <div style={fieldValueStyle}>{value}</div>
     </div>
   )
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 0) return '0:00'
-  const totalSec = Math.floor(ms / 1000)
-  const h = Math.floor(totalSec / 3600)
-  const m = Math.floor((totalSec % 3600) / 60)
-  return `${h}:${String(m).padStart(2, '0')}`
 }
