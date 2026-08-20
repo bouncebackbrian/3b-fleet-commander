@@ -1,8 +1,13 @@
 'use client'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import type { WeatherData, WeatherInfo } from '@/lib/dashboard/types'
 import type { FlowStateId } from '@/lib/dumpTruck/stateMachine'
 import { travelStatusFor, TRAVEL_STATUS_LABEL, TRAVEL_STATUS_ICON } from '@/lib/dumpTruck/travelStatus'
+import { getCurrentUser } from '@/lib/auth-adapter'
+import type { UserMode } from '@/lib/userMode'
+import UserModeSelectorSheet from '@/components/layout/UserModeSelectorSheet'
 
 interface Props {
   isOnline: boolean
@@ -29,6 +34,37 @@ export default function TopStatusBar({
   preferredLanguage, onLanguageChange, onSafety,
 }: Props) {
   const travelStatus = flowState ? travelStatusFor(flowState) : null
+
+  // This cockpit has no Sidebar/BottomNav (deliberately full-screen, see
+  // layout.tsx) — a member who holds only the driver portal never needs a
+  // way out. Someone who *also* holds dispatch/admin/broker does (e.g. they
+  // landed here because their last-picked focus was "driver"), so give them
+  // a small, portal-gated way back rather than trapping them with no nav at
+  // all. Never shown to a single-portal driver.
+  const router = useRouter()
+  const [canSwitchFocus, setCanSwitchFocus] = useState(false)
+  const [showModeSheet, setShowModeSheet] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    getCurrentUser().then(user => {
+      if (cancelled) return
+      const portalCount = Object.keys(user?.portals ?? {}).length
+      setCanSwitchFocus(portalCount > 1)
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  // This page has no nav to click after switching — take them somewhere
+  // useful for the newly-picked focus instead of leaving them stranded here.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const mode = (e as CustomEvent<UserMode>).detail
+      if (!mode || mode === 'driver') return
+      router.push(mode === 'broker' ? '/broker' : '/admin/dump-truck')
+    }
+    window.addEventListener('3b-mode-changed', handler)
+    return () => window.removeEventListener('3b-mode-changed', handler)
+  }, [router])
 
   return (
     <div style={{
@@ -120,7 +156,23 @@ export default function TopStatusBar({
             🆘
           </button>
         )}
+        {canSwitchFocus && (
+          <button
+            onClick={() => setShowModeSheet(true)}
+            title="Switch to Dispatch/Admin focus"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4, color: 'var(--primary)',
+              padding: '.35rem .6rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)',
+            }}
+          >
+            🔀 Switch Focus
+          </button>
+        )}
       </div>
+
+      {showModeSheet && (
+        <UserModeSelectorSheet open={showModeSheet} onClose={() => setShowModeSheet(false)} />
+      )}
     </div>
   )
 }
