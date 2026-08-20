@@ -20,11 +20,13 @@ interface Props {
   /** Spec §6 EN/ES foundation — storage + toggle only, no translation pipeline yet. */
   preferredLanguage?: 'en' | 'es'
   onLanguageChange?: (language: 'en' | 'es') => void
+  /** Small, secondary safety affordance — see SafetySheet. Omit to hide the icon entirely. */
+  onSafety?: () => void
 }
 
 export default function TopStatusBar({
   isOnline, pendingCount, failedCount, gpsPermission, wx, weather, weatherLoading, businessName, driverName, flowState,
-  preferredLanguage, onLanguageChange,
+  preferredLanguage, onLanguageChange, onSafety,
 }: Props) {
   const travelStatus = flowState ? travelStatusFor(flowState) : null
 
@@ -98,15 +100,6 @@ export default function TopStatusBar({
           </button>
         )}
         <Link
-          href="/driver/hours"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 4, color: 'var(--primary)',
-            padding: '.35rem .6rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)',
-          }}
-        >
-          📊 Hours
-        </Link>
-        <Link
           href="/driver/tax-info"
           style={{
             display: 'flex', alignItems: 'center', gap: 4, color: 'var(--primary)',
@@ -115,15 +108,18 @@ export default function TopStatusBar({
         >
           🧾 Tax Info
         </Link>
-        <Link
-          href="/dashboard"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 4, color: 'var(--primary)',
-            padding: '.35rem .6rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)',
-          }}
-        >
-          🏠 Home
-        </Link>
+        {onSafety && (
+          <button
+            onClick={onSafety}
+            title="Safety / Emergency"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4, color: 'var(--error)',
+              padding: '.35rem .6rem', borderRadius: 8, background: 'rgba(220,38,38,.08)', border: '1px solid var(--error)',
+            }}
+          >
+            🆘
+          </button>
+        )}
       </div>
     </div>
   )

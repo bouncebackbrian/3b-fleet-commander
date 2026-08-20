@@ -1,8 +1,11 @@
 'use client'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import TopBar     from '@/components/layout/TopBar'
 import CcSidebar  from '@/components/dashboard/CcSidebar'
+import { getCurrentUser } from '@/lib/auth-adapter'
+import { readUserMode } from '@/lib/userMode'
 
 // ── Types
 import type { EldMode, VehicleSetup, HOSData, SamsaraData, ActiveTrip, MissionStop } from '@/lib/dashboard/types'
@@ -90,6 +93,35 @@ import StatusBar from '@/components/dashboard/actions/StatusBar'
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 export default function Dashboard() {
+  // ── Dump-truck driver gate — this page is the generic OTR dashboard
+  // (rate/mileage scoring, trailer hook/drop, HOS card, weather, etc.).
+  // A member whose driver focus resolves to the dump_truck ops profile
+  // (Cal-Neva and similar local-hauling operations) belongs on the lean
+  // /driver/dump-truck cockpit instead — bounce them there before any of
+  // this page's OTR content mounts, rather than relying on nav links
+  // alone (this route stays directly reachable by URL/bookmark/back-button).
+  const router = useRouter()
+  const [dtGateChecked, setDtGateChecked] = useState(false)
+  const [dtRedirecting, setDtRedirecting] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const user = await getCurrentUser()
+      if (cancelled) return
+      const mode = readUserMode()
+      const grantedPortals = Object.keys(user?.portals ?? {})
+      const driverFocused = mode === 'driver' || (!mode && grantedPortals.length === 1 && grantedPortals[0] === 'driver')
+      const effectiveOpsProfile = user?.driverOpsProfile ?? user?.opsProfile ?? null
+      if (driverFocused && effectiveOpsProfile === 'dump_truck') {
+        setDtRedirecting(true)
+        router.replace('/driver/dump-truck')
+        return
+      }
+      setDtGateChecked(true)
+    })()
+    return () => { cancelled = true }
+  }, [router])
+
   // ── Clock
   const [liveClock, setLiveClock] = useState('')
   const [liveDate,  setLiveDate]  = useState('')
@@ -438,6 +470,10 @@ export default function Dashboard() {
   const handleMarkArrived = () => {
     try { localStorage.setItem('3b-mark-arrived', JSON.stringify({ at: new Date().toISOString(), loadNumber: activeTrip?.loadNumber ?? mission?.loadNumber ?? '' })) } catch { /* ignore */ }
     setShowVoicePanel(false)
+  }
+
+  if (dtRedirecting || !dtGateChecked) {
+    return <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>Loading…</div>
   }
 
   return (

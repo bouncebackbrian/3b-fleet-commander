@@ -13,6 +13,7 @@ import { requireFleetAuth } from '@/lib/fleet-auth-guard'
 import { resolveRange, type RangeType } from '@/lib/dumpTruck/hours'
 import { buildDriverHoursForRange } from '@/lib/fleet/dumpTruck/hours'
 import { getPayrollPayment } from '@/lib/fleet/dumpTruck/payroll'
+import { getLatestConfirmationsForShifts } from '@/lib/fleet/dumpTruck/hoursConfirmations'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,7 +41,14 @@ export async function GET(request: NextRequest) {
       buildDriverHoursForRange(auth.businessId, auth.userId, range),
       getPayrollPayment(auth.businessId, auth.userId, range),
     ])
-    return NextResponse.json({ range, rangeType, ...result, payment })
+    const confirmations = await getLatestConfirmationsForShifts(auth.businessId, result.rows.map(r => r.shiftId))
+    const rows = result.rows.map(r => ({
+      ...r,
+      confirmation: confirmations[r.shiftId]
+        ? { status: confirmations[r.shiftId].status, createdAt: confirmations[r.shiftId].createdAt, correctionNote: confirmations[r.shiftId].correctionNote }
+        : null,
+    }))
+    return NextResponse.json({ range, rangeType, ...result, rows, payment })
   } catch (err) {
     console.error('[api/fleet/dump-truck/hours] GET error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

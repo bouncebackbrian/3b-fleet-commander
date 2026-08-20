@@ -32,10 +32,12 @@ import EditJobSheet from '@/components/dumpTruck/EditJobSheet'
 import TicketSheet from '@/components/dumpTruck/TicketSheet'
 import DispatchCard from '@/components/dumpTruck/DispatchCard'
 import TruckProblemSheet from '@/components/dumpTruck/TruckProblemSheet'
+import ChangeProblemSheet, { type ChangeProblemRoute } from '@/components/dumpTruck/ChangeProblemSheet'
+import SafetySheet from '@/components/dumpTruck/SafetySheet'
 
 type SheetKey =
   | 'clock_in' | 'odometer_pickup' | 'odometer_dropoff' | 'pretrip' | 'posttrip'
-  | 'delay' | 'note' | 'defect' | 'incident' | 'photo' | 'ticket' | 'fuel' | 'new_site' | 'submit' | 'full_log' | 'edit_job' | 'dispatch_ticket' | 'truck_problem' | null
+  | 'delay' | 'note' | 'defect' | 'incident' | 'photo' | 'ticket' | 'fuel' | 'new_site' | 'submit' | 'full_log' | 'edit_job' | 'dispatch_ticket' | 'truck_problem' | 'change_problem' | 'safety' | null
 
 export default function DumpTruckDriverPage() {
   const {
@@ -170,16 +172,17 @@ export default function DumpTruckDriverPage() {
     }
   }
 
+  /** Progressive disclosure (spec §"Dashboard Complexity Rule") — the first 3
+   *  are what a driver actually needs mid-shift; delay/defect/truck-problem/
+   *  incident/report-issue are consolidated into one "Change / Problem" entry
+   *  point (ChangeProblemSheet) instead of 5 separate always-visible buttons. */
   const quickActions = [
-    { key: 'log_location', icon: '📍', label: 'Log Time/Location', enabled: !!context?.shift },
-    { key: 'delay', icon: delayActive ? '⏸️' : '⏱️', label: delayActive ? 'End Delay' : 'Delay', enabled: !!context?.shift },
-    { key: 'note', icon: '📝', label: 'Note', enabled: !!context?.shift },
+    { key: 'ticket', icon: '🎫', label: 'Scan Ticket', enabled: !!context?.shift && (context?.loadCycles.length ?? 0) > 0 },
+    { key: delayActive ? 'delay' : 'change_problem', icon: delayActive ? '⏸️' : '🚨', label: delayActive ? 'End Delay' : 'Change / Problem', enabled: !!context?.shift },
     { key: 'photo', icon: '📷', label: 'Photo', enabled: !!context?.shift },
-    { key: 'ticket', icon: '🎫', label: 'Load Ticket', enabled: !!context?.shift && (context?.loadCycles.length ?? 0) > 0 },
-    { key: 'defect', icon: '🔧', label: 'Defect', enabled: !!context?.shift?.truckId },
-    { key: 'truck_problem', icon: '🚨', label: 'Truck Problem', enabled: !!context?.shift?.truckId },
-    { key: 'incident', icon: '🚨', label: 'Incident', enabled: !!context?.shift },
+    { key: 'log_location', icon: '📍', label: 'Log Time/Location', enabled: !!context?.shift },
     { key: 'fuel', icon: '⛽', label: 'Add Fuel', enabled: !!context?.shift?.truckId },
+    { key: 'note', icon: '📝', label: 'Note', enabled: !!context?.shift },
     { key: 'new_site', icon: '📍', label: 'New Site', enabled: true },
     { key: 'correction', icon: '↩️', label: 'Report Issue', enabled: !!context?.shift },
   ]
@@ -203,6 +206,7 @@ export default function DumpTruckDriverPage() {
         flowState={flowState}
         preferredLanguage={preferredLanguage}
         onLanguageChange={setLanguage}
+        onSafety={() => setSheet('safety')}
       />
 
       <div style={{ padding: '0 1rem' }}>
@@ -297,6 +301,7 @@ export default function DumpTruckDriverPage() {
                   .then(r => { if (r.ok) toast.success(r.siteLabel ? `Logged at ${r.siteLabel}` : 'Time and location logged') })
                 return
               }
+              if (key === 'change_problem') { setSheet('change_problem'); return }
               setSheet(key as SheetKey)
             }}
           />
@@ -397,6 +402,23 @@ export default function DumpTruckDriverPage() {
 
       {sheet === 'new_site' && (
         <NewSiteSheet onClose={() => setSheet(null)} onSaved={refetch} />
+      )}
+
+      {sheet === 'safety' && (
+        <SafetySheet
+          onClose={() => setSheet(null)}
+          onReportIncident={() => setSheet('incident')}
+          onTruckProblem={() => setSheet('truck_problem')}
+        />
+      )}
+
+      {sheet === 'change_problem' && (
+        <ChangeProblemSheet
+          hasActiveJob={!!activeJob}
+          hasTruck={!!context?.shift?.truckId}
+          onClose={() => setSheet(null)}
+          onSelect={(route: ChangeProblemRoute) => setSheet(route)}
+        />
       )}
 
       {sheet === 'truck_problem' && context?.shift?.truckId && (

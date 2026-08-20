@@ -7,10 +7,10 @@
  * workflow is not implemented). See docs/DUMP_TRUCK_MODE.md.
  */
 import { useEffect, useState, useCallback } from 'react'
-import { captureGeolocation, createId } from '@/lib/dumpTruck/events'
 import { EVENT_LABELS } from '@/lib/dumpTruck/eventLabels'
 import { toast } from '@/hooks/useToast'
 import ToastContainer from '@/components/shared/ToastContainer'
+import HoursSignOffSheet from '@/components/dumpTruck/HoursSignOffSheet'
 
 type RangeType = 'current_week' | 'previous_week' | 'current_pay_period' | 'previous_pay_period' | 'custom'
 
@@ -53,6 +53,7 @@ interface DailyHoursRow {
   submissionStatus: string
   exceptionStatus: 'none' | 'correction_requested'
   integrityWarnings: { code: string; message: string }[]
+  confirmation: { status: 'confirmed' | 'correction_requested'; createdAt: string; correctionNote: string | null } | null
 }
 
 interface RangeSummary {
@@ -115,9 +116,7 @@ export default function DriverHoursPage() {
   const [customTo, setCustomTo] = useState('')
   const [data, setData] = useState<HoursResponse | null>(null)
   const [loading, setLoading] = useState(true)
-  const [correctionShiftId, setCorrectionShiftId] = useState<string | null>(null)
-  const [correctionText, setCorrectionText] = useState('')
-  const [submittingCorrection, setSubmittingCorrection] = useState(false)
+  const [signOffRow, setSignOffRow] = useState<DailyHoursRow | null>(null)
   const [logDate, setLogDate] = useState<string | null>(null)
   const [logEntries, setLogEntries] = useState<TimestampLogEntry[]>([])
   const [logLoading, setLogLoading] = useState(false)
@@ -161,33 +160,6 @@ export default function DriverHoursPage() {
     const params = new URLSearchParams({ range: rangeType, type, format })
     if (rangeType === 'custom') { params.set('from', customFrom); params.set('to', customTo) }
     return `/api/fleet/dump-truck/hours/export?${params}`
-  }
-
-  const submitCorrection = async () => {
-    if (!correctionShiftId || !correctionText.trim()) return
-    setSubmittingCorrection(true)
-    try {
-      const geo = await captureGeolocation()
-      const now = new Date()
-      const res = await fetch('/api/fleet/dump-truck/events', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: createId(), idempotencyKey: createId(), shiftId: correctionShiftId, eventType: 'correction_requested',
-          deviceCapturedAt: now.toISOString(), effectiveAt: now.toISOString(),
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, utcOffsetMinutes: -now.getTimezoneOffset(),
-          geo, notes: correctionText.trim(),
-        }),
-      })
-      if (!res.ok) throw new Error((await res.json()).error ?? 'Could not submit correction request')
-      toast.success('Correction request sent — dispatch/payroll will follow up')
-      setCorrectionShiftId(null)
-      setCorrectionText('')
-      load()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not submit correction request')
-    } finally {
-      setSubmittingCorrection(false)
-    }
   }
 
   return (
@@ -337,8 +309,11 @@ export default function DriverHoursPage() {
                         <td style={td}>${r.estimatedGrossEarnings.toFixed(2)}</td>
                         <td style={td}>
                           {r.submissionStatus}
-                          {r.exceptionStatus === 'correction_requested' && (
-                            <span style={{ color: 'var(--warn)', marginLeft: 6 }}>⚠️ correction requested</span>
+                          {r.confirmation?.status === 'confirmed' && (
+                            <span style={{ color: 'var(--primary)', marginLeft: 6 }} title={`Signed ${new Date(r.confirmation.createdAt).toLocaleString()}`}>✅ confirmed</span>
+                          )}
+                          {r.confirmation?.status === 'correction_requested' && (
+                            <span style={{ color: 'var(--warn)', marginLeft: 6, cursor: 'default' }} title={r.confirmation.correctionNote ?? undefined}>⚠️ correction requested</span>
                           )}
                           {r.integrityWarnings.length > 0 && (
                             <span
@@ -349,7 +324,7 @@ export default function DriverHoursPage() {
                             </span>
                           )}
                         </td>
-                        <td style={{ ...td, display: 'flex', gap: 6 }}>
+                        <td style={{ ...td, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           <button
                             onClick={() => viewTimestamps(r.workDate)}
                             style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--primary)', padding: '.3rem .5rem', borderRadius: 6, border: '1px solid var(--border)' }}
@@ -363,10 +338,14 @@ export default function DriverHoursPage() {
                             📄 Shift Report
                           </button>
                           <button
-                            onClick={() => setCorrectionShiftId(r.shiftId)}
-                            style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--primary)', padding: '.3rem .5rem', borderRadius: 6, border: '1px solid var(--border)' }}
+                            onClick={() => setSignOffRow(r)}
+                            style={{
+                              fontSize: '.72rem', fontWeight: 700, padding: '.3rem .5rem', borderRadius: 6, border: '1px solid var(--border)',
+                              color: r.confirmation?.status === 'confirmed' ? 'var(--muted)' : '#04140f',
+                              background: r.confirmation?.status === 'confirmed' ? 'transparent' : 'var(--primary)',
+                            }}
                           >
-                            Request Correction
+                            {r.confirmation?.status === 'confirmed' ? 'Re-Confirm' : r.confirmation?.status === 'correction_requested' ? 'Resubmit' : '✅ Confirm Hours'}
                           </button>
                         </td>
                       </tr>
@@ -407,34 +386,14 @@ export default function DriverHoursPage() {
         </div>
       )}
 
-      {correctionShiftId && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(3,13,11,.75)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setCorrectionShiftId(null)}>
-          <div style={{ ...cardStyle, maxWidth: 420, width: '90%' }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontWeight: 800, marginBottom: '.75rem' }}>Request a Correction</h3>
-            <p style={{ fontSize: '.8rem', color: 'var(--muted)', marginBottom: '.75rem' }}>
-              Explain what looks wrong or is missing for this shift (e.g. a missed clock-out, wrong odometer,
-              a load that didn't get logged). Dispatch/payroll will review — this does not change the record
-              itself.
-            </p>
-            <textarea
-              value={correctionText}
-              onChange={e => setCorrectionText(e.target.value)}
-              placeholder="What needs to be corrected?"
-              style={{ width: '100%', minHeight: 100, padding: '.6rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)' }}
-              autoFocus
-            />
-            <div style={{ display: 'flex', gap: 8, marginTop: '.75rem' }}>
-              <button onClick={() => setCorrectionShiftId(null)} style={{ flex: 1, padding: '.7rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>Cancel</button>
-              <button
-                onClick={submitCorrection}
-                disabled={!correctionText.trim() || submittingCorrection}
-                style={{ flex: 1, padding: '.7rem', borderRadius: 8, background: 'var(--primary)', color: '#04140f', fontWeight: 800, opacity: correctionText.trim() && !submittingCorrection ? 1 : .5 }}
-              >
-                {submittingCorrection ? 'Sending…' : 'Send Request'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {signOffRow && (
+        <HoursSignOffSheet
+          shiftId={signOffRow.shiftId}
+          workDate={signOffRow.workDate}
+          totalHours={signOffRow.totalShiftHours}
+          onClose={() => setSignOffRow(null)}
+          onDone={load}
+        />
       )}
 
       <ToastContainer />

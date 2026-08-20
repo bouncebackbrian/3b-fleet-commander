@@ -1,9 +1,13 @@
 'use client'
+import { useState } from 'react'
 import type { TimelineEntry } from '@/hooks/useDumpTruckDriver'
 import type { SiteAwareLabelContext } from '@/lib/dumpTruck/actionLabels'
 import LogEntryRow from './LogEntryRow'
 
 const RECENT_COUNT = 3
+/** Progressive disclosure (spec: "up to 2-3 secondary actions" visible at once) —
+ *  the rest sit behind a "More" toggle instead of a wall of buttons. */
+const PRIMARY_COUNT = 3
 
 interface QuickAction { key: string; icon: string; label: string; enabled: boolean }
 
@@ -17,7 +21,11 @@ interface Props {
 }
 
 export default function RightRail({ timeline, loadCount, quickActions, onQuickAction, onViewFullLog, labelCtx }: Props) {
+  const [showMoreActions, setShowMoreActions] = useState(false)
   const recent = [...timeline].reverse().slice(0, RECENT_COUNT)
+  const primaryActions = quickActions.slice(0, PRIMARY_COUNT)
+  const restActions = quickActions.slice(PRIMARY_COUNT)
+  const visibleActions = showMoreActions ? quickActions : primaryActions
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', height: '100%' }}>
       <div>
@@ -25,7 +33,7 @@ export default function RightRail({ timeline, loadCount, quickActions, onQuickAc
           Quick Actions
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-          {quickActions.map(qa => (
+          {visibleActions.map(qa => (
             <button
               key={qa.key}
               className="dt-quick-btn"
@@ -38,6 +46,17 @@ export default function RightRail({ timeline, loadCount, quickActions, onQuickAc
             </button>
           ))}
         </div>
+        {restActions.length > 0 && (
+          <button
+            onClick={() => setShowMoreActions(v => !v)}
+            style={{
+              marginTop: 8, width: '100%', padding: '.4rem', borderRadius: 8, background: 'none',
+              border: '1px dashed var(--border)', color: 'var(--muted)', fontSize: '.72rem', fontWeight: 700,
+            }}
+          >
+            {showMoreActions ? 'Show Fewer ▲' : `More Actions (${restActions.length}) ▾`}
+          </button>
+        )}
       </div>
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>

@@ -118,9 +118,9 @@ const ALL_TABS: NavTab[] = [
   { href: '/expenses',    label: 'Owner',       emoji: '💰', command: 'Owner'       },
   { href: '/compliance',  label: 'Compliance',  emoji: '⚖️', command: 'Compliance'  },
   { href: '/maintenance', label: 'Maintenance', emoji: '🔧', command: 'Maintenance' },
-  { href: '/driver/dump-truck', label: 'Dump Truck', emoji: '🏗️', command: 'Dump Truck' },
-  { href: '/driver/hours',      label: 'My Hours',   emoji: '⏱️', command: 'Dump Truck' },
-  { href: '/driver/documents',  label: 'My Docs',    emoji: '🪪', command: 'Dump Truck' },
+  { href: '/driver/dump-truck', label: 'Today',      emoji: '🏗️', command: 'Dump Truck' },
+  { href: '/driver/hours',      label: 'Hours',      emoji: '⏱️', command: 'Dump Truck' },
+  { href: '/driver/documents',  label: 'Documents',  emoji: '🪪', command: 'Dump Truck' },
   { href: '/admin/dump-truck',  label: 'DT Setup',   emoji: '🧭', command: 'Dump Truck' },
   { href: '/admin/equipment',   label: 'Equipment',  emoji: '🚛', command: 'Equipment'   },
   { href: '/account',     label: 'Team',        emoji: '👥', command: 'System'      },
@@ -196,7 +196,7 @@ export function getTabsForMode(mode: UserMode, grantedPortals: Portal[], opsProf
 // it — everything else (and the combined 'all' focus) shows its full set.
 
 const PRIMARY_TAB_HREFS_BY_PORTAL: Partial<Record<Portal, string[]>> = {
-  driver: ['/dashboard', '/driver/dump-truck', '/driver/hours'],
+  driver: ['/dashboard', '/driver/dump-truck', '/driver/hours', '/driver/documents'],
 }
 
 export function getPrimaryTabsForMode(mode: UserMode, grantedPortals: Portal[], opsProfile?: OpsProfile | null): NavTab[] {
