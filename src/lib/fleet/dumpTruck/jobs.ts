@@ -79,19 +79,32 @@ export async function getJobById(businessId: string, jobId: string): Promise<Dum
  * default the driver can override via the job picker (LeftRail), same as
  * before.
  */
+/**
+ * A driver's cockpit job list — deliberately scoped to "what I'm working
+ * on right now," not every scheduled/active job on file. Without this,
+ * every dispatch ever sent to a driver (past, today, future) piled up in
+ * the same picker as soon as it existed, forcing the driver to pick the
+ * right one out of a growing list — confusing, and easy to select the
+ * wrong PO. Only today's job(s) and undated "standing job" entries (no
+ * delivery_date set — a legitimate open-ended job, not a scheduled one)
+ * show here; a job dated yesterday or scheduled for a future day belongs
+ * on Hector's dispatch board, not the driver's active picker, until its day
+ * arrives.
+ */
 export async function listJobsForDriver(businessId: string, driverId: string): Promise<DumpTruckJob[]> {
+  const todayIso = new Date().toISOString().slice(0, 10)
   const { data, error } = await fleetServiceClient
     .from('fleet_dt_jobs')
     .select('*')
     .eq('business_id', businessId)
     .eq('driver_id', driverId)
     .in('status', ['scheduled', 'active'])
+    .or(`delivery_date.eq.${todayIso},delivery_date.is.null`)
     .order('delivery_date', { ascending: false, nullsFirst: false })
     .order('scheduled_at', { ascending: false, nullsFirst: false })
   if (error) throw error
   const jobs = (data ?? []).map(fromRow)
 
-  const todayIso = new Date().toISOString().slice(0, 10)
   const todaysJobs = jobs.filter(j => j.deliveryDate === todayIso)
   const rest = jobs.filter(j => j.deliveryDate !== todayIso)
   return [...todaysJobs, ...rest]
