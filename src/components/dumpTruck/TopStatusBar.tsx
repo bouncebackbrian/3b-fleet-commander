@@ -117,11 +117,17 @@ export default function TopStatusBar({
           icon="📍"
         />
         {wx && weather && (
-          <StatusChip
-            label={`${weather.temp}°F · ${weather.windSpeed}mph`}
-            color={wx.severe ? 'var(--warn)' : 'var(--muted)'}
-            icon={weatherLoading ? '⏳' : wx.emoji}
-          />
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '.3rem .65rem', borderRadius: 10,
+            background: wx.severe ? 'rgba(217,154,43,.1)' : 'var(--surface-2)',
+            border: `1px solid ${wx.severe ? 'var(--warn)' : 'var(--border)'}`,
+          }}>
+            <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>{weatherLoading ? '⏳' : wx.emoji}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
+              <span style={{ fontSize: '1.1rem', fontWeight: 900, color: wx.severe ? 'var(--warn)' : 'var(--text)' }}>{weather.temp}°F</span>
+              <span style={{ fontSize: '.68rem', color: 'var(--muted)', fontWeight: 600 }}>{weather.windSpeed}mph wind</span>
+            </div>
+          </div>
         )}
         {preferredLanguage && onLanguageChange && (
           <button

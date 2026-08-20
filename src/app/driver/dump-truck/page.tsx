@@ -70,6 +70,7 @@ export default function DumpTruckDriverPage() {
   const pickupSite = context?.sites.find(s => s.id === activeJob?.pickupSiteId)
   const dumpSite = context?.sites.find(s => s.id === activeJob?.dumpSiteId)
   const yardSite = context?.sites.find(s => s.siteType === 'yard')
+  const clockInAt = context?.shift ? (timeline.find(t => t.eventType === 'clock_in')?.effectiveAt ?? null) : null
 
   /** ADR-010 — dispatch-set daily load goal, only meaningful when the job's quantity is tracked in loads. */
   const dailyLoadGoal = activeJob?.quantityUnit === 'loads' ? activeJob.estQuantity : null
@@ -223,7 +224,7 @@ export default function DumpTruckDriverPage() {
         <div className="dt-left">
           <LeftRail
             flowState={flowState}
-            clockInAt={context?.shift ? (timeline.find(t => t.eventType === 'clock_in')?.effectiveAt ?? null) : null}
+            clockInAt={clockInAt}
             truckUnit={truckUnitNumber}
             trailerUnit={null}
             jobs={context?.jobs ?? []}
@@ -278,6 +279,14 @@ export default function DumpTruckDriverPage() {
                 disabledReason={disabledReason}
                 onPrimary={handlePrimary}
                 onSecondary={handleSecondary}
+                clockInAt={clockInAt}
+                loadCount={context?.shift ? loadCount : undefined}
+                job={activeJob ? {
+                  customerName: activeJob.customerName,
+                  jobNumber: activeJob.jobNumber,
+                  poNumber: activeJob.poNumber,
+                  totalTons: activeJob.quantityUnit === 'tons' ? activeJob.estQuantity : null,
+                } : null}
               />
             </div>
           )}
