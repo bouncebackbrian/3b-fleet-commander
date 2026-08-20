@@ -157,6 +157,19 @@ export async function recordEvent(
 
   if (error) {
     // Unique violation on (business_id, idempotency_key) — an offline retry. Not an error.
+    //
+    // BUG FIX (2026-08-20): this used to return immediately here, skipping
+    // applySideEffects/syncShiftState entirely on a retry. That's only safe
+    // if the FIRST attempt's side effects actually completed — but if that
+    // attempt's event insert succeeded and then a side effect (e.g.
+    // createLoadCycle) threw, the client saw a failed request and retried
+    // with the same idempotency key, landed here, and the side effect was
+    // silently never applied — permanently, since nothing else re-triggers
+    // it. Confirmed live: a driver's very first load of the day never got
+    // a fleet_dt_load_cycles row this way. Every side-effect writer below
+    // is now guarded to check "did this already happen for this event id"
+    // before writing, so re-running them on a retry is safe (a completed
+    // retry is a no-op; an interrupted one gets repaired).
     if (error.code === '23505') {
       const { data: existing } = await fleetServiceClient
         .from('fleet_dt_events')
@@ -165,6 +178,8 @@ export async function recordEvent(
         .eq('idempotency_key', input.idempotencyKey)
         .single()
       if (existing) {
+        await applySideEffects(businessId, driverId, shift, input, existing.matched_site_id)
+        await syncShiftState(input.shiftId)
         return { id: existing.id, eventType: existing.event_type, matchedSiteId: existing.matched_site_id, duplicate: true }
       }
     }
@@ -250,6 +265,10 @@ async function applySideEffects(
     }
 
     case 'truck_picked_up': {
+      const { data: existingCustody } = await fleetServiceClient
+        .from('fleet_dt_vehicle_custody').select('id').eq('start_event_id', input.id).maybeSingle()
+      if (existingCustody) break // already recorded (idempotent retry) — do not insert a second custody period
+
       await fleetServiceClient.from('fleet_dt_vehicle_custody').insert({
         business_id: businessId,
         shift_id: input.shiftId,
@@ -291,24 +310,42 @@ async function applySideEffects(
       const category = DEPART_CATEGORY[input.eventType]!
       let loadCycleId: string | null = null
       if (input.eventType === 'depart_pickup') {
-        loadCycleId = await getOpenLoadCycleId(input.shiftId)
-        if (loadCycleId) {
+        // Column keyed by this event's own id, not getOpenLoadCycleId — once set, the cycle
+        // no longer reads as "open", so a retry must find it this way instead.
+        const { data: already } = await fleetServiceClient
+          .from('fleet_dt_load_cycles').select('id').eq('pickup_depart_event_id', input.id).maybeSingle()
+        loadCycleId = already?.id ?? await getOpenLoadCycleId(input.shiftId)
+        if (loadCycleId && !already) {
           await fleetServiceClient.from('fleet_dt_load_cycles')
             .update({ pickup_depart_event_id: input.id })
             .eq('id', loadCycleId)
         }
       }
       if (input.eventType === 'depart_dump') {
-        loadCycleId = await getOpenLoadCycleId(input.shiftId)
-        if (loadCycleId) {
+        const { data: already } = await fleetServiceClient
+          .from('fleet_dt_load_cycles').select('id').eq('dump_depart_event_id', input.id).maybeSingle()
+        loadCycleId = already?.id ?? await getOpenLoadCycleId(input.shiftId)
+        if (loadCycleId && !already) {
           await fleetServiceClient.from('fleet_dt_load_cycles')
             .update({ dump_depart_event_id: input.id })
             .eq('id', loadCycleId)
+          // Recomputed from the load_cycles table itself (source of truth) rather than
+          // read-modify-write on shift.loadCount + 1 — that pattern lost a load in
+          // production when a retry raced an in-flight request (BUG FIX 2026-08-20).
+          const { count } = await fleetServiceClient
+            .from('fleet_dt_load_cycles')
+            .select('id', { count: 'exact', head: true })
+            .eq('shift_id', input.shiftId)
+            .not('dump_depart_event_id', 'is', null)
           await fleetServiceClient.from('fleet_dt_shifts')
-            .update({ load_count: shift.loadCount + 1 })
+            .update({ load_count: count ?? 0 })
             .eq('id', input.shiftId)
         }
       }
+      const { data: existingSegment } = await fleetServiceClient
+        .from('fleet_dt_drive_segments').select('id').eq('depart_event_id', input.id).maybeSingle()
+      if (existingSegment) break // already recorded (idempotent retry)
+
       await fleetServiceClient.from('fleet_dt_drive_segments').insert({
         business_id: businessId,
         shift_id: input.shiftId,
@@ -428,19 +465,30 @@ async function createLoadCycle(
   input: RecordEventInput,
   matchedSiteId: string | null,
 ): Promise<void> {
-  const { count } = await fleetServiceClient
-    .from('fleet_dt_load_cycles')
-    .select('id', { count: 'exact', head: true })
-    .eq('shift_id', input.shiftId)
-
   if (!input.jobId) return // no active job context — caller must select a job before dispatch-critical actions
+
+  // BUG FIX (2026-08-20): a retry of this exact arrive_pickup event used to
+  // insert a brand-new row every time applySideEffects ran (previously that
+  // only happened once, but the retry-safety fix above can now legitimately
+  // re-run this) — guard on the triggering event id so a retry is a no-op.
+  const { data: existing } = await fleetServiceClient
+    .from('fleet_dt_load_cycles').select('id').eq('pickup_arrive_event_id', input.id).maybeSingle()
+  if (existing) return
+
+  const { data: maxRow } = await fleetServiceClient
+    .from('fleet_dt_load_cycles')
+    .select('sequence')
+    .eq('shift_id', input.shiftId)
+    .order('sequence', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
   await fleetServiceClient.from('fleet_dt_load_cycles').insert({
     business_id: businessId,
     shift_id: input.shiftId,
     job_id: input.jobId,
     driver_id: driverId,
-    sequence: (count ?? 0) + 1,
+    sequence: (maxRow?.sequence ?? 0) + 1,
     pickup_site_id: matchedSiteId,
     pickup_arrive_event_id: input.id,
   })
