@@ -16,6 +16,10 @@ interface DriverSummary {
   totalLoads: number
   totalMiles: number
   estimatedGrossEarnings: number
+  totalPaidHours: number
+  totalNonPaidOperationalHours: number
+  totalCustomerBillableHours: number
+  totalNonBilledOperationalHours: number
   /** Set when payType = greater_of_hourly_or_revenue_share — null for hourly/per-mile drivers. */
   revenueShareApplied: { usedRevenueShare: boolean; revenueShareAmount: number; truckRevenue: number } | null
 }
@@ -31,6 +35,10 @@ interface BusinessSummary {
   totalLoads: number
   totalMiles: number
   estimatedGrossEarnings: number
+  totalPaidHours: number
+  totalNonPaidOperationalHours: number
+  totalCustomerBillableHours: number
+  totalNonBilledOperationalHours: number
 }
 
 interface PaymentDraft {
@@ -195,6 +203,11 @@ export default function AdminPayrollHoursPanel({ drivers }: { drivers: DriverOpt
           display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '.6rem',
           marginBottom: '1.25rem', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: '1rem',
         }}>
+          <SummaryStat label="Total Operational Hrs" value={round2(businessSummary.totalPaidHours + businessSummary.totalNonPaidOperationalHours)} />
+          <SummaryStat label="Paid Hrs" value={businessSummary.totalPaidHours} />
+          <SummaryStat label="Non-Paid Operational Hrs" value={businessSummary.totalNonPaidOperationalHours} />
+          <SummaryStat label="Billable Hrs" value={businessSummary.totalCustomerBillableHours} />
+          <SummaryStat label="Non-Billed Hrs" value={businessSummary.totalNonBilledOperationalHours} />
           <SummaryStat label="Regular Hrs" value={businessSummary.totalRegularHours} />
           <SummaryStat label="Overtime Hrs" value={businessSummary.totalOvertimeHours} />
           <SummaryStat label="Fueling Hrs" value={businessSummary.totalFuelingHours} />
@@ -219,6 +232,11 @@ export default function AdminPayrollHoursPanel({ drivers }: { drivers: DriverOpt
             <tr style={{ color: 'var(--muted)', textAlign: 'left' }}>
               <th style={{ padding: '.4rem .5rem .4rem 0' }}>Driver</th>
               <th>Days</th>
+              <th>Total Op.</th>
+              <th>Paid</th>
+              <th>Non-Paid</th>
+              <th>Billable</th>
+              <th>Non-Billed</th>
               <th>Reg</th>
               <th>OT</th>
               <th>Fuel</th>
@@ -236,10 +254,10 @@ export default function AdminPayrollHoursPanel({ drivers }: { drivers: DriverOpt
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={15} style={{ padding: '1rem 0', color: 'var(--muted)' }}>Loading…</td></tr>
+              <tr><td colSpan={20} style={{ padding: '1rem 0', color: 'var(--muted)' }}>Loading…</td></tr>
             )}
             {!loading && driverSummaries.length === 0 && (
-              <tr><td colSpan={15} style={{ padding: '1rem 0', color: 'var(--faint)' }}>No shifts in this range.</td></tr>
+              <tr><td colSpan={20} style={{ padding: '1rem 0', color: 'var(--faint)' }}>No shifts in this range.</td></tr>
             )}
             {driverSummaries.map(s => {
               const draft = paymentFor(s.driverId)
@@ -247,6 +265,11 @@ export default function AdminPayrollHoursPanel({ drivers }: { drivers: DriverOpt
                 <tr key={s.driverId} style={{ borderTop: '1px solid var(--border)' }}>
                   <td style={{ padding: '.4rem .5rem .4rem 0', fontWeight: 700 }}>{s.driverName}</td>
                   <td>{s.daysWorked}</td>
+                  <td>{round2(s.totalPaidHours + s.totalNonPaidOperationalHours)}</td>
+                  <td>{s.totalPaidHours}</td>
+                  <td>{s.totalNonPaidOperationalHours > 0 ? <span style={{ color: 'var(--warn, #d99a2b)' }}>{s.totalNonPaidOperationalHours}</span> : s.totalNonPaidOperationalHours}</td>
+                  <td>{s.totalCustomerBillableHours}</td>
+                  <td>{s.totalNonBilledOperationalHours}</td>
                   <td>{s.totalRegularHours}</td>
                   <td>{s.totalOvertimeHours}</td>
                   <td>{s.totalFuelingHours}</td>
@@ -308,6 +331,10 @@ export default function AdminPayrollHoursPanel({ drivers }: { drivers: DriverOpt
       </div>
     </div>
   )
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
 }
 
 function SummaryStat({ label, value }: { label: string; value: number }) {

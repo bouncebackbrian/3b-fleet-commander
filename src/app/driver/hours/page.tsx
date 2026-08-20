@@ -22,6 +22,12 @@ interface DailyHoursRow {
   totalShiftHours: number
   rawCalculatedHours: number
   verifiedHoursOverride: { hours: number; reason: string; sourceDocument: string | null } | null
+  paidHours: number
+  nonPaidOperationalHours: number
+  pendingPayableHours: number
+  customerBillableHours: number
+  nonBilledOperationalHours: number
+  pendingBillableHours: number
   regularHours: number
   overtimeHours: number
   pretripHours: number
@@ -59,6 +65,12 @@ interface RangeSummary {
   totalQuantity: number
   totalMiles: number
   estimatedGrossEarnings: number
+  totalPaidHours: number
+  totalNonPaidOperationalHours: number
+  totalPendingPayableHours: number
+  totalCustomerBillableHours: number
+  totalNonBilledOperationalHours: number
+  totalPendingBillableHours: number
 }
 
 interface TimestampLogEntry {
@@ -84,6 +96,7 @@ interface HoursResponse {
   summary: RangeSummary
   isDefaultPayPolicy: boolean
   payment: PayrollPayment | null
+  payPolicy: { baseHourlyRate: number }
 }
 
 const RANGE_OPTIONS: { key: RangeType; label: string }[] = [
@@ -230,7 +243,36 @@ export default function DriverHoursPage() {
               <Stat label="Miles" value={String(data.summary.totalMiles)} />
               <Stat label="Est. Earnings" value={`$${data.summary.estimatedGrossEarnings.toFixed(2)}`} highlight />
             </div>
+          </div>
 
+          {data.summary.totalNonPaidOperationalHours > 0 && (
+            <div style={{ ...cardStyle, border: '1px solid rgba(217,154,43,.35)' }}>
+              <div style={{ fontSize: '.72rem', fontWeight: 800, color: 'var(--warn, #d99a2b)', textTransform: 'uppercase', marginBottom: 4 }}>
+                Tracked Operational Time — Not Included in Current Payroll
+              </div>
+              <p style={{ fontSize: '.8rem', color: 'var(--muted)', marginBottom: '.75rem' }}>
+                This time really happened and is recorded (breakdown waiting, return-to-yard drive, post-trip),
+                but Cal-Neva&apos;s current pay policy for these categories doesn&apos;t count it toward your paid
+                hours above. It&apos;s shown here so the full picture of your day is visible.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem' }}>
+                <Stat label="Non-Paid Operational" value={`${data.summary.totalNonPaidOperationalHours.toFixed(2)} hrs`} />
+                {data.summary.totalPendingPayableHours > 0 && (
+                  <Stat label="Pending Review" value={`${data.summary.totalPendingPayableHours.toFixed(2)} hrs`} />
+                )}
+                <Stat
+                  label="Non-Paid Time Value (Opportunity Cost)"
+                  value={`$${(data.summary.totalNonPaidOperationalHours * data.payPolicy.baseHourlyRate).toFixed(2)}`}
+                />
+              </div>
+              <p style={{ fontSize: '.7rem', color: 'var(--muted)', marginTop: '.6rem', fontStyle: 'italic' }}>
+                This dollar figure is an analytics estimate at your hourly rate — not an amount owed unless
+                management has approved it as payable.
+              </p>
+            </div>
+          )}
+
+          <div style={cardStyle}>
             {data.payment && (data.payment.checkNumber || data.payment.amountPaid != null) && (
               <div style={{ marginTop: '1.25rem', padding: '.85rem 1rem', borderRadius: 10, background: 'rgba(0,232,176,.06)', border: '1px solid rgba(0,232,176,.2)' }}>
                 <div style={{ fontSize: '.65rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', marginBottom: 6 }}>Paid</div>
@@ -259,7 +301,7 @@ export default function DriverHoursPage() {
                 <table style={{ width: '100%', fontSize: '.82rem', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ color: 'var(--muted)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                      <th style={th}>Date</th><th style={th}>Truck</th><th style={th}>Total</th><th style={th}>Reg</th>
+                      <th style={th}>Date</th><th style={th}>Truck</th><th style={th}>Total</th><th style={th}>Paid</th><th style={th}>Reg</th>
                       <th style={th}>OT</th><th style={th}>Loads</th><th style={th}>Miles</th><th style={th}>Est. $</th>
                       <th style={th}>Status</th><th style={th}></th>
                     </tr>
@@ -277,6 +319,14 @@ export default function DriverHoursPage() {
                               title={`Verified/payroll hours — raw clocked time was ${r.rawCalculatedHours.toFixed(2)}h. Reason: ${r.verifiedHoursOverride.reason}${r.verifiedHoursOverride.sourceDocument ? ` (${r.verifiedHoursOverride.sourceDocument})` : ''}`}
                             >
                               ✓ verified
+                            </span>
+                          )}
+                        </td>
+                        <td style={td}>
+                          {r.paidHours.toFixed(2)}
+                          {r.nonPaidOperationalHours > 0 && (
+                            <span style={{ color: 'var(--warn, #d99a2b)', marginLeft: 4, fontSize: '.7rem', cursor: 'default' }} title={`${r.nonPaidOperationalHours.toFixed(2)}h tracked but not paid this shift`}>
+                              ⚠
                             </span>
                           )}
                         </td>

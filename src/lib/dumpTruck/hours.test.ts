@@ -15,6 +15,8 @@ function makeRow(workDate: string, totalShiftHours: number, overrides: Partial<D
   return {
     workDate, shiftId: `shift-${workDate}`, clockInAt: null, clockOutAt: null,
     totalShiftHours, rawCalculatedHours: totalShiftHours, verifiedHoursOverride: null,
+    paidHours: totalShiftHours, nonPaidOperationalHours: 0, pendingPayableHours: 0,
+    customerBillableHours: totalShiftHours, nonBilledOperationalHours: 0, pendingBillableHours: 0,
     regularHours: totalShiftHours, overtimeHours: 0, doubleTimeHours: 0,
     pretripHours: 0, posttripHours: 0, onDutyNotDrivingHours: 0, emptyDrivingHours: 0, loadedDrivingHours: 0,
     loadingWaitingHours: 0, unloadingWaitingHours: 0, fuelingHours: 0, delayHours: 0, trafficDelayHours: 0,
@@ -221,6 +223,31 @@ describe('buildDailyHoursRow', () => {
     expect(row.exceptionStatus).toBe('none')
   })
 
+  it('reproduces the David Carson non-paid-time acceptance test end-to-end (10.5h clocked, breakdown+return+posttrip all non-paid/non-billed)', () => {
+    const row = buildDailyHoursRow({
+      workDate: '2026-08-20', shiftId: 's-david', shiftState: 'submitted',
+      clockInAt: '2026-08-20T13:00:00Z', clockOutAt: '2026-08-20T23:30:00Z', // 10.5h clocked span
+      events: [], driveSecondsByCategory: { empty: 0, loaded: 0, yard_transfer: 0, fuel: 0, maintenance: 0, other: 0 },
+      custodySeconds: 0, truckUnit: '07', trailerUnit: null,
+      jobNumbers: [], customerNames: [], brokerNames: [],
+      loadsCompleted: 0, quantityHauled: 0, startOdometer: null, endOdometer: null,
+      hasOpenCorrectionRequest: false, payPolicy: DEFAULT_PAY_POLICY,
+      classifiedSegments: [
+        { category: 'breakdown_roadside', hours: 1.50, driverPayable: 'no', customerBillable: 'no' },
+        { category: 'return_to_yard', hours: 0.70, driverPayable: 'no', customerBillable: 'no' },
+        { category: 'posttrip', hours: 0.30, driverPayable: 'no', customerBillable: 'no' },
+      ],
+    })
+    expect(row.totalShiftHours).toBe(10.5)
+    expect(row.paidHours).toBe(8)
+    expect(row.nonPaidOperationalHours).toBe(2.5)
+    expect(row.customerBillableHours).toBe(8)
+    expect(row.nonBilledOperationalHours).toBe(2.5)
+    expect(row.regularHours).toBe(8) // NOT 8.5 (OT threshold) — pay is based on paidHours, not totalShiftHours
+    expect(row.overtimeHours).toBe(0)
+    expect(row.estimatedGrossEarnings).toBe(256) // 8h x $32/hr, not 10.5h
+  })
+
   it('flags exceptionStatus when a correction was requested', () => {
     const row = buildDailyHoursRow({
       workDate: '2026-07-27', shiftId: 's', shiftState: 'active',
@@ -267,6 +294,8 @@ describe('buildRangeSummary', () => {
       unpaidBreakHours: 0, paidBreakHours: 0, doubleTimeHours: 0, hourlyEstimatedEarnings: 0,
       manualYardTravelHours: 0, integrityWarnings: [] as ShiftIntegrityWarning[],
       rawCalculatedHours: 0, verifiedHoursOverride: null as DailyHoursRow['verifiedHoursOverride'], adminDelayHours: 0,
+      paidHours: 0, nonPaidOperationalHours: 0, pendingPayableHours: 0,
+      customerBillableHours: 0, nonBilledOperationalHours: 0, pendingBillableHours: 0,
     }
     const rows = [
       { ...base, workDate: '2026-07-27', shiftId: 's1', totalShiftHours: 10, regularHours: 8, overtimeHours: 2, emptyDrivingHours: 1, loadedDrivingHours: 2, vehicleCustodyHours: 9, loadsCompleted: 4, quantityHauled: 80, startOdometer: null, endOdometer: null, shiftMiles: 120, estimatedGrossEarnings: 352 },
@@ -288,7 +317,10 @@ describe('sumRangeSummaries', () => {
     daysWorked: 0, totalRegularHours: 0, totalOvertimeHours: 0, totalDoubleTimeHours: 0, totalDriveHours: 0,
     totalCustodyHours: 0, totalLoads: 0, totalQuantity: 0, totalMiles: 0, totalFuelingHours: 0,
     totalTrafficDelayHours: 0, totalMechanicalDelayHours: 0, totalOtherDelayHours: 0,
-    estimatedGrossEarnings: 0, payrollApprovedGrossEarnings: null, ...overrides,
+    estimatedGrossEarnings: 0, payrollApprovedGrossEarnings: null,
+    totalPaidHours: 0, totalNonPaidOperationalHours: 0, totalPendingPayableHours: 0,
+    totalCustomerBillableHours: 0, totalNonBilledOperationalHours: 0, totalPendingBillableHours: 0,
+    ...overrides,
   })
 
   it('sums each field across summaries', () => {

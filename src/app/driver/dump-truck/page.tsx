@@ -31,10 +31,11 @@ import FullLogSheet from '@/components/dumpTruck/FullLogSheet'
 import EditJobSheet from '@/components/dumpTruck/EditJobSheet'
 import TicketSheet from '@/components/dumpTruck/TicketSheet'
 import DispatchCard from '@/components/dumpTruck/DispatchCard'
+import TruckProblemSheet from '@/components/dumpTruck/TruckProblemSheet'
 
 type SheetKey =
   | 'clock_in' | 'odometer_pickup' | 'odometer_dropoff' | 'pretrip' | 'posttrip'
-  | 'delay' | 'note' | 'defect' | 'incident' | 'photo' | 'ticket' | 'fuel' | 'new_site' | 'submit' | 'full_log' | 'edit_job' | 'dispatch_ticket' | null
+  | 'delay' | 'note' | 'defect' | 'incident' | 'photo' | 'ticket' | 'fuel' | 'new_site' | 'submit' | 'full_log' | 'edit_job' | 'dispatch_ticket' | 'truck_problem' | null
 
 export default function DumpTruckDriverPage() {
   const {
@@ -176,6 +177,7 @@ export default function DumpTruckDriverPage() {
     { key: 'photo', icon: '📷', label: 'Photo', enabled: !!context?.shift },
     { key: 'ticket', icon: '🎫', label: 'Load Ticket', enabled: !!context?.shift && (context?.loadCycles.length ?? 0) > 0 },
     { key: 'defect', icon: '🔧', label: 'Defect', enabled: !!context?.shift?.truckId },
+    { key: 'truck_problem', icon: '🚨', label: 'Truck Problem', enabled: !!context?.shift?.truckId },
     { key: 'incident', icon: '🚨', label: 'Incident', enabled: !!context?.shift },
     { key: 'fuel', icon: '⛽', label: 'Add Fuel', enabled: !!context?.shift?.truckId },
     { key: 'new_site', icon: '📍', label: 'New Site', enabled: true },
@@ -395,6 +397,16 @@ export default function DumpTruckDriverPage() {
 
       {sheet === 'new_site' && (
         <NewSiteSheet onClose={() => setSheet(null)} onSaved={refetch} />
+      )}
+
+      {sheet === 'truck_problem' && context?.shift?.truckId && (
+        <TruckProblemSheet
+          shiftId={context.shift.id}
+          truckId={context.shift.truckId}
+          jobId={activeJobId}
+          onClose={() => setSheet(null)}
+          onChanged={refetch}
+        />
       )}
 
       {sheet === 'defect' && context?.shift?.truckId && (

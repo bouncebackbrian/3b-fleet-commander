@@ -14,6 +14,7 @@
  */
 
 import type { DumpTruckEventType, DriveSegmentCategory } from './types'
+import { computeOperationalTimeSplit, type ClassifiedSegment } from './timeClassification'
 
 const MS_PER_HOUR = 3600000
 
@@ -408,6 +409,16 @@ export interface DailyHoursRowInput {
    * reflects the actual clock-derived total, separately from totalShiftHours.
    */
   verifiedHoursOverride?: { hours: number; reason: string; sourceDocument: string | null } | null
+  /**
+   * Breakdowns/return-to-yard/post-trip/freeform management adjustments for
+   * this shift, already resolved to hours + payable/billable decisions
+   * (fleet/dumpTruck/adjustments.ts's buildClassifiedSegmentsForShift).
+   * Omitted or empty means "nothing classified yet" — every operational
+   * hour stays assumed-payable/assumed-billable, i.e. today's unchanged
+   * behavior. This never edits totalShiftHours itself; it only decides how
+   * much of it counts as paidHours/customerBillableHours below.
+   */
+  classifiedSegments?: ClassifiedSegment[]
 }
 
 export interface DailyHoursRow {
@@ -421,6 +432,20 @@ export interface DailyHoursRow {
    *  override is active. */
   rawCalculatedHours: number
   verifiedHoursOverride: { hours: number; reason: string; sourceDocument: string | null } | null
+  /**
+   * Total Operational Time minus classified non-payable segments — the
+   * figure regularHours/overtimeHours/estimatedGrossEarnings below are
+   * actually computed from. Equals totalShiftHours when no segments are
+   * classified (spec: never automatically include non-paid return/
+   * post-trip/breakdown time in payroll).
+   */
+  paidHours: number
+  nonPaidOperationalHours: number
+  pendingPayableHours: number
+  /** Total Operational Time minus classified non-billable segments — analytics/billing only, not used in the pay calculation below. */
+  customerBillableHours: number
+  nonBilledOperationalHours: number
+  pendingBillableHours: number
   regularHours: number
   overtimeHours: number
   doubleTimeHours: number
@@ -474,7 +499,8 @@ export function buildDailyHoursRow(input: DailyHoursRowInput): DailyHoursRow {
   // figure so the two are never conflated (see DailyHoursRowInput doc).
   const totalShiftHours = input.verifiedHoursOverride ? round2(input.verifiedHoursOverride.hours) : rawCalculatedHours
 
-  const split = splitRegularOvertime(totalShiftHours, input.payPolicy.dailyOtThresholdHours)
+  const timeSplit = computeOperationalTimeSplit(totalShiftHours, input.classifiedSegments ?? [])
+  const split = splitRegularOvertime(timeSplit.paidHours, input.payPolicy.dailyOtThresholdHours)
   const cat = buildCategoryTimeFromEvents(input.events)
 
   const driveTotalSeconds = Object.values(input.driveSecondsByCategory).reduce((a, b) => a + b, 0)
@@ -501,6 +527,12 @@ export function buildDailyHoursRow(input: DailyHoursRowInput): DailyHoursRow {
     totalShiftHours,
     rawCalculatedHours,
     verifiedHoursOverride: input.verifiedHoursOverride ?? null,
+    paidHours: timeSplit.paidHours,
+    nonPaidOperationalHours: timeSplit.nonPaidOperationalHours,
+    pendingPayableHours: timeSplit.pendingPayableHours,
+    customerBillableHours: timeSplit.customerBillableHours,
+    nonBilledOperationalHours: timeSplit.nonBilledOperationalHours,
+    pendingBillableHours: timeSplit.pendingBillableHours,
     regularHours: split.regularHours,
     overtimeHours: split.overtimeHours,
     doubleTimeHours: 0,
@@ -566,6 +598,12 @@ export interface RangeSummary {
   totalOtherDelayHours: number
   estimatedGrossEarnings: number
   payrollApprovedGrossEarnings: null
+  totalPaidHours: number
+  totalNonPaidOperationalHours: number
+  totalPendingPayableHours: number
+  totalCustomerBillableHours: number
+  totalNonBilledOperationalHours: number
+  totalPendingBillableHours: number
 }
 
 export function buildRangeSummary(rows: DailyHoursRow[]): RangeSummary {
@@ -585,6 +623,12 @@ export function buildRangeSummary(rows: DailyHoursRow[]): RangeSummary {
     totalOtherDelayHours: round2(sum(rows.map(r => r.otherDelayHours))),
     estimatedGrossEarnings: round2(sum(rows.map(r => r.estimatedGrossEarnings))),
     payrollApprovedGrossEarnings: null,
+    totalPaidHours: round2(sum(rows.map(r => r.paidHours))),
+    totalNonPaidOperationalHours: round2(sum(rows.map(r => r.nonPaidOperationalHours))),
+    totalPendingPayableHours: round2(sum(rows.map(r => r.pendingPayableHours))),
+    totalCustomerBillableHours: round2(sum(rows.map(r => r.customerBillableHours))),
+    totalNonBilledOperationalHours: round2(sum(rows.map(r => r.nonBilledOperationalHours))),
+    totalPendingBillableHours: round2(sum(rows.map(r => r.pendingBillableHours))),
   }
 }
 
@@ -670,5 +714,11 @@ export function sumRangeSummaries(summaries: RangeSummary[]): RangeSummary {
     totalOtherDelayHours: round2(sum(summaries.map(s => s.totalOtherDelayHours))),
     estimatedGrossEarnings: round2(sum(summaries.map(s => s.estimatedGrossEarnings))),
     payrollApprovedGrossEarnings: null,
+    totalPaidHours: round2(sum(summaries.map(s => s.totalPaidHours))),
+    totalNonPaidOperationalHours: round2(sum(summaries.map(s => s.totalNonPaidOperationalHours))),
+    totalPendingPayableHours: round2(sum(summaries.map(s => s.totalPendingPayableHours))),
+    totalCustomerBillableHours: round2(sum(summaries.map(s => s.totalCustomerBillableHours))),
+    totalNonBilledOperationalHours: round2(sum(summaries.map(s => s.totalNonBilledOperationalHours))),
+    totalPendingBillableHours: round2(sum(summaries.map(s => s.totalPendingBillableHours))),
   }
 }

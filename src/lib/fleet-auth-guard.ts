@@ -18,7 +18,7 @@
 import { createAuthServerClient } from '@/lib/auth-server-client'
 import { fleetServiceClient }     from '@/lib/fleet-service-client'
 
-export type Portal = 'driver' | 'dispatch' | 'broker' | 'admin'
+export type Portal = 'driver' | 'dispatch' | 'broker' | 'admin' | 'payroll' | 'billing'
 export type PermissionLevel = 'view' | 'manage'
 export type PortalGrants = Partial<Record<Portal, PermissionLevel>>
 

@@ -18,6 +18,7 @@ import {
 import type { DriveSegmentCategory, DumpTruckEventType } from '@/lib/dumpTruck/types'
 import { getPayPolicyForDriver } from './payPolicy'
 import { computeRevenueForRange } from './revenue'
+import { buildClassifiedSegmentsForShift } from './adjustments'
 
 function utcDateString(iso: string): string {
   return iso.slice(0, 10)
@@ -131,7 +132,7 @@ export async function buildDriverHoursForRange(
   const jobById = new Map((jobs ?? []).map(j => [j.id, j]))
   const equipmentById = new Map((equipmentRes.data ?? []).map(e => [e.id, e.unit_number]))
 
-  const rows: DailyHoursRow[] = shifts.map(shift => {
+  const rows: DailyHoursRow[] = await Promise.all(shifts.map(async shift => {
     const events = (eventsRes.data ?? [])
       .filter(e => e.shift_id === shift.id)
       .map(e => ({ eventType: e.event_type as DumpTruckEventType, effectiveAt: e.effective_at, notes: e.notes as string | null }))
@@ -166,6 +167,8 @@ export async function buildDriverHoursForRange(
     }
     const quantityHauled = completedLoadCycles.reduce((sum, lc) => sum + Number(lc.weight_tons ?? lc.quantity ?? 0), 0)
 
+    const classifiedSegments = await buildClassifiedSegmentsForShift(businessId, shift.id, events)
+
     return buildDailyHoursRow({
       workDate: shift.clock_in_at ? utcDateString(shift.clock_in_at) : range.start,
       shiftId: shift.id,
@@ -189,8 +192,9 @@ export async function buildDriverHoursForRange(
       manualStartTravelMinutes: shift.manual_start_travel_minutes,
       manualEndTravelMinutes: shift.manual_end_travel_minutes,
       verifiedHoursOverride: overrideByShift.get(shift.id) ?? null,
+      classifiedSegments,
     })
-  })
+  }))
 
   applyOverlappingShiftWarnings(rows, shifts)
 
