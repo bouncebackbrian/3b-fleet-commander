@@ -191,7 +191,6 @@ function BoardCard({
 // ── Notification settings ─────────────────────────────────────────────────────
 
 function NotificationSettings() {
-  const [teams, setTeams]   = useState('')
   const [sms,   setSms]     = useState('')
   const [email, setEmail]   = useState('')
   const [saved, setSaved]   = useState(false)
@@ -201,7 +200,6 @@ function NotificationSettings() {
     if (cfg) {
       try {
         const parsed = JSON.parse(cfg)
-        setTeams(parsed.teams?.endpoint ?? '')
         setSms(parsed.sms?.endpoint ?? '')
         setEmail(parsed.email?.endpoint ?? '')
       } catch { /* ignore */ }
@@ -212,7 +210,6 @@ function NotificationSettings() {
     const existing = (() => { try { return JSON.parse(localStorage.getItem('3b-notification-config') ?? '{}') } catch { return {} } })()
     localStorage.setItem('3b-notification-config', JSON.stringify({
       ...existing,
-      teams:  { enabled: !!teams,  endpoint: teams  || undefined },
       sms:    { enabled: !!sms,    endpoint: sms    || undefined },
       email:  { enabled: !!email,  endpoint: email  || undefined },
       in_app: { enabled: true },
@@ -223,8 +220,12 @@ function NotificationSettings() {
 
   return (
     <div style={{ display: 'grid', gap: '.5rem' }}>
+      <div style={{ fontSize: '.68rem', color: 'var(--muted)', padding: '.6rem .75rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+        Microsoft Teams moved to a secure, business-scoped integration — configure it under{' '}
+        <a href="/admin/dump-truck" style={{ color: 'var(--primary)', fontWeight: 700 }}>Dump Truck Setup → Microsoft Teams</a>.
+        Webhook URLs are now stored server-side only, never in a browser field.
+      </div>
       {[
-        { label: 'Microsoft Teams Webhook', value: teams, set: setTeams, ph: 'https://outlook.office.com/webhook/…', env: 'NEXT_PUBLIC_TEAMS_WEBHOOK' },
         { label: 'SMS Endpoint (Twilio or custom)', value: sms, set: setSms, ph: 'https://your-sms-endpoint.com/send', env: 'NEXT_PUBLIC_SMS_ENDPOINT' },
         { label: 'Email Endpoint', value: email, set: setEmail, ph: 'https://your-email-endpoint.com/send', env: 'NEXT_PUBLIC_EMAIL_ENDPOINT' },
       ].map(({ label, value, set, ph, env }) => (

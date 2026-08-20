@@ -198,9 +198,24 @@ async function deliverExternal(
   opts:     RouteNotificationOpts,
   config:   NotificationConfig,
 ): Promise<void> {
+  // Teams no longer delivers from the browser — a client-exposed webhook
+  // URL (NEXT_PUBLIC_TEAMS_WEBHOOK, or one typed into a public settings
+  // field) is a leaked secret by definition. Dump Truck Mode's Teams
+  // integration (fleet/dumpTruck/teamsNotify.ts) sends server-side only,
+  // per-business, from real operational events. Route Teams notifications
+  // there instead of through this client-side dispatcher.
+  if (channel === 'teams') {
+    logNotificationEvent({
+      loadNumber: opts.loadNumber,
+      title:      `Teams notification skipped — this channel now sends server-side only (Dump Truck Setup → Microsoft Teams)`,
+      payload: { channel, status: 'sent', escalationTier: opts.tier },
+    })
+    return
+  }
+
   // Resolve endpoint: channel config override > env var
   const envMap: Record<NotifyChannel, string> = {
-    teams:  process.env.NEXT_PUBLIC_TEAMS_WEBHOOK   ?? '',
+    teams:  '',
     sms:    process.env.NEXT_PUBLIC_SMS_ENDPOINT    ?? '',
     email:  process.env.NEXT_PUBLIC_EMAIL_ENDPOINT  ?? '',
     in_app: '',
