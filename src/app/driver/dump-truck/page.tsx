@@ -1,6 +1,6 @@
 'use client'
 import { useMemo, useState } from 'react'
-import { useDumpTruckDriver } from '@/hooks/useDumpTruckDriver'
+import { useDumpTruckDriver, type TimelineEntry } from '@/hooks/useDumpTruckDriver'
 import { useWeather } from '@/hooks/useWeather'
 import { canDispatchWithDefects } from '@/lib/dumpTruck/inspections'
 import { siteAwareActionLabel } from '@/lib/dumpTruck/actionLabels'
@@ -65,6 +65,28 @@ export default function DumpTruckDriverPage() {
     }
     return open
   }, [timeline])
+
+  /** The driver's visible activity log — timeline (fleet_dt_events) plus Truck
+   *  Problem reports, which live in a separate table (fleet_dt_breakdowns)
+   *  and otherwise never show up anywhere the driver can see them. Display
+   *  only: never fed into flowState/delayActive, which stay on the hook's
+   *  own pure event timeline. */
+  const activityTimeline = useMemo(() => {
+    const breakdownEntries = (context?.breakdowns ?? []).flatMap(b => {
+      const entries: TimelineEntry[] = [{
+        id: `${b.id}-reported`, eventType: 'breakdown_reported', effectiveAt: b.startedAt,
+        notes: b.notes, pending: false, lat: b.lat, lng: b.lng,
+      }]
+      if (b.endedAt) {
+        entries.push({
+          id: `${b.id}-resolved`, eventType: 'breakdown_resolved', effectiveAt: b.endedAt,
+          notes: null, pending: false, lat: null, lng: null,
+        })
+      }
+      return entries
+    })
+    return [...timeline, ...breakdownEntries].sort((a, b) => a.effectiveAt.localeCompare(b.effectiveAt))
+  }, [timeline, context?.breakdowns])
 
   const activeJob = context?.jobs.find(j => j.id === activeJobId) ?? null
   const pickupSite = context?.sites.find(s => s.id === activeJob?.pickupSiteId)
@@ -285,7 +307,7 @@ export default function DumpTruckDriverPage() {
                   poNumber: activeJob.poNumber,
                   totalTons: activeJob.quantityUnit === 'tons' ? activeJob.estQuantity : null,
                 } : null}
-                timeline={timeline}
+                timeline={activityTimeline}
                 labelCtx={siteLabelCtx}
                 onViewFullLog={() => setSheet('full_log')}
               />
@@ -462,7 +484,7 @@ export default function DumpTruckDriverPage() {
       )}
 
       {sheet === 'full_log' && (
-        <FullLogSheet timeline={timeline} labelCtx={siteLabelCtx} onClose={() => setSheet(null)} />
+        <FullLogSheet timeline={activityTimeline} labelCtx={siteLabelCtx} onClose={() => setSheet(null)} />
       )}
 
       {sheet === 'dispatch_ticket' && activeJob && (

@@ -34,9 +34,15 @@ import {
 } from '@/lib/dumpTruck/locationQueue'
 import type { DumpTruckEvent, DumpTruckEventType, DumpTruckSite, DumpTruckJob } from '@/lib/dumpTruck/types'
 
+/** Synthetic entries mixed into the driver's *display* activity log — see
+ *  page.tsx's activityTimeline — for events that live outside
+ *  fleet_dt_events (e.g. Truck Problem reports in fleet_dt_breakdowns).
+ *  Never fed into computeFlowState; the hook's own `timeline` stays pure. */
+export type DisplayEventType = DumpTruckEventType | 'breakdown_reported' | 'breakdown_resolved'
+
 export interface TimelineEntry {
   id: string
-  eventType: DumpTruckEventType
+  eventType: DisplayEventType
   effectiveAt: string
   notes: string | null
   pending: boolean
@@ -57,6 +63,7 @@ interface DriverContextResponse {
   jobs: DumpTruckJob[]
   openDefects: { id: string; description: string; severity: string }[]
   loadCycles: { id: string; sequence: number; jobId: string; dumpDepartEventId: string | null }[]
+  breakdowns: { id: string; startedAt: string; endedAt: string | null; notes: string | null; lat: number | null; lng: number | null }[]
 }
 
 const SYNC_INTERVAL_MS = 12000
@@ -249,7 +256,10 @@ export function useDumpTruckDriver() {
       })),
   ].sort((a, b) => a.effectiveAt.localeCompare(b.effectiveAt))
 
-  const flowState: FlowStateId = computeFlowState(timeline.map(t => t.eventType))
+  // This hook's own timeline only ever contains real fleet_dt_events rows —
+  // synthetic display-only entries (e.g. breakdown_reported) are merged in
+  // downstream, in page.tsx, for the activity log only, never fed back here.
+  const flowState: FlowStateId = computeFlowState(timeline.map(t => t.eventType as DumpTruckEventType))
   const primaryAction = getPrimaryAction(flowState)
 
   // ── Actions ──────────────────────────────────────────────────────────────

@@ -34,6 +34,10 @@ export interface DriverContext {
   jobs: Awaited<ReturnType<typeof listJobsForDriver>>
   openDefects: { id: string; description: string; severity: string }[]
   loadCycles: { id: string; sequence: number; jobId: string; dumpDepartEventId: string | null }[]
+  /** Truck Problem reports for this shift — a separate table from
+   *  fleet_dt_events (see breakdowns.ts), so the driver's activity log has
+   *  to merge these in itself rather than getting them for free. */
+  breakdowns: { id: string; startedAt: string; endedAt: string | null; notes: string | null; lat: number | null; lng: number | null }[]
 }
 
 export async function getDriverContext(businessId: string, driverId: string): Promise<DriverContext> {
@@ -47,6 +51,7 @@ export async function getDriverContext(businessId: string, driverId: string): Pr
   let events: DriverContext['events'] = []
   let loadCycles: DriverContext['loadCycles'] = []
   let openDefects: DriverContext['openDefects'] = []
+  let breakdowns: DriverContext['breakdowns'] = []
   let truckUnitNumber: string | null = null
   let truckHoldStatus: DriverContext['truckHoldStatus'] = 'none'
   let truckHoldReason: string | null = null
@@ -63,7 +68,7 @@ export async function getDriverContext(businessId: string, driverId: string): Pr
   }
 
   if (shift) {
-    const [eventsRes, loadCyclesRes] = await Promise.all([
+    const [eventsRes, loadCyclesRes, breakdownsRes] = await Promise.all([
       fleetServiceClient
         .from('fleet_dt_events')
         .select('id, event_type, effective_at, notes, lat, lng')
@@ -74,6 +79,11 @@ export async function getDriverContext(businessId: string, driverId: string): Pr
         .select('id, sequence, job_id, dump_depart_event_id')
         .eq('shift_id', shift.id)
         .order('sequence', { ascending: true }),
+      fleetServiceClient
+        .from('fleet_dt_breakdowns')
+        .select('id, started_at, ended_at, notes, lat, lng')
+        .eq('shift_id', shift.id)
+        .order('started_at', { ascending: true }),
     ])
 
     events = (eventsRes.data ?? []).map(r => ({
@@ -82,6 +92,9 @@ export async function getDriverContext(businessId: string, driverId: string): Pr
     }))
     loadCycles = (loadCyclesRes.data ?? []).map(r => ({
       id: r.id, sequence: r.sequence, jobId: r.job_id, dumpDepartEventId: r.dump_depart_event_id,
+    }))
+    breakdowns = (breakdownsRes.data ?? []).map(r => ({
+      id: r.id, startedAt: r.started_at, endedAt: r.ended_at, notes: r.notes, lat: r.lat, lng: r.lng,
     }))
 
     if (shift.truckId) {
@@ -95,7 +108,7 @@ export async function getDriverContext(businessId: string, driverId: string): Pr
   }
 
   return {
-    shift, events, sites, jobs, openDefects, loadCycles, truckUnitNumber, truckHoldStatus, truckHoldReason,
+    shift, events, sites, jobs, openDefects, loadCycles, breakdowns, truckUnitNumber, truckHoldStatus, truckHoldReason,
     driverName: meta.driverName, businessName: meta.businessName, preferredLanguage: meta.preferredLanguage,
   }
 }

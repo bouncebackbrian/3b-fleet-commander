@@ -14,4 +14,5 @@ export const EVENT_LABELS: Record<string, string> = {
   truck_dropped_off: 'Truck Dropped Off', clock_out: 'Clocked Out', shift_submitted: 'Day Submitted',
   note: 'Note', photo_captured: 'Photo', ticket_captured: 'Ticket', correction_requested: 'Correction Requested',
   location_logged: 'Location Logged',
+  breakdown_reported: 'Truck Problem Reported', breakdown_resolved: 'Truck Problem Resolved',
 }

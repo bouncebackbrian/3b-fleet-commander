@@ -26,7 +26,7 @@ export interface SiteAwareLabelContext {
  * timeline (LogEntryRow) so both read the same way.
  */
 export function siteAwareActionLabel(
-  eventType: DumpTruckEventType | null,
+  eventType: DumpTruckEventType | string | null,
   defaultLabel: string,
   ctx: SiteAwareLabelContext,
 ): string {

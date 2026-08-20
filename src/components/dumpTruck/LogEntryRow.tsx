@@ -29,7 +29,9 @@ export default function LogEntryRow({ entry, labelCtx, size = 'sm' }: { entry: T
         borderRadius: big ? 10 : 8, background: 'var(--surface-2)', border: '1px solid var(--border)',
         opacity: entry.pending ? .65 : 1,
       }}>
-        <span style={{ fontSize: big ? '1.15rem' : '.9rem' }}>{entry.pending ? '⏳' : '✅'}</span>
+        <span style={{ fontSize: big ? '1.15rem' : '.9rem' }}>
+          {entry.pending ? '⏳' : entry.eventType === 'breakdown_reported' ? '🚨' : '✅'}
+        </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="dt-log-row-label" style={{ fontSize: big ? '1rem' : '.82rem', fontWeight: 700 }}>{label}</div>
           {entry.notes && <div style={{ fontSize: big ? '.82rem' : '.72rem', color: 'var(--muted)' }}>{entry.notes}</div>}
