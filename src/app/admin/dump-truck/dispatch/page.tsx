@@ -221,14 +221,28 @@ export default function DispatchIntakePage() {
     }
   }
 
-  const publish = async () => {
+  const publish = async (extraAssignments: { driverId: string; truckId: string | null; trailerId: string | null }[]) => {
     if (!draft) return
     setBusy(true)
     try {
-      const res = await fetch(`/api/fleet/dump-truck/dispatch/${draft.id}/publish`, { method: 'POST' })
+      const hasExtras = extraAssignments.length > 0
+      const res = await fetch(`/api/fleet/dump-truck/dispatch/${draft.id}/publish`, {
+        method: 'POST',
+        headers: hasExtras ? { 'Content-Type': 'application/json' } : undefined,
+        body: hasExtras
+          ? JSON.stringify({ assignments: [{ driverId: draft.driverId, truckId: draft.truckId, trailerId: draft.trailerId }, ...extraAssignments] })
+          : undefined,
+      })
       const body = await res.json()
       if (!res.ok) throw new Error(body.error ?? 'Could not publish')
-      toast.success(`Published — job ${body.job.jobNumber} created and driver notified`)
+      if (hasExtras) {
+        const okCount = body.results?.length ?? 0
+        const failCount = body.errors?.length ?? 0
+        if (okCount > 0) toast.success(`Published to ${okCount} driver${okCount === 1 ? '' : 's'}`)
+        if (failCount > 0) toast.error(`${failCount} driver${failCount === 1 ? '' : 's'} could not be published — check truck assignment`)
+      } else {
+        toast.success(`Published — job ${body.job.jobNumber} created and driver notified`)
+      }
       resetIntake()
       reload()
     } catch (err) {
@@ -389,7 +403,7 @@ export default function DispatchIntakePage() {
                 if (res.ok) { setDraft(body.dispatch); await resolveAndRoute(draft.id) }
                 else toast.error(body.error ?? 'Could not assign')
               }}
-              onPublish={publish}
+              onPublish={extraAssignments => publish(extraAssignments)}
             />
           )}
         </div>
@@ -463,6 +477,8 @@ function Pill({ label, color }: { label: string; color: string }) {
   return <span style={{ fontSize: '.72rem', fontWeight: 800, color, border: `1px solid ${color}`, borderRadius: 999, padding: '.15rem .55rem' }}>{label}</span>
 }
 
+interface ExtraAssignment { key: string; driverId: string; truckId: string | null; trailerId: string | null }
+
 function DraftReview({ draft, stops, sites, drivers, equipment, settings, busy, onRecalculate, onAssign, onPublish }: {
   draft: Dispatch
   stops: DispatchStop[]
@@ -473,8 +489,12 @@ function DraftReview({ draft, stops, sites, drivers, equipment, settings, busy, 
   busy: boolean
   onRecalculate: () => void
   onAssign: (driverId: string | null, truckId: string | null, trailerId: string | null) => void
-  onPublish: () => void
+  onPublish: (extraAssignments: { driverId: string; truckId: string | null; trailerId: string | null }[]) => void
 }) {
+  const [extraRows, setExtraRows] = useState<ExtraAssignment[]>([])
+  const usedDriverIds = new Set([draft.driverId, ...extraRows.map(r => r.driverId)].filter(Boolean))
+  const validExtras = extraRows.filter(r => r.driverId)
+
   const missing: string[] = []
   if (!draft.dispatchDate) missing.push('date')
   if (!draft.driverId) missing.push('driver (not matched to a registered driver — assign one below)')
@@ -532,6 +552,59 @@ function DraftReview({ draft, stops, sites, drivers, equipment, settings, busy, 
       </div>
       {sites.length === 0 && <p style={{ fontSize: '.75rem', color: 'var(--muted)', marginTop: 6 }}>No sites configured yet — add sites on the Dump Truck Setup page for route calculation to work.</p>}
 
+      <h3 style={{ fontSize: '1rem', fontWeight: 800, margin: '1.25rem 0 .5rem' }}>Send to Additional Drivers (optional)</h3>
+      <p style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: '.5rem' }}>
+        Same job, location, and instructions — sent to more than one driver/truck at once (e.g. several trucks
+        hauling the same pickup → dump job). Each driver gets their own copy on their portal.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '.5rem' }}>
+        {extraRows.map(row => (
+          <div key={row.key} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '.5rem', alignItems: 'end' }}>
+            <Field label="Driver">
+              <select
+                style={inputStyle} value={row.driverId}
+                onChange={e => setExtraRows(rows => rows.map(r => r.key === row.key ? { ...r, driverId: e.target.value } : r))}
+              >
+                <option value="">Select driver…</option>
+                {drivers.filter(d => d.userId === row.driverId || !usedDriverIds.has(d.userId)).map(d => (
+                  <option key={d.userId} value={d.userId}>{d.name}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Truck">
+              <select
+                style={inputStyle} value={row.truckId ?? ''}
+                onChange={e => setExtraRows(rows => rows.map(r => r.key === row.key ? { ...r, truckId: e.target.value || null } : r))}
+              >
+                <option value="">Unassigned</option>
+                {equipment.trucks.map(t => <option key={t.id} value={t.id}>{t.unitNumber}</option>)}
+              </select>
+            </Field>
+            <Field label="Trailer">
+              <select
+                style={inputStyle} value={row.trailerId ?? ''}
+                onChange={e => setExtraRows(rows => rows.map(r => r.key === row.key ? { ...r, trailerId: e.target.value || null } : r))}
+              >
+                <option value="">None</option>
+                {equipment.trailers.map(t => <option key={t.id} value={t.id}>{t.unitNumber}</option>)}
+              </select>
+            </Field>
+            <button
+              onClick={() => setExtraRows(rows => rows.filter(r => r.key !== row.key))}
+              style={{ padding: '.6rem .7rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--error)', fontWeight: 700 }}
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+        <button
+          style={{ ...ghostBtnStyle, alignSelf: 'flex-start' }}
+          onClick={() => setExtraRows(rows => [...rows, { key: `${Date.now()}-${rows.length}`, driverId: '', truckId: null, trailerId: null }])}
+        >
+          + Add Another Driver
+        </button>
+      </div>
+
       {missing.length > 0 && (
         <div style={{ marginTop: '1rem', padding: '.6rem .8rem', borderRadius: 8, background: 'rgba(224,80,80,.08)', border: '1px solid rgba(224,80,80,.3)' }}>
           <div style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--error)' }}>Cannot publish yet — missing/unconfirmed:</div>
@@ -539,8 +612,12 @@ function DraftReview({ draft, stops, sites, drivers, equipment, settings, busy, 
         </div>
       )}
 
-      <button style={{ ...btnStyle, marginTop: '1rem', opacity: busy || missing.length > 0 ? .5 : 1 }} disabled={busy || missing.length > 0} onClick={onPublish}>
-        {busy ? 'Publishing…' : 'Publish to Driver'}
+      <button
+        style={{ ...btnStyle, marginTop: '1rem', opacity: busy || missing.length > 0 ? .5 : 1 }}
+        disabled={busy || missing.length > 0}
+        onClick={() => onPublish(validExtras.map(({ driverId, truckId, trailerId }) => ({ driverId, truckId, trailerId })))}
+      >
+        {busy ? 'Publishing…' : validExtras.length > 0 ? `Publish to ${1 + validExtras.length} Drivers` : 'Publish to Driver'}
       </button>
     </div>
   )

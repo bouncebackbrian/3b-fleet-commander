@@ -705,6 +705,109 @@ export async function publishDispatch(businessId: string, dispatchId: string, us
   return { dispatch: published, job }
 }
 
+// ── Multi-driver publish ────────────────────────────────────────────────
+// One parsed job (same customer/locations/material/instructions) sent to
+// several drivers at once (e.g. 3 trucks hauling the same pickup->dump
+// job). The original draft becomes the first driver's dispatch (reuses
+// publishDispatch exactly as the single-driver path always has); every
+// additional driver gets their own cloned draft (same parsed fields +
+// stops, its own driver/truck/trailer) which is independently published —
+// so each driver gets their own job, acknowledgement, and version history,
+// same as if Hector had pasted the job in three separate times.
+
+export interface DriverAssignment {
+  driverId: string
+  truckId: string | null
+  trailerId: string | null
+}
+
+export interface MultiPublishResult {
+  results: PublishResult[]
+  errors: { driverId: string; error: string }[]
+}
+
+async function cloneDraftDispatch(
+  businessId: string, source: Dispatch, stops: DispatchStop[], assignment: DriverAssignment, suffix: string, userId: string,
+): Promise<Dispatch> {
+  const { data, error } = await fleetServiceClient
+    .from('fleet_dt_dispatches')
+    .insert({
+      business_id: businessId, status: 'draft', raw_input: source.rawInput, source: source.source,
+      dispatch_date: source.dispatchDate, customer_name: source.customerName,
+      broker_id: source.brokerId, broker_name: source.brokerName,
+      dispatch_contact_name: source.dispatchContactName, dispatch_contact_phone: source.dispatchContactPhone,
+      po_number: source.poNumber, job_number: source.jobNumber ? `${source.jobNumber}-${suffix}` : null,
+      load_number: source.loadNumber,
+      driver_id: assignment.driverId, driver_name_raw: null,
+      truck_id: assignment.truckId, truck_label_raw: null, trailer_id: assignment.trailerId,
+      yard_site_id: source.yardSiteId, required_arrival_at: source.requiredArrivalAt,
+      material: source.material, est_quantity: source.estQuantity, quantity_unit: source.quantityUnit,
+      num_loads_estimate: source.numLoadsEstimate, weight_requirements: source.weightRequirements,
+      ticket_requirements: source.ticketRequirements, scale_required: source.scaleRequired,
+      special_instructions: source.specialInstructions, gate_instructions: source.gateInstructions,
+      contact_on_arrival_instructions: source.contactOnArrivalInstructions, safety_instructions: source.safetyInstructions,
+      truck_restrictions: source.truckRestrictions, trailer_requirements: source.trailerRequirements,
+      return_instructions: source.returnInstructions, est_duration_minutes: source.estDurationMinutes,
+      rate_type: source.rateType, customer_rate: source.customerRate, driver_pay_rule: source.driverPayRule,
+      notes: source.notes,
+      calculated_drive_minutes: source.calculatedDriveMinutes, calculated_traffic_drive_minutes: source.calculatedTrafficDriveMinutes,
+      recommended_yard_arrival_at: source.recommendedYardArrivalAt, recommended_leave_yard_at: source.recommendedLeaveYardAt,
+      target_site_arrival_at: source.targetSiteArrivalAt, route_calculated_at: source.routeCalculatedAt,
+      created_by: userId,
+    })
+    .select('*')
+    .single()
+  if (error) throw error
+  const clone = dispatchFromRow(data)
+
+  const ordered = [...stops].sort((a, b) => a.sequence - b.sequence)
+  await insertStops(businessId, clone.id, ordered.map(s => ({
+    stopType: s.stopType, rawLocationText: s.rawLocationText ?? '', material: s.material, notes: s.notes,
+  })))
+  // insertStops doesn't carry over the already-resolved site match — copy it so the
+  // clone doesn't need re-geocoding (positional: same order as the source's stops).
+  const { data: newStops } = await fleetServiceClient.from('fleet_dt_dispatch_stops').select('id, sequence').eq('dispatch_id', clone.id).order('sequence')
+  for (const ns of newStops ?? []) {
+    const src = ordered[ns.sequence - 1]
+    if (src?.siteId) {
+      await fleetServiceClient.from('fleet_dt_dispatch_stops').update({ site_id: src.siteId, site_confidence: src.siteConfidence }).eq('id', ns.id)
+    }
+  }
+
+  return clone
+}
+
+/** Publishes the same parsed job to multiple drivers at once. assignments[0] becomes this dispatch (same as publishDispatch); every subsequent assignment gets its own cloned draft, independently published. A per-driver failure (e.g. missing truck) is collected in `errors` rather than aborting the drivers that already succeeded. */
+export async function publishDispatchToDrivers(
+  businessId: string, dispatchId: string, assignments: DriverAssignment[], userId: string, email: string | null,
+): Promise<MultiPublishResult> {
+  if (assignments.length === 0) throw new DumpTruckError('At least one driver must be assigned', 400)
+  const existing = await getDispatch(businessId, dispatchId)
+  if (!existing) throw new DumpTruckError('Dispatch not found', 404)
+  if (existing.dispatch.status !== 'draft') throw new DumpTruckError('Only a draft dispatch can be published', 400)
+  const { dispatch: source, stops } = existing
+
+  const results: PublishResult[] = []
+  const errors: MultiPublishResult['errors'] = []
+
+  for (let i = 0; i < assignments.length; i++) {
+    const a = assignments[i]
+    try {
+      if (i === 0) {
+        await assignDispatchDriverTruck(businessId, dispatchId, a.driverId, a.truckId, a.trailerId, userId, email)
+        results.push(await publishDispatch(businessId, dispatchId, userId, email))
+      } else {
+        const clone = await cloneDraftDispatch(businessId, source, stops, a, String(i + 1), userId)
+        results.push(await publishDispatch(businessId, clone.id, userId, email))
+      }
+    } catch (err) {
+      errors.push({ driverId: a.driverId, error: err instanceof DumpTruckError ? err.message : 'Could not publish' })
+    }
+  }
+
+  return { results, errors }
+}
+
 /** Revises a published dispatch — records a new version + change diff, and (if driver-facing fields changed) opens a fresh acknowledgement the driver must re-confirm. */
 export async function reviseDispatch(
   businessId: string, dispatchId: string, patch: DraftPatch, reason: string, userId: string, email: string | null,
