@@ -210,7 +210,7 @@ export default function DumpTruckDriverPage() {
         onSafety={() => setSheet('safety')}
       />
 
-      <div style={{ padding: '0 1rem' }}>
+      <div className="dt-dispatch-card-row" style={{ padding: '0 1rem' }}>
         <DispatchCard
           truckUnitNumber={truckUnitNumber}
           onStartDispatch={jobId => {

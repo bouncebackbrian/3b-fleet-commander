@@ -67,7 +67,7 @@ export default function TopStatusBar({
   }, [router])
 
   return (
-    <div style={{
+    <div className="dt-topbar" style={{
       minHeight: 56, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       flexWrap: 'wrap', gap: '.5rem', padding: '.5rem 1rem', background: 'var(--surface)', borderBottom: '1px solid var(--border)',
     }}>
@@ -117,7 +117,7 @@ export default function TopStatusBar({
           icon="📍"
         />
         {wx && weather && (
-          <div style={{
+          <div className="dt-weather-block" style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '.3rem .65rem', borderRadius: 10,
             background: wx.severe ? 'rgba(217,154,43,.1)' : 'var(--surface-2)',
             border: `1px solid ${wx.severe ? 'var(--warn)' : 'var(--border)'}`,
@@ -138,7 +138,7 @@ export default function TopStatusBar({
               padding: '.35rem .6rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)',
             }}
           >
-            🌐 {preferredLanguage === 'en' ? 'EN' : 'ES'}
+            🌐 <span className="dt-topbar-label">{preferredLanguage === 'en' ? 'EN' : 'ES'}</span>
           </button>
         )}
         <Link
@@ -148,7 +148,7 @@ export default function TopStatusBar({
             padding: '.35rem .6rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)',
           }}
         >
-          🧾 Tax Info
+          🧾 <span className="dt-topbar-label">Tax Info</span>
         </Link>
         {onSafety && (
           <button
@@ -171,7 +171,7 @@ export default function TopStatusBar({
               padding: '.35rem .6rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)',
             }}
           >
-            🔀 Switch Focus
+            🔀 <span className="dt-topbar-label">Switch Focus</span>
           </button>
         )}
       </div>

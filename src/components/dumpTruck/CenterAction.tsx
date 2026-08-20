@@ -40,17 +40,17 @@ export default function CenterAction({ action, busy, disabledReason, onPrimary, 
   const hasJobInfo = job && (job.customerName || job.jobNumber || job.poNumber || job.totalTons != null)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', width: '100%' }}>
+    <div className="dt-center-stack" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', width: '100%' }}>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+        <div className="dt-current-time-label" style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
           Current Time
         </div>
-        <div style={{ fontSize: '2.6rem', fontWeight: 900, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
+        <div className="dt-current-time" style={{ fontSize: '2.6rem', fontWeight: 900, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
           {formatClock(now)}
         </div>
       </div>
       {clockInAt && (
-        <div style={{ fontSize: '.85rem', fontWeight: 700, color: 'var(--muted)' }}>
+        <div className="dt-shift-since" style={{ fontSize: '.85rem', fontWeight: 700, color: 'var(--muted)' }}>
           Shift running since {new Date(clockInAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
         </div>
       )}
@@ -87,7 +87,7 @@ export default function CenterAction({ action, busy, disabledReason, onPrimary, 
         </div>
       )}
 
-      <div style={{
+      <div className="dt-center-hint" style={{
         fontSize: '.72rem', color: 'var(--muted)', textAlign: 'center', maxWidth: 420,
       }}>
         Never interact with this screen while the truck is moving.
@@ -98,7 +98,7 @@ export default function CenterAction({ action, busy, disabledReason, onPrimary, 
 
 function StatPill({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <div style={{
+    <div className="dt-stat-pill" style={{
       padding: '.4rem .75rem', borderRadius: 10,
       background: highlight ? 'rgba(0,232,176,.1)' : 'var(--surface-2)',
       border: `1px solid ${highlight ? 'var(--primary)' : 'var(--border)'}`,
