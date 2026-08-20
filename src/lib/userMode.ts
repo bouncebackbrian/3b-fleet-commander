@@ -121,6 +121,7 @@ const ALL_TABS: NavTab[] = [
   { href: '/driver/dump-truck', label: 'Today',      emoji: '🏗️', command: 'Dump Truck' },
   { href: '/driver/hours',      label: 'Hours',      emoji: '⏱️', command: 'Dump Truck' },
   { href: '/driver/documents',  label: 'Documents',  emoji: '🪪', command: 'Dump Truck' },
+  { href: '/admin/dump-truck/dispatch', label: 'Send Job', emoji: '📤', command: 'Dump Truck' },
   { href: '/admin/dump-truck',  label: 'DT Setup',   emoji: '🧭', command: 'Dump Truck' },
   { href: '/admin/equipment',   label: 'Equipment',  emoji: '🚛', command: 'Equipment'   },
   { href: '/account',     label: 'Team',        emoji: '👥', command: 'System'      },
@@ -130,9 +131,9 @@ const ALL_TABS: NavTab[] = [
 // Which tabs each portal grants (ordered for display).
 const PORTAL_TAB_HREFS: Record<Portal, string[]> = {
   driver:   ['/dashboard', '/trips', '/driver/dump-truck', '/driver/hours', '/driver/documents', '/trailer', '/maintenance', '/compliance', '/vault'],
-  dispatch: ['/dispatch', '/loads', '/trips', '/admin/dump-truck', '/admin/equipment', '/maintenance', '/compliance', '/vault'],
+  dispatch: ['/dispatch', '/loads', '/trips', '/admin/dump-truck/dispatch', '/admin/dump-truck', '/admin/equipment', '/maintenance', '/compliance', '/vault'],
   broker:   ['/broker', '/loads', '/vault'],
-  admin:    ['/dashboard', '/admin/dump-truck', '/admin/equipment', '/account', '/maintenance', '/compliance', '/settings'],
+  admin:    ['/dashboard', '/admin/dump-truck/dispatch', '/admin/dump-truck', '/admin/equipment', '/account', '/maintenance', '/compliance', '/settings'],
 }
 
 function tabsForHrefs(hrefs: string[]): NavTab[] {
@@ -151,7 +152,7 @@ function tabsForHrefs(hrefs: string[]): NavTab[] {
 const OPS_PROFILE_HIDDEN_HREFS: Record<OpsProfile, string[]> = {
   dump_truck: ['/dashboard', '/trips', '/dispatch', '/loads', '/trailer', '/expenses', '/mis', '/audit', '/delays', '/fuel'],
   /** /broker is Dump Truck Mode's own broker-rate desk (see /broker/page.tsx) — not OTR-relevant. */
-  otr:        ['/driver/dump-truck', '/driver/hours', '/admin/dump-truck', '/admin/dump-truck/safety', '/broker'],
+  otr:        ['/driver/dump-truck', '/driver/hours', '/admin/dump-truck', '/admin/dump-truck/safety', '/admin/dump-truck/dispatch', '/broker'],
 }
 
 /** Exported so other nav surfaces (e.g. the desktop Sidebar, which keeps its

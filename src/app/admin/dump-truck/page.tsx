@@ -48,6 +48,8 @@ export default function DumpTruckAdminPage() {
           geocoding/map-pin location directory (spec §6) is a follow-up build, not included here. Open defect
           escalations and incident reports moved to the{' '}
           <a href="/admin/dump-truck/safety" style={{ color: 'var(--primary)', fontWeight: 700 }}>Safety</a> page.
+          To send a driver a job/location for a specific day, use{' '}
+          <a href="/admin/dump-truck/dispatch" style={{ color: 'var(--primary)', fontWeight: 700 }}>Dispatch — Send Job</a>.
         </p>
       </div>
 
