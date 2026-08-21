@@ -22,7 +22,6 @@ export type FlowStateId =
   | 'driving_empty_to_pickup'
   | 'at_pickup'
   | 'loading'
-  | 'loaded_at_pickup'
   | 'driving_loaded_to_dump'
   | 'at_dump'
   | 'unloading'
@@ -51,8 +50,7 @@ export const PRIMARY_TRANSITIONS: Partial<Record<DumpTruckEventType, Transition>
   depart_yard:           { from: ['pretrip_complete'],                                                to: 'driving_empty_to_pickup' },
   arrive_pickup:         { from: ['driving_empty_to_pickup', 'driving_to_next'],                      to: 'at_pickup' },
   loading_started:       { from: ['at_pickup'],                                                       to: 'loading' },
-  loading_completed:     { from: ['loading'],                                                         to: 'loaded_at_pickup' },
-  depart_pickup:         { from: ['loaded_at_pickup'],                                                to: 'driving_loaded_to_dump' },
+  depart_pickup:         { from: ['loading'],                                                         to: 'driving_loaded_to_dump' },
   arrive_dump:           { from: ['driving_loaded_to_dump'],                                          to: 'at_dump' },
   unloading_started:     { from: ['at_dump'],                                                         to: 'unloading' },
   unloading_completed:   { from: ['unloading'],                                                       to: 'unloaded_at_dump' },
@@ -110,7 +108,7 @@ export function isShiftOpen(state: FlowStateId): boolean {
 export function isCustodyOpen(state: FlowStateId): boolean {
   const custodyStates: FlowStateId[] = [
     'truck_picked_up', 'pretrip_in_progress', 'pretrip_complete',
-    'driving_empty_to_pickup', 'at_pickup', 'loading', 'loaded_at_pickup',
+    'driving_empty_to_pickup', 'at_pickup', 'loading',
     'driving_loaded_to_dump', 'at_dump', 'unloading', 'unloaded_at_dump',
     'driving_to_next', 'at_yard_end', 'posttrip_in_progress', 'posttrip_complete',
   ]
@@ -137,8 +135,7 @@ const PRIMARY_ACTION_BY_STATE: Record<FlowStateId, PrimaryActionSpec> = {
   pretrip_complete:          { eventType: 'depart_yard',         label: 'Depart Yard' },
   driving_empty_to_pickup:   { eventType: 'arrive_pickup',       label: 'Arrived Pickup' },
   at_pickup:                 { eventType: 'loading_started',     label: 'Start Loading' },
-  loading:                   { eventType: 'loading_completed',   label: 'Loading Complete' },
-  loaded_at_pickup:          { eventType: 'depart_pickup',       label: 'Leave Pickup' },
+  loading:                   { eventType: 'depart_pickup',       label: 'Leave Pickup' },
   driving_loaded_to_dump:    { eventType: 'arrive_dump',         label: 'Arrived Dump' },
   at_dump:                   { eventType: 'unloading_started',   label: 'Start Unloading' },
   unloading:                 { eventType: 'unloading_completed', label: 'Dumped / Unloading Complete' },
@@ -174,7 +171,6 @@ const SHIFT_STATE_BY_FLOW_STATE: Record<FlowStateId, ShiftState> = {
   driving_empty_to_pickup: 'active',
   at_pickup: 'active',
   loading: 'active',
-  loaded_at_pickup: 'active',
   driving_loaded_to_dump: 'active',
   at_dump: 'active',
   unloading: 'active',

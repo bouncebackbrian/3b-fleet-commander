@@ -11,7 +11,7 @@ export type TravelStatus = 'off_duty' | 'at_yard' | 'outbound' | 'job_site' | 'i
 
 const AT_YARD: FlowStateId[] = ['clocked_in', 'pretrip_in_progress', 'pretrip_complete', 'truck_picked_up']
 const OUTBOUND: FlowStateId[] = ['driving_empty_to_pickup', 'driving_loaded_to_dump']
-const JOB_SITE: FlowStateId[] = ['at_pickup', 'loading', 'loaded_at_pickup', 'at_dump', 'unloading', 'unloaded_at_dump']
+const JOB_SITE: FlowStateId[] = ['at_pickup', 'loading', 'at_dump', 'unloading', 'unloaded_at_dump']
 const INBOUND: FlowStateId[] = ['driving_to_next', 'at_yard_end', 'posttrip_in_progress', 'posttrip_complete', 'truck_dropped_off']
 
 export function travelStatusFor(flowState: FlowStateId): TravelStatus {

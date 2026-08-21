@@ -20,6 +20,23 @@ describe('computeFlowState', () => {
     expect(computeFlowState(sequence)).toBe('submitted')
   })
 
+  it('goes straight from loading_started to depart_pickup — no separate Loading Complete step', () => {
+    const sequence: DumpTruckEventType[] = [
+      'clock_in', 'truck_picked_up', 'pretrip_started', 'pretrip_completed',
+      'depart_yard', 'arrive_pickup', 'loading_started', 'depart_pickup',
+    ]
+    expect(computeFlowState(sequence)).toBe('driving_loaded_to_dump')
+    expect(canFireEvent('loading', 'depart_pickup')).toBe(true)
+  })
+
+  it('still replays historical loading_completed events harmlessly (skipped, no-op)', () => {
+    const sequence: DumpTruckEventType[] = [
+      'clock_in', 'truck_picked_up', 'pretrip_started', 'pretrip_completed',
+      'depart_yard', 'arrive_pickup', 'loading_started', 'loading_completed', 'depart_pickup',
+    ]
+    expect(computeFlowState(sequence)).toBe('driving_loaded_to_dump')
+  })
+
   it('loops back to at_pickup for a second load after depart_dump', () => {
     const sequence: DumpTruckEventType[] = [
       'clock_in', 'truck_picked_up', 'pretrip_started', 'pretrip_completed',
@@ -110,7 +127,7 @@ describe('isShiftOpen / isCustodyOpen', () => {
 
 describe('flowStateToShiftState', () => {
   it('collapses every mid-day driving/loading state to active', () => {
-    for (const s of ['driving_empty_to_pickup', 'at_pickup', 'loading', 'loaded_at_pickup', 'driving_loaded_to_dump', 'at_dump', 'unloading', 'unloaded_at_dump', 'driving_to_next', 'at_yard_end'] as const) {
+    for (const s of ['driving_empty_to_pickup', 'at_pickup', 'loading', 'driving_loaded_to_dump', 'at_dump', 'unloading', 'unloaded_at_dump', 'driving_to_next', 'at_yard_end'] as const) {
       expect(flowStateToShiftState(s)).toBe('active')
     }
   })

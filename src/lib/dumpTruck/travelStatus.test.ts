@@ -4,7 +4,7 @@ import type { FlowStateId } from './stateMachine'
 
 const ALL_STATES: FlowStateId[] = [
   'not_clocked_in', 'clocked_in', 'pretrip_in_progress', 'pretrip_complete', 'truck_picked_up',
-  'driving_empty_to_pickup', 'at_pickup', 'loading', 'loaded_at_pickup', 'driving_loaded_to_dump',
+  'driving_empty_to_pickup', 'at_pickup', 'loading', 'driving_loaded_to_dump',
   'at_dump', 'unloading', 'unloaded_at_dump', 'driving_to_next', 'at_yard_end',
   'posttrip_in_progress', 'posttrip_complete', 'truck_dropped_off', 'clocked_out', 'submitted',
 ]

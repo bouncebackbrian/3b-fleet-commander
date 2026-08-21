@@ -108,8 +108,12 @@ async function computeLoadCycleKpis(businessId: string, range: MonthRange): Prom
     }
   }
   const withTicket = rows.filter(r => r.ticket_captured_at != null).length
+  // loading_completed_event_id is intentionally excluded — the driver flow
+  // no longer has a separate "Loading Complete" tap (arrive/loading/depart
+  // only), so that column is never populated for loads recorded after that
+  // change and would otherwise permanently depress this score.
   const fullyClosed = rows.filter(r => [
-    r.pickup_arrive_event_id, r.pickup_depart_event_id, r.loading_started_event_id, r.loading_completed_event_id,
+    r.pickup_arrive_event_id, r.pickup_depart_event_id, r.loading_started_event_id,
     r.dump_arrive_event_id, r.dump_depart_event_id, r.unloading_started_event_id, r.unloading_completed_event_id,
   ].every(v => v != null)).length
 
