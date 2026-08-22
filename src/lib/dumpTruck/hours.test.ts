@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  getWeekRange, getPreviousWeekRange, resolveRange,
+  getWeekRange, getPreviousWeekRange, resolveRange, splitIntoWeeks, lastNWeeks,
   sumPairedDurationSeconds, buildCategoryTimeFromEvents, bucketDelaySecondsByReason,
   splitRegularOvertime, estimateHourlyGrossPay, estimateGrossPay, DEFAULT_PAY_POLICY,
   buildDailyHoursRow, buildRangeSummary, applyRevenueShareFloor, sumRangeSummaries, applyWeeklyOvertimeSplit,
@@ -50,6 +50,45 @@ describe('getPreviousWeekRange', () => {
     const r = getPreviousWeekRange(new Date('2026-07-29T12:00:00Z'))
     expect(r.start).toBe('2026-07-20')
     expect(r.end).toBe('2026-07-26')
+  })
+})
+
+describe('splitIntoWeeks', () => {
+  it('returns a single week when the range falls entirely inside one', () => {
+    const weeks = splitIntoWeeks({ start: '2026-07-28', end: '2026-07-30' })
+    expect(weeks).toEqual([{ start: '2026-07-27', end: '2026-08-02' }])
+  })
+
+  it('splits a multi-week range into full Monday–Sunday weeks, not clipped to the requested end', () => {
+    // 2026-07-29 (Wed) to 2026-08-10 (Mon) spans 3 calendar weeks
+    const weeks = splitIntoWeeks({ start: '2026-07-29', end: '2026-08-10' })
+    expect(weeks).toEqual([
+      { start: '2026-07-27', end: '2026-08-02' },
+      { start: '2026-08-03', end: '2026-08-09' },
+      { start: '2026-08-10', end: '2026-08-16' },
+    ])
+  })
+
+  it('returns exactly one week when start and end land on the same week boundary', () => {
+    const weeks = splitIntoWeeks({ start: '2026-07-27', end: '2026-08-02' })
+    expect(weeks).toEqual([{ start: '2026-07-27', end: '2026-08-02' }])
+  })
+})
+
+describe('lastNWeeks', () => {
+  it('returns N consecutive weeks ending with the week containing the reference date', () => {
+    const weeks = lastNWeeks(4, new Date('2026-08-19T12:00:00Z')) // Wednesday, week of 8/17-8/23
+    expect(weeks).toEqual([
+      { start: '2026-07-27', end: '2026-08-02' },
+      { start: '2026-08-03', end: '2026-08-09' },
+      { start: '2026-08-10', end: '2026-08-16' },
+      { start: '2026-08-17', end: '2026-08-23' },
+    ])
+  })
+
+  it('returns just the current week when count is 1', () => {
+    const weeks = lastNWeeks(1, new Date('2026-08-19T12:00:00Z'))
+    expect(weeks).toEqual([{ start: '2026-08-17', end: '2026-08-23' }])
   })
 })
 

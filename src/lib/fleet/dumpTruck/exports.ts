@@ -307,6 +307,64 @@ export function buildAdminPayrollSummaryTable(rows: DriverRangeSummary[], meta: 
   }
 }
 
+// ── Multi-week payroll breakdown — one report covering several pay weeks ───
+
+export interface WeeklyDriverSummary extends DriverRangeSummary {
+  weekStart: string
+  weekEnd: string
+}
+
+export interface WeeklyPayrollMeta {
+  businessName: string
+  threebBizId: string | null
+  generatedAt: string
+  weekCount: number
+  overallStart: string
+  overallEnd: string
+}
+
+function weeklyBreakdownColumns(meta: WeeklyPayrollMeta): CsvColumn<WeeklyDriverSummary>[] {
+  return [
+    { header: 'Business Name', value: () => meta.businessName },
+    { header: '3B Business ID', value: () => meta.threebBizId ?? '' },
+    { header: 'Week Start', value: r => r.weekStart },
+    { header: 'Week End', value: r => r.weekEnd },
+    { header: 'Driver Name', value: r => r.driverName },
+    { header: '3B ID', value: r => r.threebId ?? '' },
+    { header: 'Total Time (Hours)', value: r => Math.round((r.totalPaidHours + r.totalNonPaidOperationalHours) * 100) / 100 },
+    { header: 'Regular Hours', value: r => r.totalRegularHours },
+    { header: 'Overtime Hours', value: r => r.totalOvertimeHours },
+    { header: 'Estimated Gross Pay ($)', value: r => r.estimatedGrossEarnings },
+    { header: 'Check Number', value: r => r.checkNumber ?? '' },
+    { header: 'Amount Paid', value: r => r.amountPaid ?? '' },
+    { header: 'Paid Date', value: r => r.paidAt ?? '' },
+  ]
+}
+
+const WEEKLY_DISCLAIMERS = [
+  'Estimated earnings only — not a pay stub or final wage statement.',
+  'Week is Monday–Sunday; each week below is its own complete pay period, not pooled across weeks.',
+]
+
+export function buildWeeklyPayrollBreakdownCsv(rows: WeeklyDriverSummary[], meta: WeeklyPayrollMeta): string {
+  const header = buildReportHeaderLines({
+    businessName: meta.businessName, threeBBizId: meta.threebBizId,
+    title: `Weekly Payroll Hours Breakdown (${meta.weekCount} week${meta.weekCount === 1 ? '' : 's'})`,
+    generatedAt: meta.generatedAt, rangeLabel: `Weeks: ${meta.overallStart} to ${meta.overallEnd}`,
+    disclaimers: WEEKLY_DISCLAIMERS,
+  })
+  return header + buildCsv(rows, weeklyBreakdownColumns(meta))
+}
+
+export function buildWeeklyPayrollBreakdownTable(rows: WeeklyDriverSummary[], meta: WeeklyPayrollMeta): ReportTable {
+  const { headers, body } = toTableMatrix(rows, weeklyBreakdownColumns(meta))
+  return {
+    title: `Weekly Payroll Hours Breakdown (${meta.weekCount} week${meta.weekCount === 1 ? '' : 's'})`,
+    metaLine: `Generated: ${meta.generatedAt}  Weeks: ${meta.overallStart} to ${meta.overallEnd}`,
+    disclaimers: WEEKLY_DISCLAIMERS, headers, body,
+  }
+}
+
 // ── Truck issues (defects) section — appended to the weekly summary export ──
 
 export interface DefectReportRow {

@@ -50,6 +50,35 @@ export function getPreviousWeekRange(reference: Date): DateRange {
   return { start: toDateOnly(start), end: toDateOnly(end) }
 }
 
+/**
+ * Splits a date range into the full Monday–Sunday weeks that overlap it —
+ * for a payroll report spanning several pay periods, so "week is
+ * Monday–Sunday" (already the rule everywhere else in this module) stays
+ * true even when the requested from/to doesn't itself land on week
+ * boundaries. Each returned week is the *complete* calendar week (never
+ * clipped to range.start/range.end), sorted oldest first.
+ */
+export function splitIntoWeeks(range: DateRange): DateRange[] {
+  const weeks: DateRange[] = []
+  let week = getWeekRange(new Date(`${range.start}T00:00:00Z`))
+  const rangeEnd = new Date(`${range.end}T00:00:00Z`).getTime()
+  while (new Date(`${week.start}T00:00:00Z`).getTime() <= rangeEnd) {
+    weeks.push(week)
+    const nextMonday = new Date(`${week.start}T00:00:00Z`)
+    nextMonday.setUTCDate(nextMonday.getUTCDate() + 7)
+    week = getWeekRange(nextMonday)
+  }
+  return weeks
+}
+
+/** The `count` most recent full Monday–Sunday weeks, ending with the week containing `reference` (default: today). */
+export function lastNWeeks(count: number, reference: Date = new Date()): DateRange[] {
+  const currentWeek = getWeekRange(reference)
+  const start = new Date(`${currentWeek.start}T00:00:00Z`)
+  start.setUTCDate(start.getUTCDate() - 7 * (count - 1))
+  return splitIntoWeeks({ start: toDateOnly(start), end: currentWeek.end })
+}
+
 export type RangeType = 'current_week' | 'previous_week' | 'current_pay_period' | 'previous_pay_period' | 'custom'
 
 export function resolveRange(rangeType: RangeType, reference: Date, custom?: DateRange): DateRange {

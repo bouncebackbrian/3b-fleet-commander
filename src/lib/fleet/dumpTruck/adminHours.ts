@@ -12,7 +12,7 @@
 import { sumRangeSummaries, type DateRange, type DailyHoursRow, type RangeSummary } from '@/lib/dumpTruck/hours'
 import { buildDriverHoursForRange, type RevenueShareApplied } from './hours'
 import { listDrivers, type DriverOption } from './jobs'
-import type { DriverHoursRow, DriverRangeSummary } from './exports'
+import type { DriverHoursRow, DriverRangeSummary, WeeklyDriverSummary } from './exports'
 
 export interface BusinessHoursResult {
   rows: DriverHoursRow[]
@@ -44,4 +44,25 @@ export async function buildBusinessHoursForRange(
   const businessSummary = sumRangeSummaries(driverSummaries)
 
   return { rows, driverSummaries, businessSummary }
+}
+
+/**
+ * One payroll report covering several pay weeks — a driver's (or every
+ * driver's) week-by-week breakdown, one row per driver per week, so a
+ * dispatcher can pull e.g. the last 4 pay periods in a single export
+ * instead of downloading four separate weekly reports. Each week reuses
+ * buildBusinessHoursForRange exactly as the single-week panel does, so the
+ * per-week numbers here always match what that week's own report would show.
+ */
+export async function buildWeeklyPayrollBreakdown(
+  businessId: string, weeks: DateRange[], driverId?: string | null,
+): Promise<{ rows: WeeklyDriverSummary[] }> {
+  const rows: WeeklyDriverSummary[] = []
+  for (const week of weeks) {
+    const { driverSummaries } = await buildBusinessHoursForRange(businessId, week, driverId ?? null)
+    for (const s of driverSummaries) {
+      rows.push({ ...s, weekStart: week.start, weekEnd: week.end })
+    }
+  }
+  return { rows }
 }

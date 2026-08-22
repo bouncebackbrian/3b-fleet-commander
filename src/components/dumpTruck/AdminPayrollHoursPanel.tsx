@@ -146,6 +146,13 @@ export default function AdminPayrollHoursPanel({ drivers }: { drivers: DriverOpt
     window.open(`/api/fleet/dump-truck/admin/hours/export?${params.toString()}`, '_blank')
   }
 
+  const [weeksBack, setWeeksBack] = useState('4')
+  const downloadWeeklyBreakdown = (format: 'csv' | 'pdf' = 'csv') => {
+    const params = new URLSearchParams({ weeksBack, format })
+    if (driverId) params.set('driverId', driverId)
+    window.open(`/api/fleet/dump-truck/admin/hours/weekly-report?${params.toString()}`, '_blank')
+  }
+
   return (
     <div style={cardStyle}>
       <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '.5rem' }}>Payroll Hours — All Drivers</h2>
@@ -191,11 +198,32 @@ export default function AdminPayrollHoursPanel({ drivers }: { drivers: DriverOpt
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '.75rem', marginBottom: '1.25rem' }}>
+      <div style={{ display: 'flex', gap: '.75rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
         <button style={btnStyle} onClick={() => download('detail')}>⬇ Detail CSV</button>
         <button style={btnSecondaryStyle} onClick={() => download('detail', 'pdf')}>📄 Detail PDF</button>
         <button style={btnSecondaryStyle} onClick={() => download('summary')}>⬇ Summary CSV</button>
         <button style={btnSecondaryStyle} onClick={() => download('summary', 'pdf')}>📄 Summary PDF</button>
+      </div>
+
+      <div style={{
+        display: 'flex', alignItems: 'flex-end', gap: '.75rem', flexWrap: 'wrap',
+        marginBottom: '1.25rem', padding: '1rem', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10,
+      }}>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: '.9rem', marginBottom: 2 }}>Weekly Breakdown Report</div>
+          <div style={{ fontSize: '.76rem', color: 'var(--muted)' }}>
+            One report covering the last several pay weeks — each week broken out as its own row per driver (uses the Driver filter above, ignores the Range selector).
+          </div>
+        </div>
+        <div>
+          <div style={labelStyle}>Weeks</div>
+          <input
+            style={{ ...inputStyle, width: 80 }} type="number" min={1} max={26}
+            value={weeksBack} onChange={e => setWeeksBack(e.target.value)}
+          />
+        </div>
+        <button style={btnStyle} onClick={() => downloadWeeklyBreakdown('csv')}>⬇ CSV</button>
+        <button style={btnSecondaryStyle} onClick={() => downloadWeeklyBreakdown('pdf')}>📄 PDF</button>
       </div>
 
       {businessSummary && (
