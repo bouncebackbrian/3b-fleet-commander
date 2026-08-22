@@ -365,3 +365,141 @@ export async function renderSummaryReportPdf(input: SummaryReportPdfInput): Prom
   for await (const chunk of stream) chunks.push(Buffer.from(chunk))
   return Buffer.concat(chunks)
 }
+
+// ── Weekly Timesheet — official weekly recap & pay report ──────────────────
+// The two-party (driver-then-dispatch) sign-off's permanent record: the same
+// stat-grid + titled-tables layout as the summary report, plus the digital
+// dispatch ticket's signature-image row — a correction round isn't erased
+// from history when the week is re-signed, it's documented here alongside
+// both parties' final approval (see weeklyTimesheets.ts's insert-only
+// history and WeeklyTimesheetPanel's "Sign-Off History" UI).
+
+export interface WeeklyTimesheetSignature {
+  imageBytes: Buffer
+  signedBy: string
+  signedAt: string
+}
+
+export interface WeeklyTimesheetPdfInput {
+  logoBytes?: Buffer | null
+  logoFormat?: 'png' | 'jpg'
+  businessName: string
+  threeBBizId: string | null
+  driverName: string
+  driverThreebId: string | null
+  weekStart: string
+  weekEnd: string
+  status: string
+  stats: SummaryReportStat[]
+  dailyBreakdown: { headers: string[]; rows: (string | number)[][] }
+  escalations: string[]
+  history: { label: string; action: string; note: string | null; at: string }[]
+  driverSignature: WeeklyTimesheetSignature | null
+  dispatchSignature: WeeklyTimesheetSignature | null
+  disclaimers?: string[]
+}
+
+function WeeklyTimesheetDocument(props: WeeklyTimesheetPdfInput) {
+  return (
+    <Document>
+      <Page size="A4" style={summaryStyles.page}>
+        <View style={summaryStyles.headerRow}>
+          {props.logoBytes && (
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            <Image style={summaryStyles.logo} src={{ data: props.logoBytes, format: props.logoFormat ?? 'png' } as any} />
+          )}
+          <View>
+            <Text style={summaryStyles.businessName}>{props.businessName}</Text>
+            <Text style={summaryStyles.tagline}>via 3B Fleet Commander{props.threeBBizId ? ` — 3B Business ID: ${props.threeBBizId}` : ''}</Text>
+          </View>
+        </View>
+
+        <Text style={summaryStyles.title}>Weekly Recap &amp; Pay Report — {props.driverName}</Text>
+        <Text style={summaryStyles.subtitle}>
+          {props.weekStart} to {props.weekEnd}{props.driverThreebId ? ` — 3B ID: ${props.driverThreebId}` : ''} — Status: {props.status}
+        </Text>
+        {(props.disclaimers ?? []).map((line, i) => <Text key={i} style={summaryStyles.disclaimer}>{line}</Text>)}
+
+        <View style={summaryStyles.statGrid}>
+          {props.stats.map((s, i) => (
+            <View key={i} style={summaryStyles.stat}>
+              <Text style={summaryStyles.statLabel}>{s.label}</Text>
+              <Text style={summaryStyles.statValue}>{s.value}</Text>
+            </View>
+          ))}
+        </View>
+
+        <Text style={summaryStyles.sectionTitle}>Daily Breakdown</Text>
+        {props.dailyBreakdown.rows.length === 0 ? (
+          <Text style={summaryStyles.emptySection}>No shifts recorded.</Text>
+        ) : (
+          <View style={summaryStyles.table}>
+            <View style={summaryStyles.tableRow} fixed>
+              {props.dailyBreakdown.headers.map((h, i) => <Text key={i} style={summaryStyles.tableHeaderCell}>{h}</Text>)}
+            </View>
+            {props.dailyBreakdown.rows.map((row, r) => (
+              <View key={r} style={summaryStyles.tableRow} wrap={false}>
+                {row.map((cell, c) => <Text key={c} style={summaryStyles.tableCell}>{cell === null || cell === undefined ? '' : String(cell)}</Text>)}
+              </View>
+            ))}
+          </View>
+        )}
+
+        <Text style={summaryStyles.sectionTitle}>Flagged This Week</Text>
+        {props.escalations.length === 0 ? (
+          <Text style={summaryStyles.emptySection}>None reported.</Text>
+        ) : (
+          props.escalations.map((line, i) => <Text key={i} style={{ fontSize: 8, marginBottom: 2 }}>• {line}</Text>)
+        )}
+
+        <Text style={summaryStyles.sectionTitle}>Sign-Off History{props.history.length > 2 ? ' — Corrections Documented' : ''}</Text>
+        {props.history.length === 0 ? (
+          <Text style={summaryStyles.emptySection}>No sign-off activity on record.</Text>
+        ) : (
+          props.history.map((h, i) => (
+            <View key={i} style={{ marginBottom: 4 }}>
+              <Text style={{ fontSize: 8, fontWeight: 700 }}>{h.label} — {h.action.replace(/_/g, ' ')} — {h.at}</Text>
+              {h.note && <Text style={{ fontSize: 8, fontStyle: 'italic', color: '#444' }}>“{h.note}”</Text>}
+            </View>
+          ))
+        )}
+
+        <View style={ticketStyles.signRow}>
+          <View style={ticketStyles.signBox}>
+            <Text style={ticketStyles.signLabel}>Driver Signature</Text>
+            {props.driverSignature ? (
+              <>
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                <Image style={ticketStyles.signImage} src={{ data: props.driverSignature.imageBytes, format: 'png' } as any} />
+                <Text style={ticketStyles.signMeta}>{props.driverSignature.signedBy} — {props.driverSignature.signedAt}</Text>
+              </>
+            ) : (
+              <Text style={ticketStyles.signPending}>Not signed</Text>
+            )}
+          </View>
+          <View style={ticketStyles.signBox}>
+            <Text style={ticketStyles.signLabel}>Dispatch Approval</Text>
+            {props.dispatchSignature ? (
+              <>
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                <Image style={ticketStyles.signImage} src={{ data: props.dispatchSignature.imageBytes, format: 'png' } as any} />
+                <Text style={ticketStyles.signMeta}>{props.dispatchSignature.signedBy} — {props.dispatchSignature.signedAt}</Text>
+              </>
+            ) : (
+              <Text style={ticketStyles.signPending}>Not signed</Text>
+            )}
+          </View>
+        </View>
+
+        <Text style={summaryStyles.footer} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages} — Generated via 3B Fleet Commander`} fixed />
+      </Page>
+    </Document>
+  )
+}
+
+export async function renderWeeklyTimesheetPdf(input: WeeklyTimesheetPdfInput): Promise<Buffer> {
+  const stream = await renderToStream(<WeeklyTimesheetDocument {...input} />)
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk))
+  return Buffer.concat(chunks)
+}

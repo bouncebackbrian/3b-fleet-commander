@@ -52,6 +52,11 @@ export interface WeeklyTimesheet {
   driverAction: WeeklyTimesheetAction | null
   dispatchAction: WeeklyTimesheetAction | null
   status: WeeklyTimesheetStatus
+  /** Every driver+dispatch action on record for this week, oldest first — the
+   *  full audit trail (including any correction/send-back rounds and the
+   *  notes attached to them). This is what the official Weekly Recap & Pay
+   *  Report documents as "corrections made" — see reports/weeklyTimesheetPdf.ts. */
+  history: WeeklyTimesheetAction[]
 }
 
 function fromRow(r: Record<string, unknown>): WeeklyTimesheetAction {
@@ -80,24 +85,28 @@ function deriveStatus(driverAction: WeeklyTimesheetAction | null, dispatchAction
   return dispatchAction.action === 'approved' ? 'approved' : 'sent_back'
 }
 
-/** Latest driver-role and dispatch-role rows for one driver's week (or nulls if neither side has acted). */
-export async function getLatestWeeklyActions(
+/** Every action on record for one driver's week, oldest first — the full audit trail (all correction/send-back rounds included). */
+export async function getWeeklyActionsHistory(
   businessId: string, driverId: string, weekStart: string,
-): Promise<{ driverAction: WeeklyTimesheetAction | null; dispatchAction: WeeklyTimesheetAction | null }> {
+): Promise<WeeklyTimesheetAction[]> {
   const { data, error } = await fleetServiceClient
     .from('fleet_dt_weekly_timesheets')
     .select('*')
     .eq('business_id', businessId)
     .eq('driver_id', driverId)
     .eq('week_start', weekStart)
-    .order('created_at', { ascending: false })
+    .order('created_at', { ascending: true })
   if (error) throw error
+  return (data ?? []).map(fromRow)
+}
+
+/** Latest driver-role and dispatch-role rows for one driver's week (or nulls if neither side has acted), derived from the full history. */
+function latestByRole(history: WeeklyTimesheetAction[]): { driverAction: WeeklyTimesheetAction | null; dispatchAction: WeeklyTimesheetAction | null } {
   let driverAction: WeeklyTimesheetAction | null = null
   let dispatchAction: WeeklyTimesheetAction | null = null
-  for (const row of data ?? []) {
-    const a = fromRow(row)
-    if (a.role === 'driver' && !driverAction) driverAction = a
-    if (a.role === 'dispatch' && !dispatchAction) dispatchAction = a
+  for (const a of history) {
+    if (a.role === 'driver') driverAction = a
+    if (a.role === 'dispatch') dispatchAction = a
   }
   return { driverAction, dispatchAction }
 }
@@ -139,16 +148,17 @@ async function buildEscalations(businessId: string, shiftIds: string[], rows: Da
 
 export async function buildWeeklyTimesheet(businessId: string, driverId: string, weekStart: string, weekEnd: string): Promise<WeeklyTimesheet> {
   const range: DateRange = { start: weekStart, end: weekEnd }
-  const [{ rows, summary }, { driverAction, dispatchAction }] = await Promise.all([
+  const [{ rows, summary }, history] = await Promise.all([
     buildDriverHoursForRange(businessId, driverId, range),
-    getLatestWeeklyActions(businessId, driverId, weekStart),
+    getWeeklyActionsHistory(businessId, driverId, weekStart),
   ])
   const shiftIds = rows.map(r => r.shiftId)
   const escalations = await buildEscalations(businessId, shiftIds, rows)
+  const { driverAction, dispatchAction } = latestByRole(history)
 
   return {
     weekStart, weekEnd, driverId, shiftIds, rows, summary, escalations,
-    driverAction, dispatchAction,
+    driverAction, dispatchAction, history,
     status: deriveStatus(driverAction, dispatchAction),
   }
 }

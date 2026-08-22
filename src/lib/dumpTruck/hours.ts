@@ -242,9 +242,17 @@ export interface PayPolicy {
    *   still get an initial daily-mode split from buildDailyHoursRow, and
    *   the range/week builder corrects it in a second pass once every day
    *   in the week is known.
+   *   2026-08-22: 'daily_and_weekly' — both thresholds apply together (Cal-
+   *   Neva's policy: OT past 10h on any single day, AND OT past 40h for the
+   *   week). Hours beyond dailyOtThresholdHours on a day are OT from
+   *   buildDailyHoursRow's initial split same as 'daily' mode; a second pass
+   *   (applyDailyAndWeeklyOvertimeSplit) then further caps the *remaining*
+   *   daily-capped hours at weeklyOtThresholdHours across the week, promoting
+   *   any excess to OT too. A hedge that's already daily-OT is never
+   *   double-counted into the weekly threshold.
    */
-  otMode?: 'daily' | 'weekly'
-  /** Only used when otMode is 'weekly'. */
+  otMode?: 'daily' | 'weekly' | 'daily_and_weekly'
+  /** Only used when otMode is 'weekly' or 'daily_and_weekly'. */
   weeklyOtThresholdHours?: number
 }
 
@@ -715,6 +723,55 @@ export function applyWeeklyOvertimeSplit(rows: DailyHoursRow[], policy: PayPolic
       const regularHours = round2(Math.min(dayHours, regularRoom))
       const overtimeHours = round2(Math.max(0, dayHours - regularHours))
       cumulative += dayHours
+
+      const hourlyEstimatedEarnings = estimateGrossPay({ regularHours, overtimeHours }, policy, row.shiftMiles)
+      result.push({
+        ...row, regularHours, overtimeHours,
+        hourlyEstimatedEarnings, estimatedGrossEarnings: hourlyEstimatedEarnings,
+      })
+    }
+  }
+  return result.sort((a, b) => a.workDate.localeCompare(b.workDate))
+}
+
+/**
+ * Combined daily+weekly overtime — for policy.otMode === 'daily_and_weekly'.
+ * Each row already carries buildDailyHoursRow's initial daily-mode split
+ * (regularHours capped at dailyOtThresholdHours, overtimeHours = the daily
+ * excess). This second pass leaves that daily-OT portion untouched and
+ * applies weeklyOtThresholdHours as a *further* cumulative cap on top of the
+ * remaining (already daily-capped) regular hours — once a week's total of
+ * that capped regular time crosses the weekly threshold, the excess is
+ * promoted to OT as well. Same per-week bucketing/ordering and per_mile
+ * exemption as applyWeeklyOvertimeSplit; see that function's doc for why
+ * paidHours (not totalShiftHours) is the right basis — dailyCappedRegular
+ * here is derived from paidHours via buildDailyHoursRow, so the same
+ * non-payable-time exclusion already applies.
+ */
+export function applyDailyAndWeeklyOvertimeSplit(rows: DailyHoursRow[], policy: PayPolicy): DailyHoursRow[] {
+  if (policy.payType === 'per_mile') return rows
+
+  const threshold = policy.weeklyOtThresholdHours ?? 40
+  const byWeek = new Map<string, DailyHoursRow[]>()
+  for (const row of rows) {
+    const weekKey = getWeekRange(new Date(`${row.workDate}T00:00:00Z`)).start
+    const list = byWeek.get(weekKey) ?? []
+    list.push(row)
+    byWeek.set(weekKey, list)
+  }
+
+  const result: DailyHoursRow[] = []
+  for (const weekRows of byWeek.values()) {
+    const sorted = [...weekRows].sort((a, b) => a.workDate.localeCompare(b.workDate))
+    let cumulative = 0
+    for (const row of sorted) {
+      const dailyCappedRegular = row.regularHours
+      const dailyOvertimeHours = row.overtimeHours
+      const regularRoom = Math.max(0, threshold - cumulative)
+      const regularHours = round2(Math.min(dailyCappedRegular, regularRoom))
+      const weeklyOvertimeExtra = round2(Math.max(0, dailyCappedRegular - regularHours))
+      const overtimeHours = round2(dailyOvertimeHours + weeklyOvertimeExtra)
+      cumulative += regularHours
 
       const hourlyEstimatedEarnings = estimateGrossPay({ regularHours, overtimeHours }, policy, row.shiftMiles)
       result.push({

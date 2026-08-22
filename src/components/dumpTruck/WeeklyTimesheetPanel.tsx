@@ -31,6 +31,8 @@ interface WeeklyTimesheet {
   driverAction: TimesheetAction | null
   dispatchAction: TimesheetAction | null
   status: 'not_submitted' | 'correction_requested' | 'pending_dispatch' | 'sent_back' | 'approved'
+  /** Full audit trail, oldest first — every correction/send-back round with its note, documented for the official record. */
+  history: TimesheetAction[]
 }
 
 const STATUS_LABEL: Record<WeeklyTimesheet['status'], string> = {
@@ -163,11 +165,22 @@ export default function WeeklyTimesheetPanel({ weekStart, weekEnd, role, driverI
         </div>
       )}
 
-      {data.driverAction && (
-        <StatusLine label="Driver" action={data.driverAction} />
+      {data.history.length > 0 && (
+        <div style={{ marginBottom: '.5rem' }}>
+          <div style={{ fontSize: '.65rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 4 }}>
+            Sign-Off History{data.history.length > 2 ? ' — Corrections Documented' : ''}
+          </div>
+          {data.history.map((a, i) => <StatusLine key={i} action={a} />)}
+        </div>
       )}
-      {data.dispatchAction && (
-        <StatusLine label="Dispatch" action={data.dispatchAction} />
+
+      {data.status === 'approved' && (
+        <button
+          onClick={() => window.open(`/api/fleet/dump-truck/hours/weekly/report?weekStart=${data.weekStart}&weekEnd=${data.weekEnd}${driverId ? `&driverId=${driverId}` : ''}`, '_blank')}
+          style={{ width: '100%', marginTop: '.5rem', padding: '.75rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--primary)', fontWeight: 700, fontSize: '.85rem' }}
+        >
+          📄 Download Official Weekly Recap &amp; Pay Report (PDF)
+        </button>
       )}
 
       {canAct && (
@@ -225,14 +238,20 @@ export default function WeeklyTimesheetPanel({ weekStart, weekEnd, role, driverI
   )
 }
 
-function StatusLine({ label, action }: { label: string; action: TimesheetAction }) {
+function StatusLine({ action }: { action: TimesheetAction }) {
   const isPositive = action.action === 'confirmed' || action.action === 'approved'
+  const label = action.role === 'driver' ? 'Driver' : 'Dispatch'
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem', padding: '.3rem 0' }}>
-      <span style={{ color: 'var(--muted)' }}>{label}</span>
-      <span style={{ fontWeight: 700, color: isPositive ? 'var(--primary)' : 'var(--warn, #d99a2b)' }} title={action.note ?? undefined}>
-        {isPositive ? '✓' : '⚠️'} {action.action.replace(/_/g, ' ')} — {new Date(action.createdAt).toLocaleString()}
-      </span>
+    <div style={{ padding: '.35rem 0', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem' }}>
+        <span style={{ color: 'var(--muted)' }}>{label}</span>
+        <span style={{ fontWeight: 700, color: isPositive ? 'var(--primary)' : 'var(--warn, #d99a2b)' }}>
+          {isPositive ? '✓' : '⚠️'} {action.action.replace(/_/g, ' ')} — {new Date(action.createdAt).toLocaleString()}
+        </span>
+      </div>
+      {action.note && (
+        <div style={{ fontSize: '.76rem', color: 'var(--text)', marginTop: 2, fontStyle: 'italic' }}>“{action.note}”</div>
+      )}
     </div>
   )
 }

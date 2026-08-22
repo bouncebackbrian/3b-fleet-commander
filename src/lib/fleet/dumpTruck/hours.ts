@@ -12,8 +12,8 @@
 
 import { fleetServiceClient } from '@/lib/fleet-service-client'
 import {
-  buildDailyHoursRow, buildRangeSummary, applyRevenueShareFloor, applyWeeklyOvertimeSplit, type DailyHoursRow, type RangeSummary,
-  type DateRange, type PayPolicy,
+  buildDailyHoursRow, buildRangeSummary, applyRevenueShareFloor, applyWeeklyOvertimeSplit, applyDailyAndWeeklyOvertimeSplit,
+  type DailyHoursRow, type RangeSummary, type DateRange, type PayPolicy,
 } from '@/lib/dumpTruck/hours'
 import type { DriveSegmentCategory, DumpTruckEventType } from '@/lib/dumpTruck/types'
 import { getPayPolicyForDriver } from './payPolicy'
@@ -199,9 +199,13 @@ export async function buildDriverHoursForRange(
   applyOverlappingShiftWarnings(rows, shifts)
 
   // Each row above got an initial daily-mode split (buildDailyHoursRow has no
-  // visibility into sibling days). For otMode 'weekly', correct that now that
-  // every day in the range is known — see applyWeeklyOvertimeSplit's doc.
-  const finalRows = payPolicy.otMode === 'weekly' ? applyWeeklyOvertimeSplit(rows, payPolicy) : rows
+  // visibility into sibling days). For otMode 'weekly' or 'daily_and_weekly',
+  // correct that now that every day in the range is known — see
+  // applyWeeklyOvertimeSplit/applyDailyAndWeeklyOvertimeSplit's docs.
+  const finalRows =
+    payPolicy.otMode === 'weekly' ? applyWeeklyOvertimeSplit(rows, payPolicy)
+    : payPolicy.otMode === 'daily_and_weekly' ? applyDailyAndWeeklyOvertimeSplit(rows, payPolicy)
+    : rows
   const summary = buildRangeSummary(finalRows)
   let revenueShareApplied: RevenueShareApplied | null = null
 

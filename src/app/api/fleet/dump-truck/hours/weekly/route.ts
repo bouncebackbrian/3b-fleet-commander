@@ -31,7 +31,9 @@ export async function GET(request: NextRequest) {
 
   let driverId = auth.userId
   if (requestedDriverId && requestedDriverId !== auth.userId) {
-    if (!canManage(auth.portals, 'dispatch')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (!canManage(auth.portals, 'dispatch') && !canManage(auth.portals, 'admin')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
     driverId = requestedDriverId
   }
 

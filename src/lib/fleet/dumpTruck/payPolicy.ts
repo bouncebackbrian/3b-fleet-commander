@@ -26,7 +26,7 @@ function fromRow(r: any): PayPolicy {
     ratePerMile: r.rate_per_mile != null ? Number(r.rate_per_mile) : null,
     revenueSharePct: r.revenue_share_pct != null ? Number(r.revenue_share_pct) : null,
     dispatchMinimumHours: r.dispatch_minimum_hours != null ? Number(r.dispatch_minimum_hours) : 4,
-    otMode: r.ot_mode === 'weekly' ? 'weekly' : 'daily',
+    otMode: r.ot_mode === 'weekly' ? 'weekly' : r.ot_mode === 'daily_and_weekly' ? 'daily_and_weekly' : 'daily',
     weeklyOtThresholdHours: r.weekly_ot_threshold_hours != null ? Number(r.weekly_ot_threshold_hours) : 40,
   }
 }
@@ -77,7 +77,7 @@ export interface UpsertPayPolicyInput {
   ratePerMile?: number | null
   revenueSharePct?: number | null
   dispatchMinimumHours?: number
-  otMode?: 'daily' | 'weekly'
+  otMode?: 'daily' | 'weekly' | 'daily_and_weekly'
   weeklyOtThresholdHours?: number
   notes?: string | null
 }

@@ -4,6 +4,7 @@ import {
   sumPairedDurationSeconds, buildCategoryTimeFromEvents, bucketDelaySecondsByReason,
   splitRegularOvertime, estimateHourlyGrossPay, estimateGrossPay, DEFAULT_PAY_POLICY,
   buildDailyHoursRow, buildRangeSummary, applyRevenueShareFloor, sumRangeSummaries, applyWeeklyOvertimeSplit,
+  applyDailyAndWeeklyOvertimeSplit,
   detectShiftIntegrityWarnings,
   type TimedEvent, type PayPolicy, type RangeSummary, type DailyHoursRow, type ShiftIntegrityWarning,
 } from './hours'
@@ -506,6 +507,89 @@ describe('applyWeeklyOvertimeSplit', () => {
     const split = splitRegularOvertime(10, 8)
     expect(split.regularHours).toBe(8)
     expect(split.overtimeHours).toBe(2)
+  })
+})
+
+describe('applyDailyAndWeeklyOvertimeSplit', () => {
+  const combinedPolicy: PayPolicy = { ...DEFAULT_PAY_POLICY, otMode: 'daily_and_weekly', dailyOtThresholdHours: 10, weeklyOtThresholdHours: 40 }
+
+  /** Rows here must already carry buildDailyHoursRow's initial daily-mode
+   *  split (regularHours capped at 10, overtimeHours = daily excess) —
+   *  applyDailyAndWeeklyOvertimeSplit only re-derives the weekly layer on
+   *  top of that, it never re-splits totalShiftHours/paidHours itself. */
+  function makeDailyCappedRow(workDate: string, paidHours: number, overrides: Partial<DailyHoursRow> = {}): DailyHoursRow {
+    const split = splitRegularOvertime(paidHours, 10)
+    return makeRow(workDate, paidHours, { paidHours, regularHours: split.regularHours, overtimeHours: split.overtimeHours, ...overrides })
+  }
+
+  it('a single 12-hour day — 2h daily OT, weekly threshold not touched', () => {
+    const rows = [makeDailyCappedRow('2026-08-10', 12)]
+    const result = applyDailyAndWeeklyOvertimeSplit(rows, combinedPolicy)
+    expect(result[0].regularHours).toBe(10)
+    expect(result[0].overtimeHours).toBe(2)
+  })
+
+  it('five 12-hour days (60 total) — each day keeps its own 2h daily OT, plus the 5th day carries the weekly-threshold overflow on top', () => {
+    // Daily-only would give 2 OT every day (10 total) and ignore the week entirely.
+    // Weekly-only would give 0 OT on days 1-4 (each under 40 cumulative) and dump
+    // all 20 OT on day 5. Combined mode must show both: 2h/day daily OT on every
+    // day, AND day 5's capped-regular hours pushed to OT once the week crosses 40.
+    const rows = [
+      makeDailyCappedRow('2026-08-10', 12), makeDailyCappedRow('2026-08-11', 12), makeDailyCappedRow('2026-08-12', 12),
+      makeDailyCappedRow('2026-08-13', 12), makeDailyCappedRow('2026-08-14', 12),
+    ]
+    const result = applyDailyAndWeeklyOvertimeSplit(rows, combinedPolicy)
+    expect(result.map(r => r.regularHours)).toEqual([10, 10, 10, 10, 0])
+    expect(result.map(r => r.overtimeHours)).toEqual([2, 2, 2, 2, 12])
+    expect(result.reduce((s, r) => s + r.regularHours, 0)).toBe(40)
+    expect(result.reduce((s, r) => s + r.overtimeHours, 0)).toBe(20)
+  })
+
+  it('four 10-hour days (40 total) — no overtime at all, daily or weekly', () => {
+    const rows = [
+      makeDailyCappedRow('2026-08-10', 10), makeDailyCappedRow('2026-08-11', 10),
+      makeDailyCappedRow('2026-08-12', 10), makeDailyCappedRow('2026-08-13', 10),
+    ]
+    const result = applyDailyAndWeeklyOvertimeSplit(rows, combinedPolicy)
+    for (const r of result) expect(r.overtimeHours).toBe(0)
+    expect(result.reduce((s, r) => s + r.regularHours, 0)).toBe(40)
+  })
+
+  it('respects paidHours-derived non-payable exclusions carried in from buildDailyHoursRow, not just totalShiftHours', () => {
+    // Same real-world scenario as the applyWeeklyOvertimeSplit regression test
+    // above (2026-08-21 bug) — a day's clock span was 11.10h but only 9.87h
+    // was actually payable. The daily-capped split must be built from that
+    // 9.87h paidHours, not the raw clock span.
+    const row = makeDailyCappedRow('2026-08-21', 9.87, { totalShiftHours: 11.10 })
+    expect(row.regularHours).toBe(9.87) // under the 10h daily threshold
+    expect(row.overtimeHours).toBe(0)
+    const result = applyDailyAndWeeklyOvertimeSplit([row], combinedPolicy)
+    expect(result[0].regularHours + result[0].overtimeHours).toBe(9.87)
+  })
+
+  it('recomputes estimatedGrossEarnings to match the corrected combined split', () => {
+    const rows = [makeDailyCappedRow('2026-08-10', 12)] // 10 reg + 2 daily OT
+    const result = applyDailyAndWeeklyOvertimeSplit(rows, combinedPolicy)
+    // 10 * $32 + 2 * $32 * 1.5 = 320 + 96 = 416
+    expect(result[0].estimatedGrossEarnings).toBe(416)
+    expect(result[0].hourlyEstimatedEarnings).toBe(416)
+  })
+
+  it('buckets separate weeks independently — no pooling across a week boundary', () => {
+    const rows = [
+      makeDailyCappedRow('2026-08-10', 10), makeDailyCappedRow('2026-08-11', 10),
+      makeDailyCappedRow('2026-08-12', 10), makeDailyCappedRow('2026-08-13', 10),
+      makeDailyCappedRow('2026-08-17', 10), makeDailyCappedRow('2026-08-18', 10),
+    ]
+    const result = applyDailyAndWeeklyOvertimeSplit(rows, combinedPolicy)
+    for (const r of result) expect(r.overtimeHours).toBe(0)
+  })
+
+  it('leaves per_mile policies completely untouched', () => {
+    const rows = [makeDailyCappedRow('2026-08-10', 12, { shiftMiles: 100, estimatedGrossEarnings: 65, hourlyEstimatedEarnings: 65 })]
+    const policy: PayPolicy = { ...combinedPolicy, payType: 'per_mile', ratePerMile: 0.65 }
+    const result = applyDailyAndWeeklyOvertimeSplit(rows, policy)
+    expect(result).toBe(rows) // same reference — early-returned unchanged
   })
 })
 

@@ -13,7 +13,9 @@ export const dynamic = 'force-dynamic'
 export async function POST(request: NextRequest) {
   const auth = await requireFleetAuth()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canManage(auth.portals, 'dispatch')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!canManage(auth.portals, 'dispatch') && !canManage(auth.portals, 'admin')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   try {
     const body = await request.json()

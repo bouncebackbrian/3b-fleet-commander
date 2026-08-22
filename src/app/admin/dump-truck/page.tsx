@@ -650,7 +650,7 @@ interface PayPolicyState {
   baseHourlyRate: string; dailyOtThresholdHours: string; otMultiplier: string
   payType: 'hourly' | 'per_mile' | 'greater_of_hourly_or_revenue_share'; ratePerMile: string
   revenueSharePct: string; dispatchMinimumHours: string
-  otMode: 'daily' | 'weekly'; weeklyOtThresholdHours: string
+  otMode: 'daily' | 'weekly' | 'daily_and_weekly'; weeklyOtThresholdHours: string
 }
 
 const EMPTY_PAY_POLICY: PayPolicyState = {
@@ -679,12 +679,20 @@ function PayPolicyFields({ state, onChange }: { state: PayPolicyState; onChange:
             <select style={inputStyle} value={state.otMode} onChange={e => onChange({ ...state, otMode: e.target.value as PayPolicyState['otMode'] })}>
               <option value="daily">Daily — OT past a threshold each day</option>
               <option value="weekly">Weekly — OT past a threshold for the week</option>
+              <option value="daily_and_weekly">Daily + Weekly — OT past a daily threshold, AND past a weekly threshold</option>
             </select>
           </Field>
-          {state.otMode === 'weekly' ? (
+          {state.otMode === 'weekly' && (
             <Field label="Weekly OT Threshold (hrs)"><input style={inputStyle} type="number" step="1" value={state.weeklyOtThresholdHours} onChange={e => onChange({ ...state, weeklyOtThresholdHours: e.target.value })} /></Field>
-          ) : (
+          )}
+          {state.otMode === 'daily' && (
             <Field label="Daily OT Threshold (hrs)"><input style={inputStyle} type="number" step="0.25" value={state.dailyOtThresholdHours} onChange={e => onChange({ ...state, dailyOtThresholdHours: e.target.value })} /></Field>
+          )}
+          {state.otMode === 'daily_and_weekly' && (
+            <>
+              <Field label="Daily OT Threshold (hrs)"><input style={inputStyle} type="number" step="0.25" value={state.dailyOtThresholdHours} onChange={e => onChange({ ...state, dailyOtThresholdHours: e.target.value })} /></Field>
+              <Field label="Weekly OT Threshold (hrs)"><input style={inputStyle} type="number" step="1" value={state.weeklyOtThresholdHours} onChange={e => onChange({ ...state, weeklyOtThresholdHours: e.target.value })} /></Field>
+            </>
           )}
           <Field label="OT Multiplier"><input style={inputStyle} type="number" step="0.05" value={state.otMultiplier} onChange={e => onChange({ ...state, otMultiplier: e.target.value })} /></Field>
         </>
@@ -713,7 +721,7 @@ function PayPolicyPanel({ drivers }: { drivers: DriverOption[] }) {
         ratePerMile: b.policy.ratePerMile != null ? String(b.policy.ratePerMile) : '0.65',
         revenueSharePct: b.policy.revenueSharePct != null ? String(b.policy.revenueSharePct) : '25',
         dispatchMinimumHours: b.policy.dispatchMinimumHours != null ? String(b.policy.dispatchMinimumHours) : '4',
-        otMode: b.policy.otMode === 'weekly' ? 'weekly' : 'daily',
+        otMode: b.policy.otMode === 'weekly' ? 'weekly' : b.policy.otMode === 'daily_and_weekly' ? 'daily_and_weekly' : 'daily',
         weeklyOtThresholdHours: b.policy.weeklyOtThresholdHours != null ? String(b.policy.weeklyOtThresholdHours) : '40',
       })
       setIsDefault(!!b.policy.isDefault)
@@ -769,7 +777,7 @@ interface DriverPayRow {
     payType: 'hourly' | 'per_mile' | 'greater_of_hourly_or_revenue_share'
     baseHourlyRate: number; dailyOtThresholdHours: number; otMultiplier: number; ratePerMile: number | null
     revenueSharePct: number | null; dispatchMinimumHours: number
-    otMode: 'daily' | 'weekly'; weeklyOtThresholdHours: number
+    otMode: 'daily' | 'weekly' | 'daily_and_weekly'; weeklyOtThresholdHours: number
   } | null
 }
 
@@ -794,7 +802,7 @@ function DriverPayOverridesPanel({ drivers }: { drivers: DriverOption[] }) {
       ratePerMile: row.override.ratePerMile != null ? String(row.override.ratePerMile) : '0.65',
       revenueSharePct: row.override.revenueSharePct != null ? String(row.override.revenueSharePct) : '25',
       dispatchMinimumHours: String(row.override.dispatchMinimumHours ?? 4),
-      otMode: row.override.otMode === 'weekly' ? 'weekly' : 'daily',
+      otMode: row.override.otMode === 'weekly' ? 'weekly' : row.override.otMode === 'daily_and_weekly' ? 'daily_and_weekly' : 'daily',
       weeklyOtThresholdHours: String(row.override.weeklyOtThresholdHours ?? 40),
     } : EMPTY_PAY_POLICY)
   }
