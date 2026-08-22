@@ -8,6 +8,9 @@ import type { DriverOption } from '@/lib/fleet/dumpTruck/jobs'
 import type { Dispatch, DispatchStop, DispatchSettings } from '@/lib/fleet/dumpTruck/dispatch'
 import type { ParsedDispatchFields, FieldConfidence } from '@/app/api/fleet/dump-truck/dispatch/parse/route'
 import { computeArrivalRisk } from '@/lib/dumpTruck/dispatchPlanning'
+import { LanguageProvider, useLanguage } from '@/lib/i18n/LanguageContext'
+import { dispatchDict } from '@/lib/i18n/dictionaries/dispatch'
+import LanguageToggle from '@/components/shared/LanguageToggle'
 
 const cardStyle: React.CSSProperties = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '1.25rem' }
 const inputStyle: React.CSSProperties = { padding: '.6rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', width: '100%' }
@@ -25,9 +28,11 @@ function Field({ label, children, warn }: { label: React.ReactNode; children: Re
 }
 
 function ConfidenceBadge({ level }: { level: FieldConfidence | undefined }) {
+  const { t } = useLanguage()
   if (!level) return null
   const color = level === 'high' ? 'var(--success)' : level === 'medium' ? 'var(--warn, #d99a2b)' : 'var(--error)'
-  return <span style={{ fontSize: '.65rem', fontWeight: 800, color, marginLeft: 6, textTransform: 'uppercase' }}>{level}</span>
+  const label = level === 'high' ? t('high') : level === 'medium' ? t('medium') : t('low')
+  return <span style={{ fontSize: '.65rem', fontWeight: 800, color, marginLeft: 6, textTransform: 'uppercase' }}>{label}</span>
 }
 
 type FormState = {
@@ -91,6 +96,15 @@ function fieldsToForm(f: ParsedDispatchFields): FormState {
 }
 
 export default function DispatchIntakePage() {
+  return (
+    <LanguageProvider dictionary={dispatchDict}>
+      <DispatchIntakePageInner />
+    </LanguageProvider>
+  )
+}
+
+function DispatchIntakePageInner() {
+  const { t } = useLanguage()
   const screenshotFileRef = useRef<HTMLInputElement>(null)
   const [drivers, setDrivers] = useState<DriverOption[]>([])
   const [equipment, setEquipment] = useState<{ trucks: EquipmentOption[]; trailers: EquipmentOption[] }>({ trucks: [], trailers: [] })
@@ -135,7 +149,7 @@ export default function DispatchIntakePage() {
   }
 
   const parseWithAi = async () => {
-    if (!rawText.trim()) { toast.error('Paste or type the job info first'); return }
+    if (!rawText.trim()) { toast.error(t('Paste or type the job info first')); return }
     setParsing(true)
     try {
       const res = await fetch('/api/fleet/dump-truck/dispatch/parse', {
@@ -149,9 +163,9 @@ export default function DispatchIntakePage() {
       const body = await res.json()
       if (!res.ok) throw new Error(body.error ?? 'Could not parse dispatch')
       applyParseResult(body)
-      toast.success('Parsed — review the fields below before publishing')
+      toast.success(t('Parsed — review the fields below before publishing'))
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not parse dispatch')
+      toast.error(err instanceof Error ? t(err.message) : t('Could not parse dispatch'))
     } finally {
       setParsing(false)
     }
@@ -169,9 +183,9 @@ export default function DispatchIntakePage() {
       const body = await res.json()
       if (!res.ok) throw new Error(body.error ?? 'Could not read screenshot')
       applyParseResult(body)
-      toast.success('Parsed from screenshot — review the fields below before publishing')
+      toast.success(t('Parsed from screenshot — review the fields below before publishing'))
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not read screenshot')
+      toast.error(err instanceof Error ? t(err.message) : t('Could not read screenshot'))
     } finally {
       setParsing(false)
     }
@@ -223,11 +237,11 @@ export default function DispatchIntakePage() {
       const body = await res.json()
       if (!res.ok) throw new Error(body.error ?? 'Could not save draft')
       setDraft(body.dispatch)
-      toast.success('Draft saved — resolving locations…')
+      toast.success(t('Draft saved — resolving locations…'))
       await resolveAndRoute(body.dispatch.id)
       reload()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not save draft')
+      toast.error(err instanceof Error ? t(err.message) : t('Could not save draft'))
     } finally {
       setBusy(false)
     }
@@ -246,7 +260,7 @@ export default function DispatchIntakePage() {
         if (routeBody.warnings?.length) setWarnings(w => [...new Set([...w, ...routeBody.warnings])])
       }
     } catch {
-      toast.error('Could not resolve locations / calculate route')
+      toast.error(t('Could not resolve locations / calculate route'))
     }
   }
 
@@ -267,31 +281,31 @@ export default function DispatchIntakePage() {
       if (hasExtras) {
         const okCount = body.results?.length ?? 0
         const failCount = body.errors?.length ?? 0
-        if (okCount > 0) toast.success(`Published to ${okCount} driver${okCount === 1 ? '' : 's'}`)
-        if (failCount > 0) toast.error(`${failCount} driver${failCount === 1 ? '' : 's'} could not be published — check truck assignment`)
+        if (okCount > 0) toast.success(t(okCount === 1 ? 'Published to {n} driver' : 'Published to {n} drivers', { n: okCount }))
+        if (failCount > 0) toast.error(t(failCount === 1 ? '{n} driver could not be published — check truck assignment' : '{n} drivers could not be published — check truck assignment', { n: failCount }))
       } else {
-        toast.success(`Published — job ${body.job.jobNumber} created and driver notified`)
+        toast.success(t('Published — job {job} created and driver notified', { job: body.job.jobNumber }))
       }
       resetIntake()
       reload()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not publish')
+      toast.error(err instanceof Error ? t(err.message) : t('Could not publish'))
     } finally {
       setBusy(false)
     }
   }
 
   const cancel = async (id: string) => {
-    if (!confirm('Cancel this dispatch?')) return
+    if (!confirm(t('Cancel this dispatch?'))) return
     try {
       const res = await fetch(`/api/fleet/dump-truck/dispatch/${id}/cancel`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'Cancelled by dispatch' }),
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Could not cancel')
-      toast.success('Dispatch cancelled')
+      toast.success(t('Dispatch cancelled'))
       reload()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not cancel')
+      toast.error(err instanceof Error ? t(err.message) : t('Could not cancel'))
     }
   }
 
@@ -300,52 +314,53 @@ export default function DispatchIntakePage() {
 
   return (
     <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: 1200, margin: '0 auto' }}>
-      <div>
-        <h1 style={{ fontSize: '1.4rem', fontWeight: 900 }}>AI Dispatch Intake &amp; Trip Planning</h1>
-        <p style={{ color: 'var(--muted)', fontSize: '.85rem', marginTop: 4 }}>
-          Paste or type an incoming job — AI turns it into a structured, editable draft. Nothing publishes to a
-          driver until you review and confirm it here.
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 900 }}>{t('AI Dispatch Intake & Trip Planning')}</h1>
+          <p style={{ color: 'var(--muted)', fontSize: '.85rem', marginTop: 4 }}>
+            {t('Paste or type an incoming job — AI turns it into a structured, editable draft. Nothing publishes to a driver until you review and confirm it here.')}
+          </p>
+        </div>
+        <LanguageToggle />
       </div>
 
       <div style={cardStyle}>
-        <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '.5rem' }}>Add Dispatch / Paste Job Information</h2>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '.5rem' }}>{t('Add Dispatch / Paste Job Information')}</h2>
         <textarea
           style={{ ...inputStyle, minHeight: 90 }}
-          placeholder={'e.g. "Tomorrow David truck 07 Penny Knight. Be at Lockwood by 6:30. Pick up base from XYZ pit, take to Virginia St project. Probably 6 loads. Call John when arriving. Scale tickets required."'}
+          placeholder={t('e.g. "Tomorrow David truck 07 Penny Knight. Be at Lockwood by 6:30. Pick up base from XYZ pit, take to Virginia St project. Probably 6 loads. Call John when arriving. Scale tickets required."')}
           value={rawText}
           onChange={e => setRawText(e.target.value)}
         />
         <div style={{ display: 'flex', gap: 8, marginTop: '.75rem', flexWrap: 'wrap' }}>
           <button style={{ ...btnStyle, opacity: parsing ? .5 : 1 }} disabled={parsing || !rawText.trim()} onClick={parseWithAi}>
-            {parsing ? 'Parsing…' : '✨ Parse with AI'}
+            {parsing ? t('Parsing…') : t('✨ Parse with AI')}
           </button>
           <button
             style={{ ...ghostBtnStyle, opacity: parsing ? .5 : 1 }}
             disabled={parsing}
             onClick={() => screenshotFileRef.current?.click()}
           >
-            📷 Upload Screenshot
+            {t('📷 Upload Screenshot')}
           </button>
           <input
             ref={screenshotFileRef} type="file" accept="image/*" style={{ display: 'none' }}
             onChange={e => { const f = e.target.files?.[0]; if (f) parseFromScreenshot(f); e.target.value = '' }}
           />
           <button style={ghostBtnStyle} onClick={() => { setConfidence({}); setWarnings([]); setAiParseMeta(null) }}>
-            Fill in manually instead
+            {t('Fill in manually instead')}
           </button>
-          {(draft || rawText || form !== EMPTY_FORM) && <button style={ghostBtnStyle} onClick={resetIntake}>Start Over</button>}
+          {(draft || rawText || form !== EMPTY_FORM) && <button style={ghostBtnStyle} onClick={resetIntake}>{t('Start Over')}</button>}
         </div>
         <p style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: '.5rem' }}>
-          Screenshot a text message, email, or dispatch note — AI reads it the same way as pasted text. You can
-          type a quick note in the box above too if the screenshot needs extra context.
+          {t('Screenshot a text message, email, or dispatch note — AI reads it the same way as pasted text. You can type a quick note in the box above too if the screenshot needs extra context.')}
         </p>
       </div>
 
       {(aiParseMeta || form.dispatchDate || form.pickupText || draft) && (
         <div style={{ ...cardStyle, border: '1px solid rgba(0,232,176,.35)' }}>
           <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '.25rem' }}>
-            {aiParseMeta ? 'AI Parsed Dispatch — Review Before Publishing' : 'Dispatch Details'}
+            {aiParseMeta ? t('AI Parsed Dispatch — Review Before Publishing') : t('Dispatch Details')}
           </h2>
           {warnings.length > 0 && (
             <div style={{ margin: '.5rem 0 1rem', padding: '.6rem .8rem', borderRadius: 8, background: 'rgba(217,154,43,.08)', border: '1px solid rgba(217,154,43,.3)' }}>
@@ -354,77 +369,77 @@ export default function DispatchIntakePage() {
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '.75rem' }}>
-            <Field label={<>Date <ConfidenceBadge level={confidence.dispatchDate} /></>}>
+            <Field label={<>{t('Date')} <ConfidenceBadge level={confidence.dispatchDate} /></>}>
               <input style={inputStyle} type="date" value={form.dispatchDate} onChange={e => setForm({ ...form, dispatchDate: e.target.value })} />
             </Field>
-            <Field label={<>Required First-Site Arrival <ConfidenceBadge level={confidence.requiredArrivalTime} /></>}>
+            <Field label={<>{t('Required First-Site Arrival')} <ConfidenceBadge level={confidence.requiredArrivalTime} /></>}>
               <input style={inputStyle} type="time" value={form.requiredArrivalTime} onChange={e => setForm({ ...form, requiredArrivalTime: e.target.value })} />
             </Field>
-            <Field label={<>Driver <ConfidenceBadge level={confidence.driverName} /></>}>
+            <Field label={<>{t('Driver')} <ConfidenceBadge level={confidence.driverName} /></>}>
               <input style={inputStyle} list="driver-names" value={form.driverNameRaw} onChange={e => setForm({ ...form, driverNameRaw: e.target.value })} />
               <datalist id="driver-names">{drivers.map(d => <option key={d.userId} value={d.name} />)}</datalist>
             </Field>
-            <Field label={<>Truck <ConfidenceBadge level={confidence.truckLabel} /></>}>
-              <input style={inputStyle} list="truck-units" placeholder="uses driver's default if blank" value={form.truckLabelRaw} onChange={e => setForm({ ...form, truckLabelRaw: e.target.value })} />
+            <Field label={<>{t('Truck')} <ConfidenceBadge level={confidence.truckLabel} /></>}>
+              <input style={inputStyle} list="truck-units" placeholder={t("uses driver's default if blank")} value={form.truckLabelRaw} onChange={e => setForm({ ...form, truckLabelRaw: e.target.value })} />
               <datalist id="truck-units">{equipment.trucks.map(t => <option key={t.id} value={t.unitNumber} />)}</datalist>
             </Field>
-            <Field label={<>Customer <ConfidenceBadge level={confidence.customerName} /></>}>
+            <Field label={<>{t('Customer')} <ConfidenceBadge level={confidence.customerName} /></>}>
               <input style={inputStyle} value={form.customerName} onChange={e => setForm({ ...form, customerName: e.target.value })} />
             </Field>
-            <Field label={<>Broker <ConfidenceBadge level={confidence.brokerName} /></>}>
+            <Field label={<>{t('Broker')} <ConfidenceBadge level={confidence.brokerName} /></>}>
               <input style={inputStyle} value={form.brokerName} onChange={e => setForm({ ...form, brokerName: e.target.value })} />
             </Field>
-            <Field label={<>Dispatch Contact <ConfidenceBadge level={confidence.dispatchContactName} /></>}>
+            <Field label={<>{t('Dispatch Contact')} <ConfidenceBadge level={confidence.dispatchContactName} /></>}>
               <input style={inputStyle} value={form.dispatchContactName} onChange={e => setForm({ ...form, dispatchContactName: e.target.value })} />
             </Field>
-            <Field label={<>Contact Phone <ConfidenceBadge level={confidence.dispatchContactPhone} /></>}>
+            <Field label={<>{t('Contact Phone')} <ConfidenceBadge level={confidence.dispatchContactPhone} /></>}>
               <input style={inputStyle} value={form.dispatchContactPhone} onChange={e => setForm({ ...form, dispatchContactPhone: e.target.value })} />
             </Field>
-            <Field label={<>Pickup / First Location <ConfidenceBadge level={confidence.pickupLocation} /></>}>
+            <Field label={<>{t('Pickup / First Location')} <ConfidenceBadge level={confidence.pickupLocation} /></>}>
               <input style={inputStyle} value={form.pickupText} onChange={e => setForm({ ...form, pickupText: e.target.value })} />
             </Field>
-            <Field label={<>Delivery Location <ConfidenceBadge level={confidence.deliveryLocation} /></>}>
+            <Field label={<>{t('Delivery Location')} <ConfidenceBadge level={confidence.deliveryLocation} /></>}>
               <input style={inputStyle} value={form.deliveryText} onChange={e => setForm({ ...form, deliveryText: e.target.value })} />
             </Field>
-            <Field label={<>Material <ConfidenceBadge level={confidence.material} /></>}>
+            <Field label={<>{t('Material')} <ConfidenceBadge level={confidence.material} /></>}>
               <input style={inputStyle} value={form.material} onChange={e => setForm({ ...form, material: e.target.value })} />
             </Field>
-            <Field label={<>Est. Loads <ConfidenceBadge level={confidence.numLoads} /></>}>
+            <Field label={<>{t('Est. Loads')} <ConfidenceBadge level={confidence.numLoads} /></>}>
               <input style={inputStyle} type="number" value={form.numLoadsEstimate} onChange={e => setForm({ ...form, numLoadsEstimate: e.target.value })} />
             </Field>
-            <Field label="PO Number"><input style={inputStyle} value={form.poNumber} onChange={e => setForm({ ...form, poNumber: e.target.value })} /></Field>
-            <Field label="Job Number"><input style={inputStyle} value={form.jobNumber} onChange={e => setForm({ ...form, jobNumber: e.target.value })} /></Field>
-            <Field label="Weight Requirements"><input style={inputStyle} value={form.weightRequirements} onChange={e => setForm({ ...form, weightRequirements: e.target.value })} /></Field>
-            <Field label="Ticket Requirements"><input style={inputStyle} value={form.ticketRequirements} onChange={e => setForm({ ...form, ticketRequirements: e.target.value })} /></Field>
-            <Field label="Scale Required">
+            <Field label={t('PO Number')}><input style={inputStyle} value={form.poNumber} onChange={e => setForm({ ...form, poNumber: e.target.value })} /></Field>
+            <Field label={t('Job Number')}><input style={inputStyle} value={form.jobNumber} onChange={e => setForm({ ...form, jobNumber: e.target.value })} /></Field>
+            <Field label={t('Weight Requirements')}><input style={inputStyle} value={form.weightRequirements} onChange={e => setForm({ ...form, weightRequirements: e.target.value })} /></Field>
+            <Field label={t('Ticket Requirements')}><input style={inputStyle} value={form.ticketRequirements} onChange={e => setForm({ ...form, ticketRequirements: e.target.value })} /></Field>
+            <Field label={t('Scale Required')}>
               <select style={inputStyle} value={form.scaleRequired ? 'yes' : 'no'} onChange={e => setForm({ ...form, scaleRequired: e.target.value === 'yes' })}>
-                <option value="no">No</option><option value="yes">Yes</option>
+                <option value="no">{t('No')}</option><option value="yes">{t('Yes')}</option>
               </select>
             </Field>
-            <Field label="Rate Type">
+            <Field label={t('Rate Type')}>
               <select style={inputStyle} value={form.rateType} onChange={e => setForm({ ...form, rateType: e.target.value as FormState['rateType'] })}>
-                <option value="">Not set</option><option value="hourly">Hourly</option><option value="per_load">Per Load</option>
+                <option value="">{t('Not set')}</option><option value="hourly">{t('Hourly')}</option><option value="per_load">{t('Per Load')}</option>
               </select>
             </Field>
-            {form.rateType && <Field label="Customer Rate ($)"><input style={inputStyle} type="number" step="0.01" value={form.customerRate} onChange={e => setForm({ ...form, customerRate: e.target.value })} /></Field>}
-            <Field label="Driver Pay Rule"><input style={inputStyle} value={form.driverPayRule} onChange={e => setForm({ ...form, driverPayRule: e.target.value })} /></Field>
-            <Field label="Est. Job Duration (min)"><input style={inputStyle} type="number" value={form.estDurationMinutes} onChange={e => setForm({ ...form, estDurationMinutes: e.target.value })} /></Field>
+            {form.rateType && <Field label={t('Customer Rate ($)')}><input style={inputStyle} type="number" step="0.01" value={form.customerRate} onChange={e => setForm({ ...form, customerRate: e.target.value })} /></Field>}
+            <Field label={t('Driver Pay Rule')}><input style={inputStyle} value={form.driverPayRule} onChange={e => setForm({ ...form, driverPayRule: e.target.value })} /></Field>
+            <Field label={t('Est. Job Duration (min)')}><input style={inputStyle} type="number" value={form.estDurationMinutes} onChange={e => setForm({ ...form, estDurationMinutes: e.target.value })} /></Field>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '.75rem', marginTop: '.75rem' }}>
-            <Field label="Special Instructions"><textarea style={{ ...inputStyle, minHeight: 50 }} value={form.specialInstructions} onChange={e => setForm({ ...form, specialInstructions: e.target.value })} /></Field>
-            <Field label="Gate Instructions"><textarea style={{ ...inputStyle, minHeight: 50 }} value={form.gateInstructions} onChange={e => setForm({ ...form, gateInstructions: e.target.value })} /></Field>
-            <Field label="Contact-on-Arrival Instructions"><textarea style={{ ...inputStyle, minHeight: 50 }} value={form.contactOnArrivalInstructions} onChange={e => setForm({ ...form, contactOnArrivalInstructions: e.target.value })} /></Field>
-            <Field label="Safety Instructions"><textarea style={{ ...inputStyle, minHeight: 50 }} value={form.safetyInstructions} onChange={e => setForm({ ...form, safetyInstructions: e.target.value })} /></Field>
-            <Field label="Truck Restrictions"><textarea style={{ ...inputStyle, minHeight: 50 }} value={form.truckRestrictions} onChange={e => setForm({ ...form, truckRestrictions: e.target.value })} /></Field>
-            <Field label="Trailer Requirements"><textarea style={{ ...inputStyle, minHeight: 50 }} value={form.trailerRequirements} onChange={e => setForm({ ...form, trailerRequirements: e.target.value })} /></Field>
-            <Field label="Return Instructions"><textarea style={{ ...inputStyle, minHeight: 50 }} value={form.returnInstructions} onChange={e => setForm({ ...form, returnInstructions: e.target.value })} /></Field>
-            <Field label="Notes"><textarea style={{ ...inputStyle, minHeight: 50 }} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></Field>
+            <Field label={t('Special Instructions')}><textarea style={{ ...inputStyle, minHeight: 50 }} value={form.specialInstructions} onChange={e => setForm({ ...form, specialInstructions: e.target.value })} /></Field>
+            <Field label={t('Gate Instructions')}><textarea style={{ ...inputStyle, minHeight: 50 }} value={form.gateInstructions} onChange={e => setForm({ ...form, gateInstructions: e.target.value })} /></Field>
+            <Field label={t('Contact-on-Arrival Instructions')}><textarea style={{ ...inputStyle, minHeight: 50 }} value={form.contactOnArrivalInstructions} onChange={e => setForm({ ...form, contactOnArrivalInstructions: e.target.value })} /></Field>
+            <Field label={t('Safety Instructions')}><textarea style={{ ...inputStyle, minHeight: 50 }} value={form.safetyInstructions} onChange={e => setForm({ ...form, safetyInstructions: e.target.value })} /></Field>
+            <Field label={t('Truck Restrictions')}><textarea style={{ ...inputStyle, minHeight: 50 }} value={form.truckRestrictions} onChange={e => setForm({ ...form, truckRestrictions: e.target.value })} /></Field>
+            <Field label={t('Trailer Requirements')}><textarea style={{ ...inputStyle, minHeight: 50 }} value={form.trailerRequirements} onChange={e => setForm({ ...form, trailerRequirements: e.target.value })} /></Field>
+            <Field label={t('Return Instructions')}><textarea style={{ ...inputStyle, minHeight: 50 }} value={form.returnInstructions} onChange={e => setForm({ ...form, returnInstructions: e.target.value })} /></Field>
+            <Field label={t('Notes')}><textarea style={{ ...inputStyle, minHeight: 50 }} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></Field>
           </div>
 
           {!draft && (
             <button style={{ ...btnStyle, marginTop: '1rem', opacity: busy ? .5 : 1 }} disabled={busy} onClick={createDraft}>
-              {busy ? 'Saving…' : 'Save Draft & Calculate Route'}
+              {busy ? t('Saving…') : t('Save Draft & Calculate Route')}
             </button>
           )}
 
@@ -454,13 +469,13 @@ export default function DispatchIntakePage() {
       )}
 
       <div style={cardStyle}>
-        <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '.75rem' }}>Dispatch Board</h2>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '.75rem' }}>{t('Dispatch Board')}</h2>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', fontSize: '.82rem', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ color: 'var(--muted)', textAlign: 'left' }}>
-                <th style={{ padding: '.4rem 0' }}>Driver</th><th>Truck</th><th>Yard Time</th><th>Leave</th>
-                <th>First Site</th><th>Required</th><th>ETA</th><th>Status</th><th></th>
+                <th style={{ padding: '.4rem 0' }}>{t('Driver')}</th><th>{t('Truck')}</th><th>{t('Yard Time')}</th><th>{t('Leave')}</th>
+                <th>{t('First Site')}</th><th>{t('Required')}</th><th>{t('ETA')}</th><th>{t('Status')}</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -476,12 +491,12 @@ export default function DispatchIntakePage() {
                   <td><StatusPill dispatch={d} maxLateMinutes={settings?.maxLateMinutes ?? 10} /></td>
                   <td>
                     {d.status !== 'cancelled' && (
-                      <button onClick={() => cancel(d.id)} style={{ fontSize: '.72rem', color: 'var(--error)', fontWeight: 700 }}>Cancel</button>
+                      <button onClick={() => cancel(d.id)} style={{ fontSize: '.72rem', color: 'var(--error)', fontWeight: 700 }}>{t('Cancel')}</button>
                     )}
                   </td>
                 </tr>
               ))}
-              {dispatches.length === 0 && <tr><td colSpan={9} style={{ padding: '1rem 0', color: 'var(--muted)' }}>No dispatches yet.</td></tr>}
+              {dispatches.length === 0 && <tr><td colSpan={9} style={{ padding: '1rem 0', color: 'var(--muted)' }}>{t('No dispatches yet.')}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -505,16 +520,17 @@ function fmtTime(iso: string | null): string {
  * is wired into this build) — see the deliverable notes.
  */
 function StatusPill({ dispatch, maxLateMinutes }: { dispatch: Dispatch; maxLateMinutes: number }) {
-  if (dispatch.status === 'cancelled') return <Pill label="Cancelled" color="var(--error)" />
-  if (dispatch.status === 'draft') return <Pill label="Draft" color="var(--muted)" />
+  const { t } = useLanguage()
+  if (dispatch.status === 'cancelled') return <Pill label={t('Cancelled')} color="var(--error)" />
+  if (dispatch.status === 'draft') return <Pill label={t('Draft')} color="var(--muted)" />
 
   const today = new Date().toISOString().slice(0, 10)
   if (dispatch.dispatchDate === today && dispatch.requiredArrivalAt) {
     const risk = computeArrivalRisk(new Date().toISOString(), dispatch.requiredArrivalAt, maxLateMinutes)
-    if (risk === 'late') return <Pill label="LATE" color="var(--error)" />
-    if (risk === 'at_risk') return <Pill label="AT RISK" color="var(--warn, #d99a2b)" />
+    if (risk === 'late') return <Pill label={t('LATE')} color="var(--error)" />
+    if (risk === 'at_risk') return <Pill label={t('AT RISK')} color="var(--warn, #d99a2b)" />
   }
-  return <Pill label="Published" color="var(--success)" />
+  return <Pill label={t('Published')} color="var(--success)" />
 }
 
 function Pill({ label, color }: { label: string; color: string }) {
@@ -535,101 +551,101 @@ function DraftReview({ draft, stops, sites, drivers, equipment, settings, busy, 
   onAssign: (driverId: string | null, truckId: string | null, trailerId: string | null) => void
   onPublish: (extraAssignments: { driverId: string; truckId: string | null; trailerId: string | null }[]) => void
 }) {
+  const { t } = useLanguage()
   const [extraRows, setExtraRows] = useState<ExtraAssignment[]>([])
   const usedDriverIds = new Set([draft.driverId, ...extraRows.map(r => r.driverId)].filter(Boolean))
   const validExtras = extraRows.filter(r => r.driverId)
 
   const missing: string[] = []
-  if (!draft.dispatchDate) missing.push('date')
-  if (!draft.driverId) missing.push('driver (not matched to a registered driver — assign one below)')
-  if (!draft.truckId) missing.push('truck')
-  if (!draft.requiredArrivalAt) missing.push('required arrival time')
+  if (!draft.dispatchDate) missing.push(t('date'))
+  if (!draft.driverId) missing.push(t('driver (not matched to a registered driver — assign one below)'))
+  if (!draft.truckId) missing.push(t('truck'))
+  if (!draft.requiredArrivalAt) missing.push(t('required arrival time'))
   const firstStop = stops.find(s => s.stopType === 'pickup')
-  if (!firstStop?.siteId) missing.push('first location (not matched to a known site)')
+  if (!firstStop?.siteId) missing.push(t('first location (not matched to a known site)'))
 
   return (
     <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
-      <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '.5rem' }}>Locations &amp; Route</h3>
+      <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '.5rem' }}>{t('Locations & Route')}</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: '.75rem' }}>
         {stops.map(s => (
           <div key={s.id} style={{ fontSize: '.82rem', display: 'flex', gap: 8, alignItems: 'center' }}>
             <span style={{ fontWeight: 700, textTransform: 'capitalize', minWidth: 70 }}>{s.stopType}:</span>
             <span>&quot;{s.rawLocationText}&quot;</span>
             {s.siteId
-              ? <span style={{ color: 'var(--success)' }}>→ matched {s.siteName} <ConfidenceBadge level={s.siteConfidence ?? undefined} /></span>
-              : <span style={{ color: 'var(--warn, #d99a2b)' }}>⚠ not matched to a known site — geocoded best-effort, please confirm</span>}
+              ? <span style={{ color: 'var(--success)' }}>{t('→ matched {site}', { site: s.siteName ?? '' })} <ConfidenceBadge level={s.siteConfidence ?? undefined} /></span>
+              : <span style={{ color: 'var(--warn, #d99a2b)' }}>{t('⚠ not matched to a known site — geocoded best-effort, please confirm')}</span>}
           </div>
         ))}
-        {stops.length === 0 && <div style={{ color: 'var(--muted)', fontSize: '.8rem' }}>No pickup/delivery location captured yet.</div>}
+        {stops.length === 0 && <div style={{ color: 'var(--muted)', fontSize: '.8rem' }}>{t('No pickup/delivery location captured yet.')}</div>}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '.6rem', marginBottom: '.75rem' }}>
-        <TimeStat label="Yard Arrival" value={fmtTime(draft.recommendedYardArrivalAt)} />
-        <TimeStat label="Pre-Trip" value={settings ? `${settings.defaultPretripMinutes} min` : '—'} />
-        <TimeStat label="Leave Yard" value={fmtTime(draft.recommendedLeaveYardAt)} />
-        <TimeStat label="Drive Time" value={draft.calculatedDriveMinutes != null ? `${Math.round(draft.calculatedDriveMinutes)} min` : '—'} />
-        <TimeStat label="Target Arrival" value={fmtTime(draft.targetSiteArrivalAt)} />
-        <TimeStat label="Required Arrival" value={fmtTime(draft.requiredArrivalAt)} highlight />
+        <TimeStat label={t('Yard Arrival')} value={fmtTime(draft.recommendedYardArrivalAt)} />
+        <TimeStat label={t('Pre-Trip')} value={settings ? t('{min} min', { min: settings.defaultPretripMinutes }) : '—'} />
+        <TimeStat label={t('Leave Yard')} value={fmtTime(draft.recommendedLeaveYardAt)} />
+        <TimeStat label={t('Drive Time')} value={draft.calculatedDriveMinutes != null ? t('{min} min', { min: Math.round(draft.calculatedDriveMinutes) }) : '—'} />
+        <TimeStat label={t('Target Arrival')} value={fmtTime(draft.targetSiteArrivalAt)} />
+        <TimeStat label={t('Required Arrival')} value={fmtTime(draft.requiredArrivalAt)} highlight />
       </div>
-      <button style={ghostBtnStyle} onClick={onRecalculate}>↻ Recalculate Route</button>
+      <button style={ghostBtnStyle} onClick={onRecalculate}>{t('↻ Recalculate Route')}</button>
 
-      <h3 style={{ fontSize: '1rem', fontWeight: 800, margin: '1.25rem 0 .5rem' }}>Assign Driver &amp; Truck</h3>
+      <h3 style={{ fontSize: '1rem', fontWeight: 800, margin: '1.25rem 0 .5rem' }}>{t('Assign Driver & Truck')}</h3>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '.6rem' }}>
-        <Field label="Driver">
+        <Field label={t('Driver')}>
           <select style={inputStyle} value={draft.driverId ?? ''} onChange={e => onAssign(e.target.value || null, draft.truckId, draft.trailerId)}>
-            <option value="">Unassigned{draft.driverNameRaw ? ` (typed: ${draft.driverNameRaw})` : ''}</option>
+            <option value="">{draft.driverNameRaw ? t('Unassigned (typed: {name})', { name: draft.driverNameRaw }) : t('Unassigned')}</option>
             {drivers.map(d => <option key={d.userId} value={d.userId}>{d.name}</option>)}
           </select>
         </Field>
-        <Field label="Truck">
+        <Field label={t('Truck')}>
           <select style={inputStyle} value={draft.truckId ?? ''} onChange={e => onAssign(draft.driverId, e.target.value || null, draft.trailerId)}>
-            <option value="">Unassigned{draft.truckLabelRaw ? ` (typed: ${draft.truckLabelRaw})` : ''}</option>
+            <option value="">{draft.truckLabelRaw ? t('Unassigned (typed: {name})', { name: draft.truckLabelRaw }) : t('Unassigned')}</option>
             {equipment.trucks.map(t => <option key={t.id} value={t.id}>{t.unitNumber}</option>)}
           </select>
         </Field>
-        <Field label="Trailer">
+        <Field label={t('Trailer')}>
           <select style={inputStyle} value={draft.trailerId ?? ''} onChange={e => onAssign(draft.driverId, draft.truckId, e.target.value || null)}>
-            <option value="">None</option>
+            <option value="">{t('None')}</option>
             {equipment.trailers.map(t => <option key={t.id} value={t.id}>{t.unitNumber}</option>)}
           </select>
         </Field>
       </div>
-      {sites.length === 0 && <p style={{ fontSize: '.75rem', color: 'var(--muted)', marginTop: 6 }}>No sites configured yet — add sites on the Dump Truck Setup page for route calculation to work.</p>}
+      {sites.length === 0 && <p style={{ fontSize: '.75rem', color: 'var(--muted)', marginTop: 6 }}>{t('No sites configured yet — add sites on the Dump Truck Setup page for route calculation to work.')}</p>}
 
-      <h3 style={{ fontSize: '1rem', fontWeight: 800, margin: '1.25rem 0 .5rem' }}>Send to Additional Drivers (optional)</h3>
+      <h3 style={{ fontSize: '1rem', fontWeight: 800, margin: '1.25rem 0 .5rem' }}>{t('Send to Additional Drivers (optional)')}</h3>
       <p style={{ fontSize: '.78rem', color: 'var(--muted)', marginBottom: '.5rem' }}>
-        Same job, location, and instructions — sent to more than one driver/truck at once (e.g. several trucks
-        hauling the same pickup → dump job). Each driver gets their own copy on their portal.
+        {t('Same job, location, and instructions — sent to more than one driver/truck at once (e.g. several trucks hauling the same pickup → dump job). Each driver gets their own copy on their portal.')}
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '.5rem' }}>
         {extraRows.map(row => (
           <div key={row.key} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '.5rem', alignItems: 'end' }}>
-            <Field label="Driver">
+            <Field label={t('Driver')}>
               <select
                 style={inputStyle} value={row.driverId}
                 onChange={e => setExtraRows(rows => rows.map(r => r.key === row.key ? { ...r, driverId: e.target.value } : r))}
               >
-                <option value="">Select driver…</option>
+                <option value="">{t('Select driver…')}</option>
                 {drivers.filter(d => d.userId === row.driverId || !usedDriverIds.has(d.userId)).map(d => (
                   <option key={d.userId} value={d.userId}>{d.name}</option>
                 ))}
               </select>
             </Field>
-            <Field label="Truck">
+            <Field label={t('Truck')}>
               <select
                 style={inputStyle} value={row.truckId ?? ''}
                 onChange={e => setExtraRows(rows => rows.map(r => r.key === row.key ? { ...r, truckId: e.target.value || null } : r))}
               >
-                <option value="">Unassigned</option>
+                <option value="">{t('Unassigned')}</option>
                 {equipment.trucks.map(t => <option key={t.id} value={t.id}>{t.unitNumber}</option>)}
               </select>
             </Field>
-            <Field label="Trailer">
+            <Field label={t('Trailer')}>
               <select
                 style={inputStyle} value={row.trailerId ?? ''}
                 onChange={e => setExtraRows(rows => rows.map(r => r.key === row.key ? { ...r, trailerId: e.target.value || null } : r))}
               >
-                <option value="">None</option>
+                <option value="">{t('None')}</option>
                 {equipment.trailers.map(t => <option key={t.id} value={t.id}>{t.unitNumber}</option>)}
               </select>
             </Field>
@@ -637,7 +653,7 @@ function DraftReview({ draft, stops, sites, drivers, equipment, settings, busy, 
               onClick={() => setExtraRows(rows => rows.filter(r => r.key !== row.key))}
               style={{ padding: '.6rem .7rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--error)', fontWeight: 700 }}
             >
-              Remove
+              {t('Remove')}
             </button>
           </div>
         ))}
@@ -645,13 +661,13 @@ function DraftReview({ draft, stops, sites, drivers, equipment, settings, busy, 
           style={{ ...ghostBtnStyle, alignSelf: 'flex-start' }}
           onClick={() => setExtraRows(rows => [...rows, { key: `${Date.now()}-${rows.length}`, driverId: '', truckId: null, trailerId: null }])}
         >
-          + Add Another Driver
+          {t('+ Add Another Driver')}
         </button>
       </div>
 
       {missing.length > 0 && (
         <div style={{ marginTop: '1rem', padding: '.6rem .8rem', borderRadius: 8, background: 'rgba(224,80,80,.08)', border: '1px solid rgba(224,80,80,.3)' }}>
-          <div style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--error)' }}>Cannot publish yet — missing/unconfirmed:</div>
+          <div style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--error)' }}>{t('Cannot publish yet — missing/unconfirmed:')}</div>
           <div style={{ fontSize: '.78rem', color: 'var(--error)' }}>{missing.join(', ')}</div>
         </div>
       )}
@@ -661,7 +677,7 @@ function DraftReview({ draft, stops, sites, drivers, equipment, settings, busy, 
         disabled={busy || missing.length > 0}
         onClick={() => onPublish(validExtras.map(({ driverId, truckId, trailerId }) => ({ driverId, truckId, trailerId })))}
       >
-        {busy ? 'Publishing…' : validExtras.length > 0 ? `Publish to ${1 + validExtras.length} Drivers` : 'Publish to Driver'}
+        {busy ? t('Publishing…') : validExtras.length > 0 ? t('Publish to {n} Drivers', { n: 1 + validExtras.length }) : t('Publish to Driver')}
       </button>
     </div>
   )

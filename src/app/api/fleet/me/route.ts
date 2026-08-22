@@ -24,11 +24,10 @@ export async function GET() {
   const auth = await requireFleetAuth()
   if (!auth) return NextResponse.json({ user: null })
 
-  const { data: business } = await fleetServiceClient
-    .from('businesses')
-    .select('slug, type, ops_profile')
-    .eq('id', auth.businessId)
-    .maybeSingle()
+  const [{ data: business }, { data: profile }] = await Promise.all([
+    fleetServiceClient.from('businesses').select('slug, type, ops_profile').eq('id', auth.businessId).maybeSingle(),
+    fleetServiceClient.from('profiles').select('preferred_language').eq('id', auth.userId).maybeSingle(),
+  ])
 
   /** 'otr' | 'dump_truck' — drives nav filtering, see userMode.ts. Defaults
    *  to 'otr' for businesses created before this column existed. */
@@ -50,6 +49,7 @@ export async function GET() {
       driverOpsProfile,
       role:         auth.role,
       portals:      auth.portals,
+      preferredLanguage: profile?.preferred_language === 'es' ? 'es' : 'en',
     },
   })
 }
