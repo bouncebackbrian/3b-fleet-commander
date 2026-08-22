@@ -1,0 +1,45 @@
+/**
+ * POST /api/fleet/dump-truck/hours/weekly/approve — dispatch signs off on a
+ * driver-confirmed week. multipart/form-data: `driverId`, `weekStart`,
+ * `weekEnd`, `signature` (image/png). Dispatcher+ only; the service layer
+ * itself re-checks the week is actually in 'pending_dispatch' status.
+ */
+import { NextRequest, NextResponse } from 'next/server'
+import { requireFleetAuth, canManage } from '@/lib/fleet-auth-guard'
+import { uploadDocument } from '@/lib/fleet/dumpTruck/documents'
+import { approveWeeklyTimesheet } from '@/lib/fleet/dumpTruck/weeklyTimesheets'
+import { DumpTruckError } from '@/lib/fleet/dumpTruck/shared'
+
+export const dynamic = 'force-dynamic'
+
+export async function POST(request: NextRequest) {
+  const auth = await requireFleetAuth()
+  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!canManage(auth.portals, 'dispatch')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  try {
+    const form = await request.formData()
+    const driverId = form.get('driverId')
+    const weekStart = form.get('weekStart')
+    const weekEnd = form.get('weekEnd')
+    const signature = form.get('signature')
+    if (typeof driverId !== 'string' || typeof weekStart !== 'string' || typeof weekEnd !== 'string' || !(signature instanceof File)) {
+      return NextResponse.json({ error: 'driverId, weekStart, weekEnd, and signature are required' }, { status: 400 })
+    }
+
+    const sigBytes = Buffer.from(await signature.arrayBuffer())
+    const sigDoc = await uploadDocument({
+      businessId: auth.businessId, shiftId: null, docType: 'signature',
+      linkedEntityType: 'weekly_timesheet', linkedEntityId: null,
+      fileName: `weekly-timesheet-approval-${driverId}-${weekStart}.png`, mimeType: signature.type || 'image/png',
+      bytes: sigBytes, capturedAt: new Date().toISOString(),
+    }, auth.userId, auth.email)
+
+    const action = await approveWeeklyTimesheet(auth.businessId, driverId, weekStart, weekEnd, sigDoc.id, auth.userId, auth.email)
+    return NextResponse.json({ action }, { status: 201 })
+  } catch (err) {
+    if (err instanceof DumpTruckError) return NextResponse.json({ error: err.message }, { status: err.status })
+    console.error('[api/fleet/dump-truck/hours/weekly/approve] POST error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}

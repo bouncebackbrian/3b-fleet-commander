@@ -11,6 +11,7 @@ import { EVENT_LABELS } from '@/lib/dumpTruck/eventLabels'
 import { toast } from '@/hooks/useToast'
 import ToastContainer from '@/components/shared/ToastContainer'
 import HoursSignOffSheet from '@/components/dumpTruck/HoursSignOffSheet'
+import WeeklyTimesheetPanel from '@/components/dumpTruck/WeeklyTimesheetPanel'
 
 type RangeType = 'current_week' | 'previous_week' | 'current_pay_period' | 'previous_pay_period' | 'custom'
 
@@ -263,6 +264,10 @@ export default function DriverHoursPage() {
               <button onClick={() => window.open(exportUrl('detail', 'pdf'), '_blank')} style={exportBtnStyle}>📄 Detail PDF</button>
             </div>
           </div>
+
+          {(rangeType === 'current_week' || rangeType === 'previous_week') && (
+            <WeeklyTimesheetPanel weekStart={data.range.start} weekEnd={data.range.end} role="driver" />
+          )}
 
           <div style={cardStyle}>
             <h2 style={{ fontSize: '1.05rem', fontWeight: 800, marginBottom: '1rem' }}>Daily Detail</h2>

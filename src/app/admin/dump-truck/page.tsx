@@ -8,6 +8,7 @@ import type { DriverOption } from '@/lib/fleet/dumpTruck/jobs'
 import { haversineMeters } from '@/lib/dumpTruck/geofence'
 import AdminActivityLogPanel from '@/components/dumpTruck/AdminActivityLogPanel'
 import AdminPayrollHoursPanel from '@/components/dumpTruck/AdminPayrollHoursPanel'
+import AdminWeeklyApprovalsPanel from '@/components/dumpTruck/AdminWeeklyApprovalsPanel'
 import AdminTimeAdjustmentsPanel from '@/components/dumpTruck/AdminTimeAdjustmentsPanel'
 import AdminFuelPanel from '@/components/dumpTruck/AdminFuelPanel'
 import AdminDriverTaxPanel from '@/components/dumpTruck/AdminDriverTaxPanel'
@@ -60,6 +61,7 @@ export default function DumpTruckAdminPage() {
       <PayPolicyPanel drivers={drivers} />
       <AdminDriverTaxPanel drivers={drivers} />
       <AdminTimeAdjustmentsPanel drivers={drivers} trucks={equipment.trucks} />
+      <AdminWeeklyApprovalsPanel drivers={drivers} />
       <AdminPayrollHoursPanel drivers={drivers} />
       <AdminFuelPanel />
       <AdminActivityLogPanel drivers={drivers} />
