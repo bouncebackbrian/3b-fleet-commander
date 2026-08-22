@@ -105,11 +105,19 @@ export async function GET(request: NextRequest) {
             `Driver: ${meta.driverName}${meta.threebId ? ` (${meta.threebId})` : ''}`,
             `Range: ${rangeType} (${range.start} to ${range.end})`,
           ],
-          disclaimers: ['Estimated earnings only — not a pay stub or final wage statement.'],
+          disclaimers: [
+            'Estimated earnings only — not a pay stub or final wage statement.',
+            ...(summary.totalPendingPayableHours > 0 || summary.totalNonPaidOperationalHours > 0
+              ? ['Regular + Overtime Hours below are based on Paid Hours, not the raw Total Hrs clock span in the Daily Breakdown — hours pending management review or excluded by policy (e.g. an unapproved breakdown) are shown separately and are not yet counted as paid.']
+              : []),
+          ],
           stats: [
             { label: 'Days Worked', value: String(summary.daysWorked) },
+            { label: 'Paid Hours', value: summary.totalPaidHours.toFixed(2) },
             { label: 'Regular Hours', value: summary.totalRegularHours.toFixed(2) },
             { label: 'Overtime Hours', value: summary.totalOvertimeHours.toFixed(2) },
+            ...(summary.totalPendingPayableHours > 0 ? [{ label: 'Pending Review Hrs', value: summary.totalPendingPayableHours.toFixed(2) }] : []),
+            ...(summary.totalNonPaidOperationalHours > 0 ? [{ label: 'Non-Paid Operational Hrs', value: summary.totalNonPaidOperationalHours.toFixed(2) }] : []),
             { label: 'Drive Hours', value: summary.totalDriveHours.toFixed(2) },
             { label: 'Loads', value: String(summary.totalLoads) },
             { label: 'Miles', value: String(summary.totalMiles) },
@@ -119,8 +127,17 @@ export async function GET(request: NextRequest) {
           sections: [
             {
               title: 'Daily Breakdown',
-              headers: ['Date', 'Truck', 'Total Hrs', 'Loads', 'Status'],
-              rows: rows.map(r => [r.workDate, r.truckUnit ?? '—', r.totalShiftHours.toFixed(2), r.loadsCompleted, r.submissionStatus]),
+              headers: ['Date', 'Truck', 'Total Hrs', 'Paid Hrs', 'Reg', 'OT', 'Loads', 'Status'],
+              // Total Hrs is the raw clock span; Paid Hrs (and the Reg/OT split
+              // it's rounded up from) is what the Regular/Overtime Hours stats
+              // above actually sum to once non-payable classified time (e.g. an
+              // unapproved breakdown, or return-to-yard excluded by policy) is
+              // backed out — showing only Total Hrs here made this table's own
+              // column not reconcile with the report's own headline stats.
+              rows: rows.map(r => [
+                r.workDate, r.truckUnit ?? '—', r.totalShiftHours.toFixed(2), r.paidHours.toFixed(2),
+                r.regularHours.toFixed(2), r.overtimeHours.toFixed(2), r.loadsCompleted, r.submissionStatus,
+              ]),
             },
             {
               title: 'Truck Issues Reported',
