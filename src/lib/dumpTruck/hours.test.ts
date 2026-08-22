@@ -478,6 +478,29 @@ describe('applyWeeklyOvertimeSplit', () => {
     expect(result).toBe(rows) // same reference — early-returned unchanged
   })
 
+  it('uses paidHours, not totalShiftHours, for both the threshold accumulation and the split — non-payable classified time (e.g. return-to-yard excluded by business policy) must never be paid as regular or overtime', () => {
+    // Found 2026-08-21: a driver's day totaled 11.10h clock-span but only 9.87h
+    // was actually payable (return-to-yard/post-trip excluded per business
+    // policy) — Reg+OT summed to the full 11.10h instead of the correct 9.87h,
+    // silently paying for 1.23h that was explicitly marked non-payable.
+    const rows = [
+      makeRow('2026-08-17', 9.00, { paidHours: 7.81 }),
+      makeRow('2026-08-18', 9.67, { paidHours: 8.45 }),
+      makeRow('2026-08-19', 10.50, { paidHours: 10.50 }),
+      makeRow('2026-08-20', 9.50, { paidHours: 9.50 }),
+      makeRow('2026-08-21', 11.10, { paidHours: 9.87 }), // 1.23h non-payable (return-to-yard/post-trip)
+    ]
+    const result = applyWeeklyOvertimeSplit(rows, weeklyPolicy)
+    const last = result[4]
+    // Reg+OT must equal paidHours (9.87), never the raw 11.10h clock span.
+    expect(Math.round((last.regularHours + last.overtimeHours) * 100) / 100).toBe(9.87)
+    expect(last.regularHours).toBe(3.74) // 40 - (9+9.67+10.5+9.5) = 3.74 room left
+    expect(last.overtimeHours).toBe(6.13)
+    // Gross pay is computed from the corrected split, not the inflated one.
+    // 3.74 * 32 + 6.13 * 32 * 1.5 = 119.68 + 294.24 = 413.92
+    expect(last.estimatedGrossEarnings).toBe(413.92)
+  })
+
   it('daily-mode split (8hr threshold) still works standalone, unaffected by weekly logic', () => {
     // sanity check that splitRegularOvertime itself is untouched by this change
     const split = splitRegularOvertime(10, 8)

@@ -673,13 +673,21 @@ function sum(nums: number[]): number {
  *
  * Rows are bucketed into their own Monday-Sunday workweek first (a range
  * spanning multiple weeks must not pool hours across week boundaries), then
- * walked in date order within each week accumulating total hours — whatever
- * pushes the running total past the threshold becomes overtime. This
- * allocates a week's overtime to its chronologically last hours rather than
- * spreading it proportionally across days; FLSA only requires the total
- * overtime pay for the week be correct, not which specific hours carry the
- * OT label, and "OT starts once you cross the threshold" matches how most
- * drivers already think about it.
+ * walked in date order within each week accumulating *payable* hours (row.
+ * paidHours, not totalShiftHours) — whatever pushes the running total past
+ * the threshold becomes overtime. Using paidHours here (not the raw clock
+ * span) matters once a day has non-payable classified segments (e.g.
+ * return-to-yard/post-trip excluded by the business's default policy, or a
+ * breakdown not yet approved as payable, per adjustments.ts) — otherwise
+ * non-payable time would silently get counted toward the 40-hour threshold
+ * and paid out as regular/overtime pay it was explicitly excluded from
+ * (found 2026-08-21: a day's Reg+OT summed to its full clock-span total
+ * while its own Paid Hours column showed a smaller, correctly-classified
+ * figure). This allocates a week's overtime to its chronologically last
+ * payable hours rather than spreading it proportionally across days;
+ * FLSA only requires the total overtime pay for the week be correct, not
+ * which specific hours carry the OT label, and "OT starts once you cross
+ * the threshold" matches how most drivers already think about it.
  *
  * per_mile pay rows are left completely untouched — weekly overtime only
  * applies to hourly-based pay. Returns new row objects (does not mutate
@@ -702,7 +710,7 @@ export function applyWeeklyOvertimeSplit(rows: DailyHoursRow[], policy: PayPolic
     const sorted = [...weekRows].sort((a, b) => a.workDate.localeCompare(b.workDate))
     let cumulative = 0
     for (const row of sorted) {
-      const dayHours = row.totalShiftHours
+      const dayHours = row.paidHours
       const regularRoom = Math.max(0, threshold - cumulative)
       const regularHours = round2(Math.min(dayHours, regularRoom))
       const overtimeHours = round2(Math.max(0, dayHours - regularHours))
