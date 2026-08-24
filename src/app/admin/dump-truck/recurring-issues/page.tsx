@@ -4,6 +4,9 @@ import Link from 'next/link'
 import { groupRecurringIssues, type RecurringIssueDefect, type RecurringIssueGroup } from '@/lib/dumpTruck/recurringIssues'
 import type { DefectSeverity } from '@/lib/dumpTruck/types'
 import type { EquipmentOption } from '@/lib/fleet/dumpTruck/equipment'
+import { LanguageProvider, useLanguage } from '@/lib/i18n/LanguageContext'
+import { recurringIssuesDict } from '@/lib/i18n/dictionaries/recurringIssues'
+import LanguageToggle from '@/components/shared/LanguageToggle'
 
 const cardStyle: React.CSSProperties = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '1.25rem' }
 
@@ -35,6 +38,15 @@ function toCategoryLabel(category: string): string {
  * with a count of 8, not 8 separate open-defect entries.
  */
 export default function RecurringIssuesPage() {
+  return (
+    <LanguageProvider dictionary={recurringIssuesDict}>
+      <RecurringIssuesPageInner />
+    </LanguageProvider>
+  )
+}
+
+function RecurringIssuesPageInner() {
+  const { t } = useLanguage()
   const [defects, setDefects] = useState<DefectDTO[]>([])
   const [equipment, setEquipment] = useState<{ trucks: EquipmentOption[]; trailers: EquipmentOption[] }>({ trucks: [], trailers: [] })
   const [loading, setLoading] = useState(true)
@@ -62,25 +74,26 @@ export default function RecurringIssuesPage() {
 
   return (
     <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: 1100, margin: '0 auto' }}>
-      <div>
-        <h1 style={{ fontSize: '1.4rem', fontWeight: 900 }}>Recurring Issues</h1>
-        <p style={{ color: 'var(--muted)', fontSize: '.85rem', marginTop: 4 }}>
-          How often each physical issue has been logged, grouped from the last 100 defect reports across the fleet —
-          same data as the driver-facing override report, rolled up for corrective-action tracking instead of
-          per-shift dispatch. See per-truck and per-driver breakdowns on the{' '}
-          <Link href="/admin/dump-truck/kpis" style={{ color: 'var(--primary)', fontWeight: 700 }}>Fleet KPIs</Link> page.{' '}
-          <Link href="/admin/dump-truck" style={{ color: 'var(--primary)', fontWeight: 700 }}>← Back to Dump Truck Setup</Link>
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 900 }}>{t('Recurring Issues')}</h1>
+          <p style={{ color: 'var(--muted)', fontSize: '.85rem', marginTop: 4 }}>
+            {t('How often each physical issue has been logged, grouped from the last 100 defect reports across the fleet — same data as the driver-facing override report, rolled up for corrective-action tracking instead of per-shift dispatch. See per-truck and per-driver breakdowns on the')}{' '}
+            <Link href="/admin/dump-truck/kpis" style={{ color: 'var(--primary)', fontWeight: 700 }}>{t('Fleet KPIs')}</Link>{t(' page.')}{' '}
+            <Link href="/admin/dump-truck" style={{ color: 'var(--primary)', fontWeight: 700 }}>{t('← Back to Dump Truck Setup')}</Link>
+          </p>
+        </div>
+        <LanguageToggle />
       </div>
 
-      {loading && <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>Loading…</div>}
+      {loading && <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>{t('Loading…')}</div>}
 
       {!loading && (
         <div style={cardStyle}>
           <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '.75rem' }}>
-            Recurring ({recurring.length})
+            {t('Recurring ({count})', { count: recurring.length })}
           </h2>
-          {recurring.length === 0 && <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>No issue has been logged more than once yet.</div>}
+          {recurring.length === 0 && <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>{t('No issue has been logged more than once yet.')}</div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
             {recurring.map(g => (
               <div key={g.category} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '.85rem' }}>
@@ -88,18 +101,18 @@ export default function RecurringIssuesPage() {
                   <div>
                     <span style={{ fontWeight: 800, fontSize: '.95rem' }}>{toCategoryLabel(g.category)}</span>
                     <span style={{ fontWeight: 800, color: SEVERITY_COLOR[g.highestSeverity], fontSize: '.78rem', marginLeft: 8 }}>
-                      {SEVERITY_LABEL[g.highestSeverity]}
+                      {t(SEVERITY_LABEL[g.highestSeverity])}
                     </span>
                   </div>
                   <div style={{ fontSize: '.85rem', fontWeight: 800 }}>
-                    ×{g.totalCount}{g.openCount > 0 && <span style={{ color: 'var(--error)', marginLeft: 6 }}>({g.openCount} open)</span>}
+                    ×{g.totalCount}{g.openCount > 0 && <span style={{ color: 'var(--error)', marginLeft: 6 }}>({t('{count} open', { count: g.openCount })})</span>}
                   </div>
                 </div>
                 <div style={{ margin: '.4rem 0', fontSize: '.85rem', color: 'var(--muted)' }}>{g.sampleDescription}</div>
                 <div style={{ display: 'flex', gap: '.75rem', flexWrap: 'wrap', fontSize: '.78rem', color: 'var(--muted)' }}>
-                  <span>Trucks: <strong style={{ color: 'var(--text)' }}>{g.truckIds.map(unitFor).join(', ')}</strong></span>
-                  <span>First seen: <strong style={{ color: 'var(--text)' }}>{new Date(g.firstSeenAt).toLocaleDateString()}</strong></span>
-                  <span>Last seen: <strong style={{ color: 'var(--text)' }}>{new Date(g.lastSeenAt).toLocaleDateString()}</strong></span>
+                  <span>{t('Trucks')}: <strong style={{ color: 'var(--text)' }}>{g.truckIds.map(unitFor).join(', ')}</strong></span>
+                  <span>{t('First seen')}: <strong style={{ color: 'var(--text)' }}>{new Date(g.firstSeenAt).toLocaleDateString()}</strong></span>
+                  <span>{t('Last seen')}: <strong style={{ color: 'var(--text)' }}>{new Date(g.lastSeenAt).toLocaleDateString()}</strong></span>
                 </div>
               </div>
             ))}
@@ -110,7 +123,7 @@ export default function RecurringIssuesPage() {
       {!loading && oneOff.length > 0 && (
         <div style={cardStyle}>
           <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '.75rem' }}>
-            Logged Once ({oneOff.length})
+            {t('Logged Once ({count})', { count: oneOff.length })}
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '.4rem' }}>
             {oneOff.map(g => (

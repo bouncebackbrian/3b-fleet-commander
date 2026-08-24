@@ -15,12 +15,24 @@ import { toast } from '@/hooks/useToast'
 import ToastContainer from '@/components/shared/ToastContainer'
 import type { EquipmentOption } from '@/lib/fleet/dumpTruck/equipment'
 import type { DriverOption } from '@/lib/fleet/dumpTruck/jobs'
+import { LanguageProvider, useLanguage } from '@/lib/i18n/LanguageContext'
+import { safetyDict } from '@/lib/i18n/dictionaries/safety'
+import LanguageToggle from '@/components/shared/LanguageToggle'
 
 const cardStyle: React.CSSProperties = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '1.25rem' }
 const inputStyle: React.CSSProperties = { padding: '.6rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', width: '100%' }
 const btnStyle: React.CSSProperties = { padding: '.65rem 1.2rem', borderRadius: 10, background: 'var(--primary)', color: '#04140f', fontWeight: 800 }
 
 export default function DumpTruckSafetyPage() {
+  return (
+    <LanguageProvider dictionary={safetyDict}>
+      <DumpTruckSafetyPageInner />
+    </LanguageProvider>
+  )
+}
+
+function DumpTruckSafetyPageInner() {
+  const { t } = useLanguage()
   const [equipment, setEquipment] = useState<{ trucks: EquipmentOption[]; trailers: EquipmentOption[] }>({ trucks: [], trailers: [] })
   const [drivers, setDrivers] = useState<DriverOption[]>([])
 
@@ -31,12 +43,15 @@ export default function DumpTruckSafetyPage() {
 
   return (
     <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: 1100, margin: '0 auto' }}>
-      <div>
-        <h1 style={{ fontSize: '1.4rem', fontWeight: 900 }}>Safety</h1>
-        <p style={{ color: 'var(--muted)', fontSize: '.85rem', marginTop: 4 }}>
-          Truck defect escalations and driver-reported incidents in one place. Setup for sites and jobs moved to the{' '}
-          <a href="/admin/dump-truck" style={{ color: 'var(--primary)', fontWeight: 700 }}>Sites &amp; Jobs</a> page.
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 900 }}>{t('Safety')}</h1>
+          <p style={{ color: 'var(--muted)', fontSize: '.85rem', marginTop: 4 }}>
+            {t('Truck defect escalations and driver-reported incidents in one place. Setup for sites and jobs moved to the')}{' '}
+            <a href="/admin/dump-truck" style={{ color: 'var(--primary)', fontWeight: 700 }}>{t('Sites & Jobs')}</a>{t(' page.')}
+          </p>
+        </div>
+        <LanguageToggle />
       </div>
 
       <IncidentsPanel equipment={equipment} drivers={drivers} />
@@ -72,6 +87,9 @@ const INCIDENT_TYPE_LABEL: Record<IncidentDTO['incidentType'], string> = {
 const SAFETY_STATUS_COLOR: Record<IncidentDTO['immediateSafetyStatus'], string> = {
   safe: 'var(--muted)', needs_assistance: 'var(--warn)', emergency: 'var(--error)',
 }
+const SAFETY_STATUS_LABEL: Record<IncidentDTO['immediateSafetyStatus'], string> = {
+  safe: 'Safe', needs_assistance: 'Needs Assistance', emergency: 'Emergency',
+}
 
 /**
  * Driver-reported incidents (collision/property damage/near miss/injury/
@@ -80,6 +98,7 @@ const SAFETY_STATUS_COLOR: Record<IncidentDTO['immediateSafetyStatus'], string> 
  * geotag/timestamp/map baked in by the driver's device before upload.
  */
 function IncidentsPanel({ equipment, drivers }: { equipment: { trucks: EquipmentOption[]; trailers: EquipmentOption[] }; drivers: DriverOption[] }) {
+  const { t } = useLanguage()
   const [incidents, setIncidents] = useState<IncidentDTO[]>([])
 
   useEffect(() => {
@@ -92,11 +111,11 @@ function IncidentsPanel({ equipment, drivers }: { equipment: { trucks: Equipment
   const viewPhoto = async (documentId: string) => {
     try {
       const res = await fetch(`/api/fleet/dump-truck/documents/${documentId}`)
-      if (!res.ok) throw new Error('Could not load photo')
+      if (!res.ok) throw new Error(t('Could not load photo'))
       const { url } = await res.json()
       window.open(url, '_blank')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not load photo')
+      toast.error(err instanceof Error ? err.message : t('Could not load photo'))
     }
   }
 
@@ -105,10 +124,10 @@ function IncidentsPanel({ equipment, drivers }: { equipment: { trucks: Equipment
   return (
     <div style={cardStyle}>
       <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '.75rem' }}>
-        Incidents {urgentCount > 0 && <span style={{ color: 'var(--error)' }}>({urgentCount} urgent)</span>}
+        {t('Incidents')} {urgentCount > 0 && <span style={{ color: 'var(--error)' }}>{t('({count} urgent)', { count: urgentCount })}</span>}
       </h2>
 
-      {incidents.length === 0 && <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>No incidents reported.</div>}
+      {incidents.length === 0 && <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>{t('No incidents reported.')}</div>}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
         {incidents.map(i => {
@@ -118,29 +137,29 @@ function IncidentsPanel({ equipment, drivers }: { equipment: { trucks: Equipment
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                 <div>
                   <span style={{ fontWeight: 800, color: SAFETY_STATUS_COLOR[i.immediateSafetyStatus], fontSize: '.78rem' }}>
-                    {INCIDENT_TYPE_LABEL[i.incidentType]}
+                    {t(INCIDENT_TYPE_LABEL[i.incidentType])}
                   </span>
                   {' — '}<span style={{ fontWeight: 700 }}>{unitFor(i.truckId)}</span>
-                  <span style={{ color: 'var(--muted)', fontSize: '.78rem' }}> · reported by {nameFor(i.driverId)}</span>
+                  <span style={{ color: 'var(--muted)', fontSize: '.78rem' }}> · {t('reported by {name}', { name: nameFor(i.driverId) })}</span>
                 </div>
                 <span style={{ fontSize: '.72rem', color: 'var(--muted)', flexShrink: 0 }}>{new Date(i.occurredAt).toLocaleString()}</span>
               </div>
               <div style={{ margin: '.4rem 0', fontSize: '.85rem' }}>{i.description}</div>
               <div style={{ display: 'flex', gap: '.75rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '.78rem', color: 'var(--muted)' }}>
-                <span>Safety status: <strong style={{ color: SAFETY_STATUS_COLOR[i.immediateSafetyStatus] }}>{i.immediateSafetyStatus.replace('_', ' ')}</strong></span>
-                {i.injuries && <span style={{ color: 'var(--error)', fontWeight: 700 }}>⚠ Injuries reported</span>}
+                <span>{t('Safety status')}: <strong style={{ color: SAFETY_STATUS_COLOR[i.immediateSafetyStatus] }}>{t(SAFETY_STATUS_LABEL[i.immediateSafetyStatus])}</strong></span>
+                {i.injuries && <span style={{ color: 'var(--error)', fontWeight: 700 }}>{t('⚠ Injuries reported')}</span>}
                 {(i.policeReportNumber || i.policeAgency) && (
-                  <span>🚓 {i.policeAgency ?? 'Police'} report {i.policeReportNumber ?? '—'}</span>
+                  <span>{t('🚓 {agency} report {number}', { agency: i.policeAgency ?? t('Police'), number: i.policeReportNumber ?? '—' })}</span>
                 )}
                 {i.photoDocumentId && (
-                  <button onClick={() => viewPhoto(i.photoDocumentId!)} style={{ color: 'var(--primary)', fontWeight: 700 }}>📷 View Photo</button>
+                  <button onClick={() => viewPhoto(i.photoDocumentId!)} style={{ color: 'var(--primary)', fontWeight: 700 }}>{t('📷 View Photo')}</button>
                 )}
                 {i.lat != null && i.lng != null && (
                   <a
                     href={`https://www.google.com/maps/dir/?api=1&destination=${i.lat},${i.lng}&travelmode=driving`}
                     target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 700 }}
                   >
-                    📍 Scene Location
+                    {t('📍 Scene Location')}
                   </a>
                 )}
               </div>
@@ -238,6 +257,7 @@ const NOTE_ACTIONS: Partial<Record<DispositionAction, { field: 'reason' | 'instr
  * whether the defect's truck is currently on a dispatch-authorized hold.
  */
 function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: EquipmentOption[]; trailers: EquipmentOption[] }; drivers: DriverOption[] }) {
+  const { t } = useLanguage()
   const [defects, setDefects] = useState<DefectDTO[]>([])
   const [showResolved, setShowResolved] = useState(false)
   const [assigningId, setAssigningId] = useState<string | null>(null)
@@ -271,15 +291,20 @@ function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: Equipme
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Could not update defect')
       toast.success(
-        action === 'place_on_hold' ? 'Truck placed on hold' :
-        action === 'mark_operable' ? 'Truck hold released' :
-        action === 'resolve' ? 'Defect resolved' : `Defect ${action.replace('_', ' ')}`,
+        action === 'place_on_hold' ? t('Truck placed on hold') :
+        action === 'mark_operable' ? t('Truck hold released') :
+        action === 'resolve' ? t('Defect resolved') :
+        action === 'acknowledge' ? t('Defect acknowledged') :
+        action === 'request_details' ? t('Details requested') :
+        action === 'assign_maintenance' ? t('Defect assigned') :
+        action === 'reopen' ? t('Defect reopened') :
+        action === 'defer' ? t('Defect deferred') : t('Defect updated'),
       )
       setNoteAction(null)
       setNoteText('')
       reload()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not update defect')
+      toast.error(err instanceof Error ? err.message : t('Could not update defect'))
     } finally {
       setBusyId(null)
     }
@@ -306,11 +331,11 @@ function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: Equipme
   const viewPhoto = async (documentId: string) => {
     try {
       const res = await fetch(`/api/fleet/dump-truck/documents/${documentId}`)
-      if (!res.ok) throw new Error('Could not load photo')
+      if (!res.ok) throw new Error(t('Could not load photo'))
       const { url } = await res.json()
       window.open(url, '_blank')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not load photo')
+      toast.error(err instanceof Error ? err.message : t('Could not load photo'))
     }
   }
 
@@ -320,20 +345,24 @@ function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: Equipme
     <div style={cardStyle}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.75rem' }}>
         <h2 style={{ fontSize: '1.1rem', fontWeight: 800 }}>
-          Open Defects {openCount > 0 && <span style={{ color: 'var(--error)' }}>({openCount})</span>}
+          {t('Open Defects')} {openCount > 0 && <span style={{ color: 'var(--error)' }}>({openCount})</span>}
         </h2>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.78rem', color: 'var(--muted)' }}>
-          <input type="checkbox" checked={showResolved} onChange={e => setShowResolved(e.target.checked)} /> Show resolved
+          <input type="checkbox" checked={showResolved} onChange={e => setShowResolved(e.target.checked)} /> {t('Show resolved')}
         </label>
       </div>
 
-      {groupSimilarOpenDefects(defects, unitFor).map(([category, trucks]) => (
+      {groupSimilarOpenDefects(defects, unitFor).map(([category, categoryTrucks]) => (
         <div key={category} style={{ marginBottom: '.6rem', padding: '.6rem .75rem', borderRadius: 10, background: 'rgba(245,194,0,.1)', border: '1px solid var(--warn)', fontSize: '.8rem', color: 'var(--warn)', fontWeight: 700 }}>
-          🔧 {trucks.length} trucks need {category.toLowerCase()} work ({trucks.map(t => t.unit).join(', ')}) — consider booking one appointment to save a call.
+          {t('🔧 {count} trucks need {category} work ({units}) — consider booking one appointment to save a call.', {
+            count: categoryTrucks.length,
+            category: t(category).toLowerCase(),
+            units: categoryTrucks.map(ct => ct.unit).join(', '),
+          })}
         </div>
       ))}
 
-      {visible.length === 0 && <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>No open defects.</div>}
+      {visible.length === 0 && <div style={{ color: 'var(--muted)', fontSize: '.85rem' }}>{t('No open defects.')}</div>}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
         {visible.map(d => {
@@ -344,56 +373,59 @@ function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: Equipme
             <div key={d.id} style={{ border: onHold ? '1px solid var(--error)' : '1px solid var(--border)', borderRadius: 10, padding: '.75rem' }}>
               {onHold && (
                 <div style={{ marginBottom: '.5rem', padding: '.5rem .6rem', borderRadius: 8, background: 'rgba(220,38,38,.1)', fontSize: '.78rem', fontWeight: 700, color: 'var(--error)' }}>
-                  🚫 {unitFor(d.truckId)} is on a dispatch hold{truck?.holdReason ? ` — ${truck.holdReason}` : ''}. Driver cannot start custody until released.
+                  {t('🚫 {unit} is on a dispatch hold{reason}. Driver cannot start custody until released.', {
+                    unit: unitFor(d.truckId),
+                    reason: truck?.holdReason ? ` — ${truck.holdReason}` : '',
+                  })}
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                 <div>
-                  <span style={{ fontWeight: 800, color: SEVERITY_COLOR[d.severity], fontSize: '.78rem' }}>{SEVERITY_LABEL[d.severity]}</span>
+                  <span style={{ fontWeight: 800, color: SEVERITY_COLOR[d.severity], fontSize: '.78rem' }}>{t(SEVERITY_LABEL[d.severity])}</span>
                   {' — '}<span style={{ fontWeight: 700 }}>{unitFor(d.truckId)}</span>
-                  <span style={{ color: 'var(--muted)', fontSize: '.78rem' }}> · reported by {nameFor(d.reportedBy)}</span>
+                  <span style={{ color: 'var(--muted)', fontSize: '.78rem' }}> · {t('reported by {name}', { name: nameFor(d.reportedBy) })}</span>
                 </div>
                 <span style={{ fontSize: '.72rem', color: 'var(--muted)', flexShrink: 0 }}>{new Date(d.createdAt).toLocaleString()}</span>
               </div>
               <div style={{ margin: '.4rem 0', fontSize: '.85rem' }}>{d.description}</div>
               <div style={{ display: 'flex', gap: '.75rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '.78rem', color: 'var(--muted)' }}>
-                <span>⏱ Downtime: <strong style={{ color: 'var(--text)' }}>{formatDowntime(downtimeMs)}</strong>{!d.resolvedAt && ' (running)'}</span>
-                <span>Status: <strong style={{ color: 'var(--text)' }}>{d.status}</strong></span>
+                <span>⏱ {t('Downtime')}: <strong style={{ color: 'var(--text)' }}>{formatDowntime(downtimeMs)}</strong>{!d.resolvedAt && ` (${t('running')})`}</span>
+                <span>{t('Status')}: <strong style={{ color: 'var(--text)' }}>{t(d.status)}</strong></span>
                 {d.acknowledgedAt && (
-                  <span>🚗 Arrived: <strong style={{ color: 'var(--text)' }}>{new Date(d.acknowledgedAt).toLocaleString()}</strong></span>
+                  <span>🚗 {t('Arrived')}: <strong style={{ color: 'var(--text)' }}>{new Date(d.acknowledgedAt).toLocaleString()}</strong></span>
                 )}
                 {d.resolvedAt && (
-                  <span>✅ Left/Done: <strong style={{ color: 'var(--text)' }}>{new Date(d.resolvedAt).toLocaleString()}</strong></span>
+                  <span>✅ {t('Left/Done')}: <strong style={{ color: 'var(--text)' }}>{new Date(d.resolvedAt).toLocaleString()}</strong></span>
                 )}
                 {d.photoDocumentId && (
-                  <button onClick={() => viewPhoto(d.photoDocumentId!)} style={{ color: 'var(--primary)', fontWeight: 700 }}>📷 View Photo</button>
+                  <button onClick={() => viewPhoto(d.photoDocumentId!)} style={{ color: 'var(--primary)', fontWeight: 700 }}>{t('📷 View Photo')}</button>
                 )}
                 {d.lat != null && d.lng != null && (
                   <a
                     href={`https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lng}&travelmode=driving`}
                     target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 700 }}
                   >
-                    📍 Driver's Location
+                    {t("📍 Driver's Location")}
                   </a>
                 )}
               </div>
-              {d.resolutionNotes && <div style={{ fontSize: '.78rem', color: 'var(--muted)', marginTop: 4 }}>Resolution: {d.resolutionNotes}</div>}
+              {d.resolutionNotes && <div style={{ fontSize: '.78rem', color: 'var(--muted)', marginTop: 4 }}>{t('Resolution')}: {d.resolutionNotes}</div>}
 
               {assigningId === d.id ? (
                 <div style={{ marginTop: '.5rem', display: 'flex', gap: 6 }}>
                   <input
-                    style={{ ...inputStyle, flex: 1 }} placeholder="Who's handling it — shop, tow company, mobile tech…"
+                    style={{ ...inputStyle, flex: 1 }} placeholder={t("Who's handling it — shop, tow company, mobile tech…")}
                     value={assignedTo} onChange={e => setAssignedTo(e.target.value)} autoFocus
                   />
-                  <button onClick={() => assign(d.id, assignedTo)} style={{ ...btnStyle, padding: '.4rem .8rem', fontSize: '.78rem' }}>Save</button>
-                  <button onClick={() => setAssigningId(null)} style={{ padding: '.4rem .8rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.78rem' }}>Cancel</button>
+                  <button onClick={() => assign(d.id, assignedTo)} style={{ ...btnStyle, padding: '.4rem .8rem', fontSize: '.78rem' }}>{t('Save')}</button>
+                  <button onClick={() => setAssigningId(null)} style={{ padding: '.4rem .8rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.78rem' }}>{t('Cancel')}</button>
                 </div>
               ) : (
                 <div style={{ marginTop: '.4rem', fontSize: '.78rem', color: 'var(--muted)' }}>
-                  {d.assignedTo ? <>🔧 Assigned to <strong style={{ color: 'var(--text)' }}>{d.assignedTo}</strong></> : 'Not yet assigned'}
+                  {d.assignedTo ? <>🔧 {t('Assigned to')} <strong style={{ color: 'var(--text)' }}>{d.assignedTo}</strong></> : t('Not yet assigned')}
                   {' '}
                   <button onClick={() => { setAssigningId(d.id); setAssignedTo(d.assignedTo ?? '') }} style={{ color: 'var(--primary)', fontWeight: 700 }}>
-                    {d.assignedTo ? 'Change' : 'Assign'}
+                    {d.assignedTo ? t('Change') : t('Assign')}
                   </button>
                 </div>
               )}
@@ -401,7 +433,7 @@ function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: Equipme
               {noteAction?.id === d.id ? (
                 <div style={{ marginTop: '.6rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <textarea
-                    style={{ ...inputStyle, minHeight: 50 }} placeholder={NOTE_ACTIONS[noteAction.action]?.placeholder}
+                    style={{ ...inputStyle, minHeight: 50 }} placeholder={NOTE_ACTIONS[noteAction.action]?.placeholder ? t(NOTE_ACTIONS[noteAction.action]!.placeholder) : undefined}
                     value={noteText} onChange={e => setNoteText(e.target.value)} autoFocus
                   />
                   <div style={{ display: 'flex', gap: 6 }}>
@@ -410,32 +442,32 @@ function OpenDefectsPanel({ equipment, drivers }: { equipment: { trucks: Equipme
                       disabled={busyId === d.id || (NOTE_ACTIONS[noteAction.action]?.required && !noteText.trim())}
                       style={{ ...btnStyle, padding: '.4rem .8rem', fontSize: '.78rem', opacity: busyId === d.id ? .6 : 1 }}
                     >
-                      {busyId === d.id ? 'Saving…' : NOTE_ACTIONS[noteAction.action]?.confirmLabel}
+                      {busyId === d.id ? t('Saving…') : NOTE_ACTIONS[noteAction.action]?.confirmLabel ? t(NOTE_ACTIONS[noteAction.action]!.confirmLabel) : ''}
                     </button>
-                    <button onClick={() => { setNoteAction(null); setNoteText('') }} style={{ padding: '.4rem .8rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.78rem' }}>Cancel</button>
+                    <button onClick={() => { setNoteAction(null); setNoteText('') }} style={{ padding: '.4rem .8rem', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.78rem' }}>{t('Cancel')}</button>
                   </div>
                 </div>
               ) : (
                 <div style={{ display: 'flex', gap: 6, marginTop: '.6rem', flexWrap: 'wrap' }}>
                   {d.status === 'open' && (
-                    <button disabled={busyId === d.id} onClick={() => disposition(d.id, 'acknowledge')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '.78rem', fontWeight: 700 }}>🚗 Mark Arrived</button>
+                    <button disabled={busyId === d.id} onClick={() => disposition(d.id, 'acknowledge')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '.78rem', fontWeight: 700 }}>{t('🚗 Mark Arrived')}</button>
                   )}
-                  <button disabled={busyId === d.id} onClick={() => startNoteAction(d.id, 'request_details')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '.78rem', fontWeight: 700 }}>❓ Request Details</button>
+                  <button disabled={busyId === d.id} onClick={() => startNoteAction(d.id, 'request_details')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: '.78rem', fontWeight: 700 }}>{t('❓ Request Details')}</button>
                   {onHold ? (
-                    <button disabled={busyId === d.id} onClick={() => startNoteAction(d.id, 'mark_operable')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--warn)', color: 'var(--warn)', fontSize: '.78rem', fontWeight: 700 }}>✅ Mark Operable / Release Hold</button>
+                    <button disabled={busyId === d.id} onClick={() => startNoteAction(d.id, 'mark_operable')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--warn)', color: 'var(--warn)', fontSize: '.78rem', fontWeight: 700 }}>{t('✅ Mark Operable / Release Hold')}</button>
                   ) : (
-                    <button disabled={busyId === d.id} onClick={() => startNoteAction(d.id, 'place_on_hold')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--error)', color: 'var(--error)', fontSize: '.78rem', fontWeight: 700 }}>🚫 Place Truck on Hold</button>
+                    <button disabled={busyId === d.id} onClick={() => startNoteAction(d.id, 'place_on_hold')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--error)', color: 'var(--error)', fontSize: '.78rem', fontWeight: 700 }}>{t('🚫 Place Truck on Hold')}</button>
                   )}
                   {d.status !== 'resolved' && (
                     <>
-                      <button disabled={busyId === d.id} onClick={() => startNoteAction(d.id, 'resolve')} style={{ ...btnStyle, padding: '.4rem .8rem', fontSize: '.78rem' }}>✅ Mark Left / Done</button>
+                      <button disabled={busyId === d.id} onClick={() => startNoteAction(d.id, 'resolve')} style={{ ...btnStyle, padding: '.4rem .8rem', fontSize: '.78rem' }}>{t('✅ Mark Left / Done')}</button>
                       {(d.status === 'open' || d.status === 'acknowledged') && (
-                        <button disabled={busyId === d.id} onClick={() => disposition(d.id, 'defer')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.78rem', fontWeight: 700 }}>Defer</button>
+                        <button disabled={busyId === d.id} onClick={() => disposition(d.id, 'defer')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.78rem', fontWeight: 700 }}>{t('Defer')}</button>
                       )}
                     </>
                   )}
                   {(d.status === 'resolved' || d.status === 'deferred') && (
-                    <button disabled={busyId === d.id} onClick={() => disposition(d.id, 'reopen')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.78rem', fontWeight: 700 }}>↩️ Reopen</button>
+                    <button disabled={busyId === d.id} onClick={() => disposition(d.id, 'reopen')} style={{ padding: '.4rem .8rem', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: '.78rem', fontWeight: 700 }}>{t('↩️ Reopen')}</button>
                   )}
                 </div>
               )}
