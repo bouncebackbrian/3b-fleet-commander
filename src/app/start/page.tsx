@@ -3,24 +3,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { createAuthClient } from '@/lib/auth-client'
-import { createBusiness, getBusinessRegistry, getThreeBProfile, type BusinessRegistryRow, type BusinessType, type ThreeBProfile } from '@/lib/identity-registry'
+import { getBusinessRegistry, getThreeBProfile, type BusinessRegistryRow, type ThreeBProfile } from '@/lib/identity-registry'
 import { FLEET_MODES } from '@/lib/fleet/modes'
 import CompanyProfileStep from '@/components/setup/CompanyProfileStep'
 import AssetsSetupStep from '@/components/setup/AssetsSetupStep'
 
 const shell: React.CSSProperties = { minHeight: '100dvh', background: '#030c0a', color: '#eefcf8', fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif' }
 const card: React.CSSProperties = { border: '1px solid rgba(0,232,176,.12)', background: 'rgba(11,27,24,.72)', borderRadius: 16, padding: '1rem' }
-const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '.7rem .75rem', borderRadius: 10, border: '1px solid rgba(255,255,255,.12)', background: '#07120f', color: '#eefcf8' }
+const threeBoostUrl = process.env.NEXT_PUBLIC_3BOOST_URL || 'https://3boost.bouncebackbrian.com'
 
 export default function StartPage() {
   const [profile, setProfile] = useState<ThreeBProfile | null>(null)
   const [businesses, setBusinesses] = useState<BusinessRegistryRow[]>([])
   const [selectedBusinessId, setSelectedBusinessId] = useState('')
   const [selectedMode, setSelectedMode] = useState('dump-truck')
-  const [companyName, setCompanyName] = useState('')
-  const [businessType, setBusinessType] = useState<BusinessType>('carrier')
   const [loading, setLoading] = useState(true)
-  const [creating, setCreating] = useState(false)
+  const [provisioning, setProvisioning] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const [error, setError] = useState('')
 
@@ -31,7 +29,7 @@ export default function StartPage() {
     const rows = await getBusinessRegistry()
     setProfile(p)
     setBusinesses(rows)
-    setSelectedBusinessId(prev => prev || (p.default_business_id && rows.some(r => r.business.id === p.default_business_id) ? p.default_business_id : rows[0]?.business.id ?? ''))
+    setSelectedBusinessId(prev => prev || rows[0]?.business.id || '')
     setLoading(false)
   }
 
@@ -41,20 +39,26 @@ export default function StartPage() {
   const selectedBusiness = selectedRow?.business ?? null
   const mode = FLEET_MODES.find(m => m.id === selectedMode) ?? FLEET_MODES[0]
 
-  async function createNewBusiness() {
-    if (!companyName.trim()) return
-    setCreating(true)
+  async function provisionFleetBusiness(businessId: string) {
+    const response = await fetch('/api/fleet/provision-business', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ businessId }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.error || 'Could not provision Fleet Commander access for this Core business.')
+  }
+
+  async function chooseBusiness(businessId: string) {
+    setSelectedBusinessId(businessId)
     setError('')
+    setProvisioning(true)
     try {
-      const biz = await createBusiness({ company_name: companyName.trim(), business_type: businessType })
-      if (!biz) throw new Error('Business creation did not return a business record. Please try again.')
-      await refresh()
-      setSelectedBusinessId(biz.id)
-      setCompanyName('')
+      await provisionFleetBusiness(businessId)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create the business. Please try again.')
+      setError(err instanceof Error ? err.message : 'Could not provision Fleet Commander access.')
     } finally {
-      setCreating(false)
+      setProvisioning(false)
     }
   }
 
@@ -64,7 +68,7 @@ export default function StartPage() {
     finally { window.location.replace('/login') }
   }
 
-  if (loading) return <main style={shell}><div style={{ maxWidth: 900, margin: '0 auto', padding: '3rem 1.25rem', color: '#78a79a' }}>Loading your account…</div></main>
+  if (loading) return <main style={shell}><div style={{ maxWidth: 900, margin: '0 auto', padding: '3rem 1.25rem', color: '#78a79a' }}>Loading your 3Boost businesses…</div></main>
 
   return (
     <main style={shell}>
@@ -72,9 +76,10 @@ export default function StartPage() {
         <div style={{ maxWidth: 900, margin: '0 auto', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
           <Link href="/" style={{ color: '#f5c200', fontWeight: 950, textDecoration: 'none' }}>3B FLEET COMMANDER</Link>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <a href={`${threeBoostUrl}/dashboard`} style={{ color: '#00e8b0', fontSize: '.68rem', fontWeight: 900, textDecoration: 'none' }}>3Boost Dashboard</a>
             <div style={{ textAlign: 'right' }}>
               <div style={{ color: '#eefcf8', fontSize: '.72rem', fontWeight: 850 }}>{[profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || profile?.email}</div>
-              <div style={{ color: '#00e8b0', fontSize: '.62rem', fontWeight: 850 }}>{profile?.three_b_id || '3B ID pending'}</div>
+              <div style={{ color: '#00e8b0', fontSize: '.62rem', fontWeight: 850 }}>{profile?.three_b_id || '3B ID'}</div>
             </div>
             <button onClick={signOut} disabled={loggingOut} style={{ border: '1px solid rgba(255,255,255,.12)', background: 'rgba(255,255,255,.04)', color: '#eefcf8', borderRadius: 9, padding: '.5rem .7rem', fontSize: '.68rem', fontWeight: 850 }}>
               {loggingOut ? 'Logging out…' : 'Log Out'}
@@ -85,45 +90,40 @@ export default function StartPage() {
 
       <section style={{ maxWidth: 900, margin: '0 auto', padding: '2.25rem 1.25rem 4rem', display: 'grid', gap: 22 }}>
         <div>
-          <div style={{ color: '#00e8b0', fontSize: '.65rem', fontWeight: 900, letterSpacing: '.12em', textTransform: 'uppercase' }}>Fleet Commander Setup</div>
-          <h1 style={{ margin: '.45rem 0 .5rem', fontSize: 'clamp(1.8rem,5vw,2.8rem)' }}>Set up your company</h1>
-          <p style={{ color: '#739d92', lineHeight: 1.6, margin: 0 }}>Choose the business, complete its company profile and assets, select the operating mode, then open the company dashboard.</p>
+          <div style={{ color: '#00e8b0', fontSize: '.65rem', fontWeight: 900, letterSpacing: '.12em', textTransform: 'uppercase' }}>Fleet Commander Activation</div>
+          <h1 style={{ margin: '.45rem 0 .5rem', fontSize: 'clamp(1.8rem,5vw,2.8rem)' }}>Connect a 3Boost company</h1>
+          <p style={{ color: '#739d92', lineHeight: 1.6, margin: 0 }}>Businesses are created and owned by Core 3Boost. Fleet Commander only provisions operational access, assets, and fleet workflows for the selected 3B Business ID.</p>
         </div>
 
-        <Step n="1" title="Choose or create business">
+        <Step n="1" title="Choose 3Boost business">
           <div style={{ display: 'grid', gap: 10 }}>
-            {businesses.map(row => (
-              <button key={row.business.id} onClick={() => setSelectedBusinessId(row.business.id)} style={{ ...card, color: '#eefcf8', textAlign: 'left', cursor: 'pointer', borderColor: selectedBusinessId === row.business.id ? 'rgba(0,232,176,.55)' : 'rgba(0,232,176,.12)' }}>
+            {businesses.length === 0 ? (
+              <div style={{ ...card, display: 'grid', gap: 10 }}>
+                <strong>No Core 3Boost businesses found.</strong>
+                <div style={{ color: '#789f95', fontSize: '.75rem', lineHeight: 1.5 }}>Create the company from the 3Boost Dashboard first. Once Core assigns its permanent 3B Business ID, come back here and Fleet Commander will provision access for that ID.</div>
+                <a href={`${threeBoostUrl}/dashboard`} style={{ padding: '.75rem', borderRadius: 10, background: '#00e8b0', color: '#04110d', fontWeight: 950, textDecoration: 'none', textAlign: 'center' }}>Open 3Boost Dashboard →</a>
+              </div>
+            ) : businesses.map(row => (
+              <button key={row.business.id} onClick={() => void chooseBusiness(row.business.id)} style={{ ...card, color: '#eefcf8', textAlign: 'left', cursor: 'pointer', borderColor: selectedBusinessId === row.business.id ? 'rgba(0,232,176,.55)' : 'rgba(0,232,176,.12)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
                   <div>
                     <div style={{ fontWeight: 950 }}>{row.business.company_name}</div>
                     <div style={{ color: '#709c90', marginTop: 3, fontSize: '.7rem' }}>{row.business.three_b_biz_id} · {row.business.business_type.replace('_', ' ')}</div>
                   </div>
-                  {selectedBusinessId === row.business.id && <span style={{ color: '#00e8b0', fontSize: '.68rem', fontWeight: 900 }}>SELECTED ✓</span>}
+                  {selectedBusinessId === row.business.id && <span style={{ color: '#00e8b0', fontSize: '.68rem', fontWeight: 900 }}>{provisioning ? 'CONNECTING…' : 'SELECTED ✓'}</span>}
                 </div>
               </button>
             ))}
-
-            <div style={{ ...card, display: 'grid', gap: 9 }}>
-              <strong>{businesses.length ? 'Add another business' : 'Create your first business'}</strong>
-              <input style={input} value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Company name — e.g. Cal-Neva Trucking" />
-              <select style={input} value={businessType} onChange={e => setBusinessType(e.target.value as BusinessType)}>
-                <option value="carrier">Carrier / Fleet</option><option value="owner_op">Owner-Operator</option><option value="fleet_management">Fleet Management</option><option value="service">Service Business</option><option value="brokerage">Brokerage</option><option value="other">Other</option>
-              </select>
-              {error && <div style={{ color: '#ff806f', fontSize: '.72rem' }}>{error}</div>}
-              <button onClick={createNewBusiness} disabled={creating || !companyName.trim()} style={{ padding: '.75rem', borderRadius: 10, border: 0, background: '#00e8b0', color: '#04110d', fontWeight: 950, opacity: creating || !companyName.trim() ? .55 : 1 }}>
-                {creating ? 'Creating business…' : 'Create Business'}
-              </button>
-            </div>
+            {error && <div style={{ color: '#ff806f', fontSize: '.72rem' }}>{error}</div>}
           </div>
         </Step>
 
         <Step n="2" title="Company profile">
-          {selectedBusiness ? <CompanyProfileStep businessId={selectedBusiness.id} /> : <SetupHint text="Choose a business first." />}
+          {selectedBusiness ? <CompanyProfileStep businessId={selectedBusiness.id} /> : <SetupHint text="Choose a 3Boost business first." />}
         </Step>
 
         <Step n="3" title="Company assets">
-          {selectedBusiness ? <AssetsSetupStep businessId={selectedBusiness.id} /> : <SetupHint text="Choose a business first." />}
+          {selectedBusiness ? <AssetsSetupStep businessId={selectedBusiness.id} /> : <SetupHint text="Choose a 3Boost business first." />}
         </Step>
 
         <Step n="4" title="Choose operating mode">
@@ -138,11 +138,11 @@ export default function StartPage() {
           </div>
         </Step>
 
-        <Step n="5" title="Finish setup">
+        <Step n="5" title="Open Fleet Commander">
           <div style={{ ...card, display: 'grid', gap: 12 }}>
-            <div><div style={{ color: '#719b90', fontSize: '.62rem', textTransform: 'uppercase', fontWeight: 850 }}>Business</div><div style={{ marginTop: 4, fontWeight: 950 }}>{selectedBusiness?.company_name ?? 'Choose a business above'}</div></div>
+            <div><div style={{ color: '#719b90', fontSize: '.62rem', textTransform: 'uppercase', fontWeight: 850 }}>Core business</div><div style={{ marginTop: 4, fontWeight: 950 }}>{selectedBusiness?.company_name ?? 'Choose a business above'}</div>{selectedBusiness && <div style={{ color: '#709c90', fontSize: '.68rem', marginTop: 3 }}>{selectedBusiness.three_b_biz_id}</div>}</div>
             <div><div style={{ color: '#719b90', fontSize: '.62rem', textTransform: 'uppercase', fontWeight: 850 }}>Fleet mode</div><div style={{ marginTop: 4, fontWeight: 950 }}>{mode.name}</div></div>
-            {selectedBusiness && mode.status === 'live' ? <Link href="/admin/dump-truck/dashboard" style={{ padding: '.78rem 1rem', borderRadius: 10, background: '#00e8b0', color: '#04110d', fontWeight: 950, textDecoration: 'none', textAlign: 'center' }}>Finish & Open Company Dashboard →</Link> : <SetupHint text="Choose a business and available mode to continue." />}
+            {selectedBusiness && mode.status === 'live' && !provisioning ? <Link href="/admin/dump-truck/dashboard" style={{ padding: '.78rem 1rem', borderRadius: 10, background: '#00e8b0', color: '#04110d', fontWeight: 950, textDecoration: 'none', textAlign: 'center' }}>Open Company Fleet Dashboard →</Link> : <SetupHint text="Choose a Core business and available mode to continue." />}
           </div>
         </Step>
       </section>
