@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { createAuthClient } from '@/lib/auth-client'
 import { createBusiness, getBusinessRegistry, getThreeBProfile, type BusinessRegistryRow, type BusinessType, type ThreeBProfile } from '@/lib/identity-registry'
 import { FLEET_MODES } from '@/lib/fleet/modes'
 
@@ -20,12 +21,13 @@ export default function StartPage() {
   const [businessType, setBusinessType] = useState<BusinessType>('carrier')
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
   const [error, setError] = useState('')
 
   async function refresh() {
     setLoading(true)
     const p = await getThreeBProfile()
-    if (!p) { router.replace('/login'); return }
+    if (!p) { window.location.replace('/login'); return }
     const rows = await getBusinessRegistry()
     setProfile(p)
     setBusinesses(rows)
@@ -55,6 +57,15 @@ export default function StartPage() {
     }
   }
 
+  async function signOut() {
+    setLoggingOut(true)
+    try {
+      await createAuthClient().auth.signOut()
+    } finally {
+      window.location.replace('/login')
+    }
+  }
+
   if (loading) return <main style={shell}><div style={{ maxWidth: 900, margin: '0 auto', padding: '3rem 1.25rem', color: '#78a79a' }}>Loading your account…</div></main>
 
   return (
@@ -62,9 +73,14 @@ export default function StartPage() {
       <header style={{ borderBottom: '1px solid rgba(0,232,176,.08)', padding: '1rem 1.25rem' }}>
         <div style={{ maxWidth: 900, margin: '0 auto', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
           <Link href="/" style={{ color: '#f5c200', fontWeight: 950, textDecoration: 'none' }}>3B FLEET COMMANDER</Link>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ color: '#eefcf8', fontSize: '.72rem', fontWeight: 850 }}>{[profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || profile?.email}</div>
-            <div style={{ color: '#00e8b0', fontSize: '.62rem', fontWeight: 850 }}>{profile?.three_b_id}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ color: '#eefcf8', fontSize: '.72rem', fontWeight: 850 }}>{[profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || profile?.email}</div>
+              <div style={{ color: '#00e8b0', fontSize: '.62rem', fontWeight: 850 }}>{profile?.three_b_id || '3B ID pending'}</div>
+            </div>
+            <button onClick={signOut} disabled={loggingOut} style={{ border: '1px solid rgba(255,255,255,.12)', background: 'rgba(255,255,255,.04)', color: '#eefcf8', borderRadius: 9, padding: '.5rem .7rem', fontSize: '.68rem', fontWeight: 850, cursor: loggingOut ? 'wait' : 'pointer', opacity: loggingOut ? .6 : 1 }}>
+              {loggingOut ? 'Logging out…' : 'Log Out'}
+            </button>
           </div>
         </div>
       </header>
