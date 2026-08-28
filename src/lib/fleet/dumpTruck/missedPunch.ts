@@ -304,7 +304,7 @@ export async function resolveNextShiftReview(input: {
     before: rec,
     after: data,
     metadata: { finalEnd, extraMinutes, action: input.action },
-    source: 'driver',
+    source: 'api',
   })
 
   return fromRow(data)
