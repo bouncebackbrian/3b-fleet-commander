@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase-browser'
 
 type Asset = {
   id: string
@@ -26,16 +25,16 @@ export default function AssetsSetupStep({ businessId }: { businessId: string }) 
     let active = true
     async function load() {
       setLoading(true); setError('')
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from('fleet_equipment')
-        .select('id,unit_number,equipment_type,make,model,year,status,vin,license_plate')
-        .eq('business_id', businessId)
-        .order('unit_number', { ascending: true })
-      if (!active) return
-      if (error) setError(error.message)
-      else setAssets((data ?? []) as Asset[])
-      setLoading(false)
+      try {
+        const response = await fetch(`/api/fleet/setup/assets?businessId=${encodeURIComponent(businessId)}`, { cache: 'no-store' })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(payload.error || 'Could not load company assets')
+        if (active) setAssets((payload.assets ?? []) as Asset[])
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : 'Could not load company assets')
+      } finally {
+        if (active) setLoading(false)
+      }
     }
     void load()
     return () => { active = false }
@@ -44,9 +43,9 @@ export default function AssetsSetupStep({ businessId }: { businessId: string }) 
   if (loading) return <div style={{ color: '#789f95', fontSize: '.72rem' }}>Loading company assets…</div>
 
   return <div style={{ display: 'grid', gap: 10 }}>
-    <div style={{ color: '#789f95', fontSize: '.72rem', lineHeight: 1.5 }}>Assets shown here belong only to the selected 3B Business ID. They are the company equipment Fleet Commander will use for assignments, inspections, maintenance, fuel, and reports.</div>
+    <div style={{ color: '#789f95', fontSize: '.72rem', lineHeight: 1.5 }}>Core 3Boost owns the company identity. These operational assets come from Fleet Commander and stay scoped to the same 3B Business ID.</div>
     {error && <div style={{ color: '#ff806f', fontSize: '.72rem' }}>{error}</div>}
-    {!error && assets.length === 0 && <div style={{ ...card, color: '#8cad9f', fontSize: '.75rem' }}>No company assets are on file yet. Add equipment from Admin → Assets after setup.</div>}
+    {!error && assets.length === 0 && <div style={{ ...card, color: '#8cad9f', fontSize: '.75rem' }}>No Fleet Commander assets are on file for this company yet. You can add equipment after setup.</div>}
     {assets.map(asset => (
       <div key={asset.id} style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
@@ -63,6 +62,6 @@ export default function AssetsSetupStep({ businessId }: { businessId: string }) 
         </div>}
       </div>
     ))}
-    <div style={{ color: '#6f978c', fontSize: '.68rem', lineHeight: 1.45 }}>Missing VIN, plate, ownership, rental, trailer, and maintenance details stay blank until confirmed. Fleet Commander should never invent asset data.</div>
+    <div style={{ color: '#6f978c', fontSize: '.68rem', lineHeight: 1.45 }}>Missing VIN, plate, ownership, rental, trailer, and maintenance details stay blank until confirmed. Driver-submitted corrections will go through review instead of overwriting the official asset record.</div>
   </div>
 }
