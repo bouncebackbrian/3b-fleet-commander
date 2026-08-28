@@ -10,6 +10,7 @@ export type CompanyProfileInput = {
   mcNumber: string
   dotNumber: string
   businessPhone: string
+  quickTextPhone: string
   domainEmail: string
   website: string
 }
@@ -27,6 +28,7 @@ export async function updateCompanyProfile(businessId: string, input: CompanyPro
     p_business_phone: input.businessPhone || null,
     p_domain_email: input.domainEmail || null,
     p_website: input.website || null,
+    p_quick_text_phone: input.quickTextPhone || null,
   })
   if (error) throw new Error(error.message)
 }
