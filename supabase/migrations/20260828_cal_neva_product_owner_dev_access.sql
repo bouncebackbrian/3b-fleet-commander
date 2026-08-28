@@ -2,8 +2,9 @@
 -- 3B FLEET COMMANDER — Cal-Neva product-owner development access
 -- Migration: 20260828_cal_neva_product_owner_dev_access
 --
--- Keeps platform Founder identity separate from the normal product-owner
--- account used to test Fleet Commander as a real business user.
+-- Treats the product-owner account as a fully authorized Cal-Neva user for
+-- development while keeping legal business ownership and platform Founder
+-- authority separate.
 --
 -- Development business: Cal-Neva Trucking
 -- Business UUID: 34f00ed3-1759-4534-afad-34b6b000792f
@@ -29,22 +30,21 @@ begin
     return;
   end if;
 
-  -- Ecosystem/business relationship. For development this account is allowed
-  -- to manage Cal-Neva, but this does not change the platform Founder owner.
+  -- Authorized business user with broad management authority, but not legal
+  -- ownership. Ownership remains represented by businesses.owner_id.
   insert into public.business_members (business_id, user_id, role)
   values (v_business_id, v_user_id, 'manager')
   on conflict (business_id, user_id) do update
     set role = excluded.role;
 
-  -- Fleet membership remains a display label; portal grants below are the
-  -- actual authorization source.
+  -- Display role only. Actual authorization comes from explicit grants below.
   insert into public.fleet_business_members (business_id, user_id, role, active)
   values (v_business_id, v_user_id, 'admin', true)
   on conflict (business_id, user_id) do update
     set role = excluded.role,
         active = true;
 
-  -- Product-owner dev account receives all three requested operational views.
+  -- Full requested Fleet views: Driver + Dispatch + Admin.
   insert into public.fleet_member_portal_grants
     (business_id, user_id, portal, permission_level, granted_by)
   values
@@ -55,6 +55,54 @@ begin
     set permission_level = excluded.permission_level,
         granted_by = excluded.granted_by,
         updated_at = now();
+
+  -- Full current Business Admin permissions.
+  insert into public.business_member_permissions
+    (business_id, user_id, permission, granted_by)
+  select v_business_id, v_user_id, permission, v_user_id
+  from unnest(array[
+    'asset_portal_view',
+    'asset_portal_manage',
+    'authorized_users_view',
+    'authorized_users_manage',
+    'company_profile_view',
+    'company_profile_manage',
+    'billing_view',
+    'billing_manage',
+    'subscriptions_view',
+    'subscriptions_manage',
+    'compliance_view',
+    'compliance_manage',
+    'driver_pay_view',
+    'driver_pay_manage',
+    'payroll_settings_view',
+    'payroll_settings_manage'
+  ]::text[]) permission
+  on conflict (business_id, user_id, permission) do update
+    set granted_by = excluded.granted_by;
+
+  -- Full current Dump Truck operational capability set.
+  insert into public.fleet_member_capability_grants
+    (business_id, user_id, capability, mode_id, granted_by)
+  select v_business_id, v_user_id, capability, 'dump-truck', v_user_id
+  from unnest(array[
+    'hours_view',
+    'hours_approve',
+    'hours_correct',
+    'reports_view',
+    'reports_generate',
+    'kpi_view',
+    'kpi_export',
+    'driver_status_view',
+    'dispatch_assign',
+    'dispatch_message',
+    'tickets_view',
+    'tickets_manage',
+    'fuel_view',
+    'exceptions_manage'
+  ]::text[]) capability
+  on conflict (business_id, user_id, capability, mode_id) do update
+    set granted_by = excluded.granted_by;
 
   update public.profiles
   set default_business_id = v_business_id,
