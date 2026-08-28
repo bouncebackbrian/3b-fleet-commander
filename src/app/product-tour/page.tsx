@@ -20,45 +20,36 @@ export default function ProductTourPage() {
         <div style={{ color: '#00e8b0', fontSize: '.7rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.14em' }}>See it in action</div>
         <h1 style={{ fontSize: 'clamp(2rem,6vw,3.7rem)', lineHeight: 1.05, margin: '.75rem 0 1rem', fontWeight: 950 }}>Built around the work drivers actually do.</h1>
         <p style={{ color: '#78aa9c', lineHeight: 1.7, maxWidth: 700, margin: '0 auto' }}>
-          Fleet Commander changes the driver experience by operation type. Live modes show the current workflow; upcoming modes are clearly marked as previews until their driver flow is released.
+          Fleet Commander changes the driver experience by operation type. Real screenshots will replace the branded placeholders as each finished workflow is deployed.
         </p>
       </section>
 
       <section style={{ maxWidth: 1100, margin: '0 auto', padding: '1.5rem 1.25rem 4rem', display: 'grid', gap: '1.2rem' }}>
         {FLEET_MODES.map(mode => (
           <article key={mode.id} style={card}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(280px,.9fr)', gap: '1.2rem', alignItems: 'stretch' }} className="tour-grid">
+            <div className="tour-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(280px,.9fr)', gap: '1.2rem', alignItems: 'stretch' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '1.8rem' }}>{mode.icon}</span>
                   <h2 style={{ margin: 0, fontSize: '1.25rem' }}>{mode.name}</h2>
-                  <span style={{ padding: '.2rem .55rem', borderRadius: 999, fontSize: '.58rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', color: mode.status === 'live' ? '#00e8b0' : '#f5c200', border: `1px solid ${mode.status === 'live' ? 'rgba(0,232,176,.28)' : 'rgba(245,194,0,.28)'}` }}>
-                    {mode.status === 'live' ? 'Live' : 'Coming Soon'}
-                  </span>
+                  <span style={{ padding: '.2rem .55rem', borderRadius: 999, fontSize: '.58rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', color: mode.status === 'live' ? '#00e8b0' : '#f5c200', border: `1px solid ${mode.status === 'live' ? 'rgba(0,232,176,.28)' : 'rgba(245,194,0,.28)'}` }}>{mode.status === 'live' ? 'Live' : 'Coming Soon'}</span>
                 </div>
                 <p style={{ color: '#7ca99d', lineHeight: 1.6, fontSize: '.84rem' }}>{mode.summary}</p>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 10 }} className="value-grid">
+                <div className="value-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 10 }}>
                   <ValueList title="Driver" items={mode.driverValue} />
                   <ValueList title="Company" items={mode.companyValue} />
                 </div>
-
-                {mode.status === 'live' && mode.driverHref && (
-                  <Link href={mode.driverHref} style={{ display: 'inline-block', marginTop: '1rem', color: '#00e8b0', fontWeight: 850, textDecoration: 'none' }}>Open live driver mode →</Link>
-                )}
+                {mode.status === 'live' && mode.driverHref && <Link href={mode.driverHref} style={{ display: 'inline-block', marginTop: '1rem', color: '#00e8b0', fontWeight: 850, textDecoration: 'none' }}>Open live driver mode →</Link>}
               </div>
-
-              <PreviewFrame mode={mode.name} live={mode.status === 'live'} />
+              <ScreenshotPlaceholder mode={mode.name} comingSoon={mode.status !== 'live'} />
             </div>
           </article>
         ))}
       </section>
 
       <section style={{ borderTop: '1px solid rgba(0,232,176,.08)', padding: '3rem 1.25rem', textAlign: 'center' }}>
-        <h2 style={{ fontSize: '1.7rem', marginBottom: '.6rem' }}>Real screenshots replace previews as modes ship.</h2>
-        <p style={{ color: '#6f9b8f', maxWidth: 650, margin: '0 auto 1.3rem', lineHeight: 1.6 }}>
-          The page is already structured for authentic mobile and dispatch screenshots so prospects can see exactly what drivers and companies receive before subscribing.
-        </p>
+        <h2 style={{ fontSize: '1.7rem', marginBottom: '.6rem' }}>Build first. Capture real screens next.</h2>
+        <p style={{ color: '#6f9b8f', maxWidth: 650, margin: '0 auto 1.3rem', lineHeight: 1.6 }}>Each placeholder is intentionally temporary. Once a workflow is finished and deployed, its authentic driver and company screenshots can replace the logo frame one-for-one.</p>
         <Link href="/start" style={{ display: 'inline-block', padding: '.75rem 1.25rem', borderRadius: 10, background: '#00e8b0', color: '#04110d', fontWeight: 950, textDecoration: 'none' }}>Set Up Fleet Commander →</Link>
       </section>
 
@@ -68,33 +59,17 @@ export default function ProductTourPage() {
 }
 
 function ValueList({ title, items }: { title: string; items: string[] }) {
-  return <div style={{ padding: '.8rem', borderRadius: 12, background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.06)' }}>
-    <div style={{ color: '#b7d9d0', fontSize: '.62rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '.45rem' }}>{title} value</div>
-    {items.map(item => <div key={item} style={{ color: '#789e94', fontSize: '.73rem', lineHeight: 1.55 }}>✓ {item}</div>)}
-  </div>
+  return <div style={{ padding: '.8rem', borderRadius: 12, background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.06)' }}><div style={{ color: '#b7d9d0', fontSize: '.62rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '.45rem' }}>{title} value</div>{items.map(item => <div key={item} style={{ color: '#789e94', fontSize: '.73rem', lineHeight: 1.55 }}>✓ {item}</div>)}</div>
 }
 
-function PreviewFrame({ mode, live }: { mode: string; live: boolean }) {
+function ScreenshotPlaceholder({ mode, comingSoon }: { mode: string; comingSoon: boolean }) {
   return <div style={{ borderRadius: 22, padding: 10, background: '#0c1512', border: '1px solid rgba(255,255,255,.1)', boxShadow: '0 16px 40px rgba(0,0,0,.25)' }}>
-    <div style={{ borderRadius: 16, minHeight: 330, padding: '1rem', background: '#06100d', display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div><div style={{ color: '#00e8b0', fontSize: '.55rem', fontWeight: 900 }}>FLEET COMMANDER</div><div style={{ fontSize: '.85rem', fontWeight: 900 }}>{mode}</div></div>
-        <div style={{ padding: '.25rem .5rem', borderRadius: 8, background: live ? 'rgba(0,232,176,.08)' : 'rgba(245,194,0,.08)', color: live ? '#00e8b0' : '#f5c200', fontSize: '.55rem', fontWeight: 900 }}>{live ? 'LIVE UI PREVIEW' : 'CONCEPT PREVIEW'}</div>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
-        <MiniStat label="Shift" value="Running" /><MiniStat label="GPS" value="Active" />
-      </div>
-      <div style={{ flex: 1, borderRadius: 12, border: '1px solid rgba(0,232,176,.1)', background: 'rgba(0,232,176,.03)', padding: '.9rem' }}>
-        <div style={{ color: '#789e94', fontSize: '.6rem', fontWeight: 800, textTransform: 'uppercase' }}>Driver workflow</div>
-        <div style={{ marginTop: 8, display: 'grid', gap: 7 }}>
-          {['Current activity', 'Next required action', 'Time + mileage evidence', 'Photo / ticket / receipt capture'].map(x => <div key={x} style={{ padding: '.6rem', borderRadius: 9, background: 'rgba(255,255,255,.035)', color: '#b9d8d0', fontSize: '.7rem' }}>{x}</div>)}
-        </div>
-      </div>
-      <div style={{ color: '#53786f', fontSize: '.58rem', textAlign: 'center' }}>{live ? 'Screenshot slot ready for deployed app capture' : 'Coming Soon — final UI may change before release'}</div>
+    <div style={{ borderRadius: 16, minHeight: 330, padding: '1rem', background: 'radial-gradient(circle at 50% 35%,rgba(0,232,176,.08),transparent 42%),#06100d', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+      <img src="/logo.png" alt="Fleet Commander" style={{ width: 92, height: 92, objectFit: 'cover', borderRadius: 18, boxShadow: '0 0 28px rgba(0,232,176,.18)' }} />
+      <div style={{ marginTop: 16, color: '#f5c200', fontSize: '.62rem', fontWeight: 950, letterSpacing: '.12em', textTransform: 'uppercase' }}>Fleet Commander</div>
+      <div style={{ marginTop: 5, fontSize: '1.05rem', fontWeight: 950 }}>{mode}</div>
+      <div style={{ marginTop: 10, maxWidth: 250, color: '#668f83', fontSize: '.7rem', lineHeight: 1.5 }}>{comingSoon ? 'Coming Soon — final driver flow is being built.' : 'Real deployed screenshots will be captured after the current build is finished.'}</div>
+      <div style={{ marginTop: 16, padding: '.3rem .65rem', borderRadius: 999, border: `1px solid ${comingSoon ? 'rgba(245,194,0,.25)' : 'rgba(0,232,176,.25)'}`, color: comingSoon ? '#f5c200' : '#00e8b0', fontSize: '.58rem', fontWeight: 900, textTransform: 'uppercase' }}>{comingSoon ? 'Coming Soon' : 'Screenshot Placeholder'}</div>
     </div>
   </div>
-}
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return <div style={{ padding: '.65rem', borderRadius: 10, background: 'rgba(255,255,255,.035)' }}><div style={{ color: '#5f857a', fontSize: '.52rem', fontWeight: 800, textTransform: 'uppercase' }}>{label}</div><div style={{ marginTop: 3, fontSize: '.75rem', fontWeight: 900 }}>{value}</div></div>
 }
