@@ -10,7 +10,8 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Sun, Moon, Download, ArrowLeft, House } from 'lucide-react'
-import { readUserMode, MODE_CONFIG, type UserMode } from '@/lib/userMode'
+import { readUserMode, writeUserMode, getDefaultMode, MODE_CONFIG, type UserMode } from '@/lib/userMode'
+import { getCurrentUser } from '@/lib/auth-adapter'
 import UserModeSelectorSheet from '@/components/layout/UserModeSelectorSheet'
 
 interface Props {
@@ -25,26 +26,39 @@ export default function TopBar({ title, subtitle, onExport }: Props) {
   const [theme,      setTheme]      = useState<'dark' | 'light'>('dark')
   const [mode,       setMode]       = useState<UserMode | null>(null)
   const [showMode,   setShowMode]   = useState(false)
-  const [firstRun,   setFirstRun]   = useState(false)
 
   useEffect(() => {
+    let cancelled = false
+
     const t = document.documentElement.getAttribute('data-theme') as 'dark' | 'light'
     if (t) setTheme(t)
 
     const stored = readUserMode()
-    if (!stored) {
-      setFirstRun(true)
-      setShowMode(true)
-    } else {
+    if (stored) {
       setMode(stored)
+    } else {
+      // Do not force a full-screen first-run selector over operational pages.
+      // Resolve the safest permitted default from actual portal grants and save it.
+      getCurrentUser().then(user => {
+        if (cancelled || !user) return
+        const defaultMode = getDefaultMode(user.portals ?? {})
+        if (!defaultMode) return
+        setMode(defaultMode)
+        writeUserMode(defaultMode)
+      }).catch(() => {
+        // Navigation remains usable even if portal context is temporarily unavailable.
+      })
     }
 
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<UserMode>).detail
-      if (detail) { setMode(detail); setFirstRun(false) }
+      if (detail) setMode(detail)
     }
     window.addEventListener('3b-mode-changed', handler)
-    return () => window.removeEventListener('3b-mode-changed', handler)
+    return () => {
+      cancelled = true
+      window.removeEventListener('3b-mode-changed', handler)
+    }
   }, [])
 
   const toggle = () => {
@@ -132,7 +146,7 @@ export default function TopBar({ title, subtitle, onExport }: Props) {
         </div>
       </header>
 
-      <UserModeSelectorSheet open={showMode} onClose={() => setShowMode(false)} isFirstRun={firstRun} />
+      <UserModeSelectorSheet open={showMode} onClose={() => setShowMode(false)} />
     </>
   )
 }
