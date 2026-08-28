@@ -69,7 +69,7 @@ export interface GeoEvidence {
   lat: number | null
   lng: number | null
   accuracyM: number | null
-  capturedAt: string | null // ISO
+  capturedAt: string | null
   permission: LocationPermissionStatus
   matchedSiteId?: string | null
   distanceFromSiteM?: number | null
@@ -77,7 +77,7 @@ export interface GeoEvidence {
 }
 
 export interface DumpTruckEvent {
-  id: string // client-generated UUID
+  id: string
   idempotencyKey: string
   businessId: string
   threebId: string | null
@@ -88,9 +88,9 @@ export interface DumpTruckEvent {
   vehicleId: string | null
   trailerId: string | null
   eventType: DumpTruckEventType
-  deviceCapturedAt: string // ISO — device clock
-  serverReceivedAt?: string | null // filled by server
-  effectiveAt: string // ISO — the timestamp we treat as authoritative for ordering
+  deviceCapturedAt: string
+  serverReceivedAt?: string | null
+  effectiveAt: string
   timezone: string | null
   utcOffsetMinutes: number | null
   geo: GeoEvidence
@@ -143,7 +143,6 @@ export interface DumpTruckSite {
   operatingHours: Record<string, unknown>
   active: boolean
   verified: boolean
-  /** Alternate names dispatch/drivers use for this site in free text ("White Fir", "the Lockwood pit") — matched by resolveLocationText. */
   aliases: string[]
 }
 
@@ -156,7 +155,6 @@ export interface DumpTruckJob {
   poNumber: string | null
   customerName: string | null
   brokerName: string | null
-  /** FK into fleet_brokers — null for legacy jobs still only carrying the free-text brokerName. */
   brokerId: string | null
   driverId: string | null
   truckId: string | null
@@ -167,16 +165,9 @@ export interface DumpTruckJob {
   estQuantity: number | null
   quantityUnit: 'loads' | 'tons' | 'cubic_yards' | 'hours' | 'miles' | 'units'
   status: 'proposed' | 'draft' | 'scheduled' | 'active' | 'completed' | 'cancelled'
-  /** 'broker' when a Broker-portal user originated this deal (see proposeJob/acceptJob). */
   source: 'dispatch' | 'broker'
   dispatchAcceptedBy: string | null
   dispatchAcceptedAt: string | null
-
-  // Dispatch-ticket fields (2026-07-28) — mirror the paper dispatch ticket
-  // (load time, order/delivery date, cosignee, ordered-by, phone, truck
-  // type, directions, travel time, fuel surcharge, price per hour/ton,
-  // material cost) so the admin Jobs form can replace it, not just
-  // supplement it.
   loadTime: string | null
   orderDate: string | null
   deliveryDate: string | null
@@ -190,15 +181,8 @@ export interface DumpTruckJob {
   pricePerHour: number | null
   pricePerTon: number | null
   materialCost: number | null
-  /** Broker's own bill/ticket number (distinct from PO#) — printed on their paper dispatch ticket, e.g. "Freight Bill". */
   freightBillNumber: string | null
-
-  // Sign-out fields (2026-08-03) — the driver's own paper-ticket estimate vs.
-  // what the job site actually released them at, distinct from the app's
-  // auto-tracked clock_out (that's the driver's own action, not the customer's).
-  /** Driver-written estimate on the paper ticket, e.g. "3:15 PM incl. drive to yard". Free text — not a parsed time. */
   scheduledEndTime: string | null
-  /** Name of the customer/job-site rep who formally released the driver. */
   signedOutBy: string | null
   signedOutAt: string | null
 }
@@ -261,6 +245,8 @@ export interface LoadCycle {
 export type InspectionType = 'pretrip' | 'posttrip'
 export type InspectionItemResult = 'pass' | 'defect' | 'not_applicable' | 'note'
 export type DefectSeverity = 'monitor' | 'non_safety' | 'safety_critical' | 'out_of_service'
+export type TireAxleType = 'steer' | 'other'
+export type TireStatus = 'green' | 'yellow' | 'red'
 
 export interface InspectionTemplateItem {
   key: string
@@ -278,4 +264,9 @@ export interface InspectionItemInput {
   severity: DefectSeverity | null
   notes: string | null
   photoDocId?: string | null
+  tirePosition?: string | null
+  tireAxleType?: TireAxleType | null
+  treadDepth32nds?: number | null
+  visibleDamage?: boolean | null
+  tireStatus?: TireStatus | null
 }
