@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       sourceDocument,
       actorId: auth.userId,
       actorEmail: auth.email,
-      source: 'driver',
+      source: 'api',
     })
 
     const confirmation = await confirmDailyHours(
