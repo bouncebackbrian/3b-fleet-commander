@@ -56,46 +56,33 @@ export async function applyShiftHourOverride(params: {
   sourceDocument: string | null
   actorId: string
   actorEmail?: string | null
-  source?: 'admin' | 'driver' | 'system'
+  source?: 'api' | 'admin' | 'system'
 }): Promise<ShiftHourOverride> {
   const prior = await getActiveOverride(params.shiftId)
   const supersededAt = new Date().toISOString()
 
   if (prior) {
-    const { error: supersedeError } = await fleetServiceClient
-      .from('fleet_dt_shift_hour_overrides')
-      .update({ superseded_at: supersededAt })
-      .eq('id', prior.id)
+    const { error: supersedeError } = await fleetServiceClient.from('fleet_dt_shift_hour_overrides')
+      .update({ superseded_at: supersededAt }).eq('id', prior.id)
     if (supersedeError) throw supersedeError
   }
 
-  const { data: inserted, error: insertError } = await fleetServiceClient
-    .from('fleet_dt_shift_hour_overrides')
-    .insert({
-      business_id: params.businessId,
-      shift_id: params.shiftId,
-      verified_hours: params.verifiedHours,
-      source_document: params.sourceDocument,
-      reason: params.reason,
-      created_by: params.actorId,
-    })
-    .select('id, shift_id, verified_hours, source_document, reason, created_by, created_at')
-    .single()
+  const { data: inserted, error: insertError } = await fleetServiceClient.from('fleet_dt_shift_hour_overrides').insert({
+    business_id: params.businessId,
+    shift_id: params.shiftId,
+    verified_hours: params.verifiedHours,
+    source_document: params.sourceDocument,
+    reason: params.reason,
+    created_by: params.actorId,
+  }).select('id, shift_id, verified_hours, source_document, reason, created_by, created_at').single()
 
   if (insertError) {
-    if (prior) {
-      await fleetServiceClient
-        .from('fleet_dt_shift_hour_overrides')
-        .update({ superseded_at: null, superseded_by: null })
-        .eq('id', prior.id)
-    }
+    if (prior) await fleetServiceClient.from('fleet_dt_shift_hour_overrides').update({ superseded_at: null, superseded_by: null }).eq('id', prior.id)
     throw insertError
   }
 
   const created = fromRow(inserted)
-  if (prior) {
-    await fleetServiceClient.from('fleet_dt_shift_hour_overrides').update({ superseded_by: created.id }).eq('id', prior.id)
-  }
+  if (prior) await fleetServiceClient.from('fleet_dt_shift_hour_overrides').update({ superseded_by: created.id }).eq('id', prior.id)
 
   await fleetServiceClient.from('fleet_dt_corrections').insert({
     business_id: params.businessId,
