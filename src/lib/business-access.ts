@@ -11,6 +11,10 @@ export type BusinessPermission =
   | 'subscriptions_manage'
   | 'compliance_view'
   | 'compliance_manage'
+  | 'driver_pay_view'
+  | 'driver_pay_manage'
+  | 'payroll_settings_view'
+  | 'payroll_settings_manage'
 
 export const BUSINESS_PERMISSION_LABELS: Record<BusinessPermission, string> = {
   asset_portal_view: 'View Asset Portal',
@@ -25,13 +29,18 @@ export const BUSINESS_PERMISSION_LABELS: Record<BusinessPermission, string> = {
   subscriptions_manage: 'Manage Subscriptions',
   compliance_view: 'View Compliance',
   compliance_manage: 'Manage Compliance',
+  driver_pay_view: 'View Driver Pay',
+  driver_pay_manage: 'Manage Driver Pay',
+  payroll_settings_view: 'View Payroll Settings',
+  payroll_settings_manage: 'Manage Payroll Settings',
 }
 
 /**
  * Fleet portals and business-account permissions are deliberately independent.
  *
  * Examples:
- * - dispatcher employee: dispatch portal only; no company permissions required
+ * - dispatcher employee: dispatch portal only; no company/pay permissions required
+ * - payroll/admin employee: admin portal + driver pay/payroll permissions
  * - office admin: admin portal + selected company permissions
  * - owner: implicit full company-account access + whichever Fleet portals they use
  *
@@ -51,10 +60,20 @@ export function hasBusinessPermission(
   return access.isOwner || access.permissions.includes(permission)
 }
 
+export type BusinessSection =
+  | 'assets'
+  | 'authorized_users'
+  | 'company_profile'
+  | 'billing'
+  | 'subscriptions'
+  | 'compliance'
+  | 'driver_pay'
+  | 'payroll_settings'
+
 export function canManageBusinessSection(
   access: BusinessAccessSnapshot,
-  section: 'assets' | 'authorized_users' | 'company_profile' | 'billing' | 'subscriptions' | 'compliance',
+  section: BusinessSection,
 ): boolean {
-  const permission = `${section === 'assets' ? 'asset_portal' : section}_manage` as BusinessPermission
-  return hasBusinessPermission(access, permission)
+  const key = section === 'assets' ? 'asset_portal' : section
+  return hasBusinessPermission(access, `${key}_manage` as BusinessPermission)
 }
