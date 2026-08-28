@@ -18,7 +18,6 @@ export default function ClockInSheet({ sites, onClose, onConfirm }: Props) {
   const [truckId, setTruckId] = useState('')
   const [trailerId, setTrailerId] = useState('')
   const [yardSiteId, setYardSiteId] = useState('')
-  const [startTravelMinutes, setStartTravelMinutes] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -30,6 +29,10 @@ export default function ClockInSheet({ sites, onClose, onConfirm }: Props) {
   return (
     <Sheet title="Clock In" onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ fontSize: '.78rem', color: 'var(--muted)', lineHeight: 1.45 }}>
+          Clock in first. Pre-trip and travel are recorded from the actual job workflow after you are on the clock.
+        </div>
+
         <Field label="Truck / Unit">
           <select style={inputStyle} value={truckId} onChange={e => setTruckId(e.target.value)}>
             <option value="">Select truck…</option>
@@ -55,25 +58,16 @@ export default function ClockInSheet({ sites, onClose, onConfirm }: Props) {
           </Field>
         )}
 
-        <Field label="Yard to First Stop — Drive Time (minutes, optional)">
-          <input
-            style={inputStyle} type="number" inputMode="numeric" min="0" placeholder="e.g. 15"
-            value={startTravelMinutes} onChange={e => setStartTravelMinutes(e.target.value)}
-          />
-          <div style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 4 }}>
-            Only fill this in if you won&apos;t be tapping Depart Yard / Arrived Pickup for this drive — it gets
-            added straight to today&apos;s total hours.
-          </div>
-        </Field>
-
         <button
           style={{ ...primaryBtnStyle, opacity: truckId && !busy ? 1 : .5 }}
           disabled={!truckId || busy}
           onClick={async () => {
             setBusy(true)
             const ok = await onConfirm({
-              truckId, trailerId: trailerId || null, startYardSiteId: yardSiteId || null,
-              manualStartTravelMinutes: startTravelMinutes ? Number(startTravelMinutes) : null,
+              truckId,
+              trailerId: trailerId || null,
+              startYardSiteId: yardSiteId || null,
+              manualStartTravelMinutes: null,
             })
             setBusy(false)
             if (ok) onClose()
