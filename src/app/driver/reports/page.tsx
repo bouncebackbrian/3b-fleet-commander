@@ -5,10 +5,10 @@ import { useMemo, useState } from 'react'
 
 export default function DriverReportsPage() {
   const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
-  const [from, setFrom] = useState('')
+  const [from, setFrom] = useState('2026-07-01')
   const [to, setTo] = useState(today)
 
-  const exportReport = (type: 'summary' | 'detail', format: 'pdf' | 'csv') => {
+  const exportReport = (type: 'summary' | 'detail' | 'ledger', format: 'pdf' | 'csv') => {
     if (!from || !to) return
     const params = new URLSearchParams({ range: 'custom', from, to, type, format })
     window.open(`/api/fleet/dump-truck/hours/export?${params.toString()}`, '_blank')
@@ -46,6 +46,8 @@ export default function DriverReportsPage() {
           </div>
 
           <div className="mt-3 flex flex-wrap gap-4 text-sm">
+            <button disabled={!from || !to} onClick={() => exportReport('ledger', 'pdf')} className="font-black text-emerald-400 disabled:opacity-40">Weekly Ledger PDF</button>
+            <button disabled={!from || !to} onClick={() => exportReport('ledger', 'csv')} className="font-black text-emerald-400 disabled:opacity-40">Weekly Ledger CSV</button>
             <button disabled={!from || !to} onClick={() => exportReport('detail', 'pdf')} className="font-bold text-slate-400 hover:text-white disabled:opacity-40">Full Detail PDF</button>
             <button disabled={!from || !to} onClick={() => exportReport('summary', 'csv')} className="font-bold text-slate-400 hover:text-white disabled:opacity-40">Summary CSV</button>
           </div>

@@ -463,6 +463,8 @@ export interface DailyHoursRow {
   shiftId: string
   clockInAt: string | null
   clockOutAt: string | null
+  /** Unique driver/operational notes recorded during this shift. */
+  notes?: string
   totalShiftHours: number
   /** The raw clock_in/clock_out + manual-travel calculation, before any
    *  verified-hours override is applied. Equal to totalShiftHours when no
@@ -561,6 +563,7 @@ export function buildDailyHoursRow(input: DailyHoursRowInput): DailyHoursRow {
     shiftId: input.shiftId,
     clockInAt: input.clockInAt,
     clockOutAt: input.clockOutAt,
+    notes: [...new Set(input.events.map(event => event.notes?.trim()).filter((note): note is string => Boolean(note)))].join(' | '),
     totalShiftHours,
     rawCalculatedHours,
     verifiedHoursOverride: input.verifiedHoursOverride ?? null,

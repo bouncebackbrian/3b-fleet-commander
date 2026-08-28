@@ -44,6 +44,7 @@ function detailColumns(meta: ExportMeta): CsvColumn<DailyHoursRow>[] {
     { header: 'Shift ID', value: r => r.shiftId },
     { header: 'Clock In (UTC)', value: r => r.clockInAt ?? '' },
     { header: 'Clock Out (UTC)', value: r => r.clockOutAt ?? '' },
+    { header: 'Daily Notes', value: r => r.notes ?? '' },
     { header: 'Total Operational Hours', value: r => r.totalShiftHours },
     { header: 'Paid Hours', value: r => r.paidHours },
     { header: 'Non-Paid Operational Hours', value: r => r.nonPaidOperationalHours },
@@ -115,6 +116,129 @@ export function buildDetailTable(rows: DailyHoursRow[], meta: ExportMeta): Repor
     title: `Driver Personal Records (Detail) — ${meta.driverName}${meta.threebId ? ` (${meta.threebId})` : ''}`,
     metaLine: `Generated: ${meta.generatedAt}  Range: ${meta.rangeType} (${meta.range.start} to ${meta.range.end})`,
     disclaimers: DETAIL_DISCLAIMERS, headers, body,
+  }
+}
+
+interface LedgerRow {
+  rowType: 'DAY' | 'WEEKLY SUBTOTAL' | 'GRAND TOTAL'
+  week: string
+  workDate: string
+  truck: string
+  notes: string
+  totalOperationalHours: number
+  paidHours: number
+  regularHours: number
+  overtimeHours: number
+  runningPaidHours: number
+  runningRegularHours: number
+  runningOvertimeHours: number
+  estimatedGrossEarnings: number
+}
+
+function mondayWeekRange(workDate: string): { start: string; end: string } {
+  const date = new Date(`${workDate}T12:00:00Z`)
+  const mondayOffset = (date.getUTCDay() + 6) % 7
+  const monday = new Date(date)
+  monday.setUTCDate(date.getUTCDate() - mondayOffset)
+  const sunday = new Date(monday)
+  sunday.setUTCDate(monday.getUTCDate() + 6)
+  return { start: monday.toISOString().slice(0, 10), end: sunday.toISOString().slice(0, 10) }
+}
+
+function roundHours(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+function buildLedgerRows(rows: DailyHoursRow[]): LedgerRow[] {
+  const sorted = [...rows].sort((a, b) => a.workDate.localeCompare(b.workDate) || a.clockInAt?.localeCompare(b.clockInAt ?? '') || 0)
+  const result: LedgerRow[] = []
+  let runningPaid = 0
+  let runningRegular = 0
+  let runningOvertime = 0
+  let currentWeek = ''
+  let weekRows: DailyHoursRow[] = []
+
+  const appendWeeklySubtotal = () => {
+    if (!weekRows.length) return
+    result.push({
+      rowType: 'WEEKLY SUBTOTAL', week: currentWeek, workDate: '', truck: '', notes: `Weekly subtotal — ${weekRows.length} shift${weekRows.length === 1 ? '' : 's'}`,
+      totalOperationalHours: roundHours(weekRows.reduce((sum, row) => sum + row.totalShiftHours, 0)),
+      paidHours: roundHours(weekRows.reduce((sum, row) => sum + row.paidHours, 0)),
+      regularHours: roundHours(weekRows.reduce((sum, row) => sum + row.regularHours, 0)),
+      overtimeHours: roundHours(weekRows.reduce((sum, row) => sum + row.overtimeHours, 0)),
+      runningPaidHours: roundHours(runningPaid), runningRegularHours: roundHours(runningRegular), runningOvertimeHours: roundHours(runningOvertime),
+      estimatedGrossEarnings: roundHours(weekRows.reduce((sum, row) => sum + row.estimatedGrossEarnings, 0)),
+    })
+    weekRows = []
+  }
+
+  for (const row of sorted) {
+    const range = mondayWeekRange(row.workDate)
+    const week = `${range.start} to ${range.end}`
+    if (currentWeek && week !== currentWeek) appendWeeklySubtotal()
+    currentWeek = week
+    weekRows.push(row)
+    runningPaid += row.paidHours
+    runningRegular += row.regularHours
+    runningOvertime += row.overtimeHours
+    result.push({
+      rowType: 'DAY', week, workDate: row.workDate, truck: row.truckUnit ?? '', notes: row.notes ?? '',
+      totalOperationalHours: row.totalShiftHours, paidHours: row.paidHours, regularHours: row.regularHours, overtimeHours: row.overtimeHours,
+      runningPaidHours: roundHours(runningPaid), runningRegularHours: roundHours(runningRegular), runningOvertimeHours: roundHours(runningOvertime),
+      estimatedGrossEarnings: row.estimatedGrossEarnings,
+    })
+  }
+  appendWeeklySubtotal()
+  result.push({
+    rowType: 'GRAND TOTAL', week: '', workDate: '', truck: '', notes: `Grand total — ${sorted.length} shift${sorted.length === 1 ? '' : 's'}`,
+    totalOperationalHours: roundHours(sorted.reduce((sum, row) => sum + row.totalShiftHours, 0)),
+    paidHours: roundHours(runningPaid), regularHours: roundHours(runningRegular), overtimeHours: roundHours(runningOvertime),
+    runningPaidHours: roundHours(runningPaid), runningRegularHours: roundHours(runningRegular), runningOvertimeHours: roundHours(runningOvertime),
+    estimatedGrossEarnings: roundHours(sorted.reduce((sum, row) => sum + row.estimatedGrossEarnings, 0)),
+  })
+  return result
+}
+
+function ledgerColumns(): CsvColumn<LedgerRow>[] {
+  return [
+    { header: 'Row Type', value: row => row.rowType },
+    { header: 'Week (Monday-Sunday)', value: row => row.week },
+    { header: 'Work Date', value: row => row.workDate },
+    { header: 'Truck/Unit', value: row => row.truck },
+    { header: 'Notes', value: row => row.notes },
+    { header: 'Total Operational Hours', value: row => row.totalOperationalHours },
+    { header: 'Paid Hours', value: row => row.paidHours },
+    { header: 'Regular Hours', value: row => row.regularHours },
+    { header: 'Overtime Hours', value: row => row.overtimeHours },
+    { header: 'Running Paid Hours', value: row => row.runningPaidHours },
+    { header: 'Running Regular Hours', value: row => row.runningRegularHours },
+    { header: 'Running Overtime Hours', value: row => row.runningOvertimeHours },
+    { header: 'Estimated Gross Earnings', value: row => row.estimatedGrossEarnings },
+  ]
+}
+
+const LEDGER_DISCLAIMERS = [
+  'Week is Monday through Sunday. Regular and overtime hours use the configured driver pay policy.',
+  'Running totals include daily rows only; weekly subtotal rows do not double-count hours.',
+  'Estimated earnings only — not a pay stub or final wage statement.',
+]
+
+export function buildHoursLedgerCsv(rows: DailyHoursRow[], meta: ExportMeta): string {
+  const header = buildReportHeaderLines({
+    businessName: meta.businessName, threeBBizId: meta.threebBizId,
+    title: `Weekly Hours Ledger — ${meta.driverName}${meta.threebId ? ` (${meta.threebId})` : ''}`,
+    generatedAt: meta.generatedAt, rangeLabel: `Range: ${meta.range.start} to ${meta.range.end}`,
+    disclaimers: LEDGER_DISCLAIMERS,
+  })
+  return header + buildCsv(buildLedgerRows(rows), ledgerColumns())
+}
+
+export function buildHoursLedgerTable(rows: DailyHoursRow[], meta: ExportMeta): ReportTable {
+  const { headers, body } = toTableMatrix(buildLedgerRows(rows), ledgerColumns())
+  return {
+    title: `Weekly Hours Ledger — ${meta.driverName}${meta.threebId ? ` (${meta.threebId})` : ''}`,
+    metaLine: `Generated: ${meta.generatedAt}  Range: ${meta.range.start} to ${meta.range.end}`,
+    disclaimers: LEDGER_DISCLAIMERS, headers, body,
   }
 }
 
