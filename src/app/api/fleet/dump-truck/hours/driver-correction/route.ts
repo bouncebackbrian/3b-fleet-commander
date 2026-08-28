@@ -25,15 +25,11 @@ export async function POST(request: NextRequest) {
     }
 
     const shift = await getShiftById(shiftId)
-    if (!shift || shift.businessId !== auth.businessId || shift.driverId !== auth.userId) {
-      throw new DumpTruckError('Shift not found', 404)
-    }
+    if (!shift || shift.businessId !== auth.businessId || shift.driverId !== auth.userId) throw new DumpTruckError('Shift not found', 404)
 
     const startMs = new Date(correctedStartAt).getTime()
     const endMs = new Date(correctedEndAt).getTime()
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
-      throw new DumpTruckError('Corrected end time must be after corrected start time', 400)
-    }
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) throw new DumpTruckError('Corrected end time must be after corrected start time', 400)
     const verifiedHours = Math.round(((endMs - startMs) / 3600000) * 100) / 100
     if (verifiedHours > 24) throw new DumpTruckError('Corrected shift cannot exceed 24 hours', 400)
 
@@ -50,14 +46,12 @@ export async function POST(request: NextRequest) {
       source: 'driver',
     })
 
-    // A corrected/submitted day becomes the driver's current confirmation.
-    // The weekly signature is still required before dispatch can approve the week.
     const confirmation = await confirmDailyHours(
       auth.businessId,
       auth.userId,
       shiftId,
       workDate,
-      '',
+      null,
       null,
       verifiedHours,
       auth.email,
