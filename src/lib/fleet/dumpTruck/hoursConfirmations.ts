@@ -1,9 +1,8 @@
 /**
- * fleet/dumpTruck/hoursConfirmations.ts — driver sign-off on a day's hours
+ * fleet/dumpTruck/hoursConfirmations.ts — driver sign-off/submission on a day's hours
  *
- * Insert-only per-shift audit trail (see the migration's header comment for
- * the full rationale). The latest row per shift_id is the current status;
- * a driver can resubmit after a correction has been addressed.
+ * Insert-only per-shift audit trail. The latest row per shift_id is the
+ * current status; prior confirmations/correction requests are never erased.
  */
 
 import { fleetServiceClient } from '@/lib/fleet-service-client'
@@ -41,34 +40,25 @@ function fromRow(row: Record<string, unknown>): HoursConfirmation {
 
 async function assertOwnShift(businessId: string, driverId: string, shiftId: string) {
   const shift = await getShiftById(shiftId)
-  if (!shift || shift.businessId !== businessId || shift.driverId !== driverId) {
-    throw new DumpTruckError('Shift not found', 404)
-  }
+  if (!shift || shift.businessId !== businessId || shift.driverId !== driverId) throw new DumpTruckError('Shift not found', 404)
   return shift
 }
 
 export async function confirmDailyHours(
   businessId: string, driverId: string, shiftId: string, workDate: string,
-  signatureDocId: string, sheetPhotoDocId: string | null, totalHours: number | null,
+  signatureDocId: string | null, sheetPhotoDocId: string | null, totalHours: number | null,
   email: string | null,
 ): Promise<HoursConfirmation> {
   await assertOwnShift(businessId, driverId, shiftId)
-
   const [driverThreebId, businessMeta] = await Promise.all([getThreebId(driverId), getBusinessMeta(businessId)])
-
-  const { data, error } = await fleetServiceClient
-    .from('fleet_dt_hours_confirmations')
-    .insert({
-      business_id: businessId, business_threeb_id: businessMeta.threebBizId,
-      driver_id: driverId, driver_threeb_id: driverThreebId,
-      shift_id: shiftId, work_date: workDate,
-      status: 'confirmed',
-      signature_doc_id: signatureDocId, sheet_photo_doc_id: sheetPhotoDocId,
-      total_hours_at_confirmation: totalHours,
-      created_by: driverId, created_by_email: email,
-    })
-    .select('*')
-    .single()
+  const { data, error } = await fleetServiceClient.from('fleet_dt_hours_confirmations').insert({
+    business_id: businessId, business_threeb_id: businessMeta.threebBizId,
+    driver_id: driverId, driver_threeb_id: driverThreebId,
+    shift_id: shiftId, work_date: workDate, status: 'confirmed',
+    signature_doc_id: signatureDocId, sheet_photo_doc_id: sheetPhotoDocId,
+    total_hours_at_confirmation: totalHours,
+    created_by: driverId, created_by_email: email,
+  }).select('*').single()
   if (error) throw error
   const confirmation = fromRow(data)
   audit.log({ userId: driverId, email, action: 'dump_truck.hours_confirmation.confirm', resource: 'fleet_dt_hours_confirmations', resourceId: confirmation.id, after: confirmation, source: 'api' })
@@ -81,39 +71,26 @@ export async function requestHoursCorrection(
 ): Promise<HoursConfirmation> {
   if (!correctionNote?.trim()) throw new DumpTruckError('A note explaining what needs correcting is required', 400)
   await assertOwnShift(businessId, driverId, shiftId)
-
   const [driverThreebId, businessMeta] = await Promise.all([getThreebId(driverId), getBusinessMeta(businessId)])
-
-  const { data, error } = await fleetServiceClient
-    .from('fleet_dt_hours_confirmations')
-    .insert({
-      business_id: businessId, business_threeb_id: businessMeta.threebBizId,
-      driver_id: driverId, driver_threeb_id: driverThreebId,
-      shift_id: shiftId, work_date: workDate,
-      status: 'correction_requested',
-      correction_note: correctionNote.trim(),
-      total_hours_at_confirmation: totalHours,
-      created_by: driverId, created_by_email: email,
-    })
-    .select('*')
-    .single()
+  const { data, error } = await fleetServiceClient.from('fleet_dt_hours_confirmations').insert({
+    business_id: businessId, business_threeb_id: businessMeta.threebBizId,
+    driver_id: driverId, driver_threeb_id: driverThreebId,
+    shift_id: shiftId, work_date: workDate, status: 'correction_requested',
+    correction_note: correctionNote.trim(), total_hours_at_confirmation: totalHours,
+    created_by: driverId, created_by_email: email,
+  }).select('*').single()
   if (error) throw error
   const confirmation = fromRow(data)
   audit.log({ userId: driverId, email, action: 'dump_truck.hours_confirmation.correction_requested', resource: 'fleet_dt_hours_confirmations', resourceId: confirmation.id, after: confirmation, source: 'api' })
   return confirmation
 }
 
-/** Latest confirmation row per shift (or null if the driver has never signed off on that shift). */
 export async function getLatestConfirmationsForShifts(
   businessId: string, shiftIds: string[],
 ): Promise<Record<string, HoursConfirmation>> {
   if (shiftIds.length === 0) return {}
-  const { data, error } = await fleetServiceClient
-    .from('fleet_dt_hours_confirmations')
-    .select('*')
-    .eq('business_id', businessId)
-    .in('shift_id', shiftIds)
-    .order('created_at', { ascending: false })
+  const { data, error } = await fleetServiceClient.from('fleet_dt_hours_confirmations')
+    .select('*').eq('business_id', businessId).in('shift_id', shiftIds).order('created_at', { ascending: false })
   if (error) throw error
   const latest: Record<string, HoursConfirmation> = {}
   for (const row of data ?? []) {
