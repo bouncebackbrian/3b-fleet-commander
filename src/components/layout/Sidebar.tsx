@@ -1,217 +1,189 @@
 'use client'
-import { useState, useEffect } from 'react'
+
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Gauge, BarChart2, Truck, FileCheck, Clock, Fuel, Settings, ChevronLeft, ChevronRight, MapPin, MessageSquare, LogOut, Receipt, HardHat, MapPinned, Timer, ShieldAlert, Send } from 'lucide-react'
-import { createClient } from '@/lib/supabase-browser'
+import { Clock3, HardHat, RadioTower, ShieldCheck, Settings, LogOut, ChevronLeft, ChevronRight } from 'lucide-react'
 import { createAuthClient } from '@/lib/auth-client'
-import { getCurrentUser, type OpsProfile } from '@/lib/auth-adapter'
-import { isHrefVisibleForOpsProfile } from '@/lib/userMode'
+import { getCurrentUser, type PortalGrants } from '@/lib/auth-adapter'
+import { assetModeToSlug, type AssetOperatingMode } from '@/lib/fleet/asset-modes'
 
-const MODULES = [
-  {
-    group: 'Command',
-    items: [
-      {href:'/dashboard', label:'Dashboard',        icon:Gauge},
-    ]
-  },
-  {
-    group: 'Mileage Intelligence',
-    items: [
-      {href:'/mis',       label:'MIS Overview',     icon:BarChart2},
-      {href:'/loads',     label:'Load Log',         icon:Truck},
-      {href:'/audit',     label:'Settlement Audit', icon:FileCheck},
-    ]
-  },
-  {
-    group: 'Operations',
-    items: [
-      {href:'/trips',    label:'Trip Planner',      icon:MapPin},
-      {href:'/dispatch', label:'Dispatch Messages', icon:MessageSquare},
-      {href:'/expenses', label:'Expense Tracker',   icon:Receipt},
-      {href:'/delays',   label:'Delay & Detention', icon:Clock},
-      {href:'/fuel',     label:'Fuel Log',          icon:Fuel},
-    ]
-  },
-  {
-    group: 'Dump Truck Mode',
-    items: [
-      {href:'/driver/dump-truck', label:'Driver Cockpit', icon:HardHat},
-      {href:'/driver/hours',      label:'My Hours',       icon:Timer},
-      {href:'/driver/documents',  label:'My Documents',   icon:FileCheck},
-      {href:'/admin/dump-truck/dispatch', label:'Dispatch — Send Job', icon:Send},
-      {href:'/admin/dump-truck',  label:'Sites & Jobs',   icon:MapPinned},
-      {href:'/admin/dump-truck/safety', label:'Safety',   icon:ShieldAlert},
-    ]
-  },
-  {
-    group: 'System',
-    items: [
-      {href:'/settings', label:'Settings', icon:Settings},
-    ]
-  }
-]
+type FleetIdentity = {
+  email?: string | null
+  portals: PortalGrants
+  currentAsset?: {
+    id: string
+    unitNumber: string
+    operatingMode: AssetOperatingMode | null
+  } | null
+}
 
-type Profile = {
-  email: string | null
-  full_name: string | null
-  role: string | null
-  three_b_id: string | null
-  three_b_biz_id: string | null
-  three_b_linked: boolean
+type Tab = {
+  key: 'driver' | 'hours' | 'dispatch' | 'admin'
+  label: string
+  href: string
+  icon: typeof HardHat
 }
 
 export default function Sidebar() {
-  const [col,     setCol]     = useState(false)
-  const [profile, setProfile] = useState<Profile | null>(null)
-  const [opsProfile, setOpsProfile] = useState<OpsProfile | null>(null)
-  const path    = usePathname()
-  const router  = useRouter()
-  const fleetDb = createClient()
+  const [collapsed, setCollapsed] = useState(false)
+  const [identity, setIdentity] = useState<FleetIdentity | null>(null)
+  const path = usePathname()
+  const router = useRouter()
 
   useEffect(() => {
-    createAuthClient().auth.getUser().then(async ({ data }) => {
-      if (!data.user) return
-      try {
-        const { data: prof } = await fleetDb
-          .from('profiles')
-          .select('email,full_name,role,three_b_id,three_b_biz_id,three_b_linked')
-          .eq('id', data.user.id)
-          .single()
-        setProfile(prof ?? { email: data.user.email ?? null, full_name: null, role: null, three_b_id: null, three_b_biz_id: null, three_b_linked: false })
-      } catch {
-        setProfile({ email: data.user.email ?? null, full_name: null, role: null, three_b_id: null, three_b_biz_id: null, three_b_linked: false })
-      }
+    getCurrentUser().then(user => {
+      if (!user) return
+      setIdentity(user as FleetIdentity)
     })
-    getCurrentUser().then(user => setOpsProfile(user?.opsProfile ?? null))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
-  /** Hides OTR-only or dump-truck-only groups/items for the business's ops profile
-   *  (e.g. a dump-truck business never sees Mileage Intelligence / Trip Planner /
-   *  Dispatch Messages — see userMode.ts's OPS_PROFILE_HIDDEN_HREFS). */
-  const visibleModules = MODULES
-    .map(({ group, items }) => ({ group, items: items.filter(i => isHrefVisibleForOpsProfile(i.href, opsProfile)) }))
-    .filter(({ items }) => items.length > 0)
+  const tabs = useMemo<Tab[]>(() => {
+    if (!identity) return []
+
+    const out: Tab[] = []
+    const driverGranted = !!identity.portals.driver
+    const dispatchGranted = !!identity.portals.dispatch
+    const adminGranted = !!identity.portals.admin
+    const assetMode = identity.currentAsset?.operatingMode ?? null
+    const modeSlug = assetMode ? assetModeToSlug(assetMode) : null
+
+    if (driverGranted) {
+      out.push({
+        key: 'driver',
+        label: identity.currentAsset?.unitNumber ? `Driver · Unit ${identity.currentAsset.unitNumber}` : 'Driver',
+        href: modeSlug ? `/driver/${modeSlug}` : '/driver/dump-truck',
+        icon: HardHat,
+      })
+      out.push({ key: 'hours', label: 'Hours', href: '/driver/hours', icon: Clock3 })
+    }
+
+    if (dispatchGranted) {
+      out.push({
+        key: 'dispatch',
+        label: 'Dispatch',
+        href: modeSlug ? `/dispatch/${modeSlug}` : '/dispatch',
+        icon: RadioTower,
+      })
+    }
+
+    if (adminGranted) {
+      out.push({
+        key: 'admin',
+        label: 'Admin',
+        href: modeSlug ? `/admin/${modeSlug}` : '/admin/dump-truck/dashboard',
+        icon: ShieldCheck,
+      })
+    }
+
+    return out
+  }, [identity])
 
   const signOut = async () => {
     await createAuthClient().auth.signOut()
     router.replace('/login')
   }
 
-  const displayName = profile?.full_name || profile?.email || ''
-  const initial     = displayName[0]?.toUpperCase() ?? '?'
   return (
-    <aside className="app-sidebar" style={{width:col?68:268,transition:'width 220ms cubic-bezier(0.16,1,0.3,1)',background:'linear-gradient(180deg,#081a16 0%,#050f0d 100%)',borderRight:'1px solid rgba(0,232,176,.13)',position:'sticky',top:0,height:'100dvh',display:'flex',flexDirection:'column',flexShrink:0,overflow:'hidden',zIndex:20}}>
-
-      {/* Logo */}
-      <div style={{padding:col?'.75rem .5rem':'.75rem 1rem',display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid var(--border)',flexShrink:0,background:'rgba(0,230,118,.03)'}}>
-        <img
-          src="/logo.png"
-          alt="3B Fleet Commander"
-          style={{width:col?42:48,height:col?42:48,borderRadius:10,flexShrink:0,objectFit:'cover',boxShadow:'0 0 16px rgba(0,232,176,.4)'}}
-        />
-        {!col && (
-          <div style={{overflow:'hidden',flex:1,minWidth:0}}>
-            <div style={{fontWeight:900,fontSize:'.88rem',lineHeight:1.1,letterSpacing:'.01em',whiteSpace:'nowrap',color:'#f5c200',textShadow:'0 0 12px rgba(245,194,0,.4)'}}>
-              3B FLEET COMMANDER
-            </div>
-            <div style={{fontSize:'.6rem',color:'var(--primary)',marginTop:3,fontWeight:700,whiteSpace:'nowrap',letterSpacing:'.12em',textTransform:'uppercase',textShadow:'0 0 8px rgba(0,230,118,.5)'}}>
-              Mileage Intelligence
-            </div>
+    <aside
+      className="app-sidebar"
+      style={{
+        width: collapsed ? 68 : 250,
+        transition: 'width 180ms ease',
+        background: 'linear-gradient(180deg,#081a16 0%,#050f0d 100%)',
+        borderRight: '1px solid rgba(0,232,176,.13)',
+        position: 'sticky',
+        top: 0,
+        height: '100dvh',
+        display: 'flex',
+        flexDirection: 'column',
+        flexShrink: 0,
+        overflow: 'hidden',
+        zIndex: 20,
+      }}
+    >
+      <div style={{ padding: collapsed ? '.75rem .5rem' : '.75rem 1rem', borderBottom: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center' }}>
+        <img src="/logo.png" alt="3B Fleet Commander" style={{ width: 42, height: 42, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }} />
+        {!collapsed && (
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: '#f5c200', fontWeight: 950, fontSize: '.83rem', whiteSpace: 'nowrap' }}>3B FLEET COMMANDER</div>
+            <div style={{ color: 'var(--primary)', fontSize: '.58rem', fontWeight: 850, marginTop: 3, textTransform: 'uppercase', letterSpacing: '.1em' }}>Active business workspace</div>
           </div>
         )}
       </div>
 
-      {/* Nav */}
-      <nav style={{flex:1,padding:'.6rem .45rem',display:'flex',flexDirection:'column',gap:0,overflowY:'auto'}}>
-        {visibleModules.map(({group, items}) => (
-          <div key={group} style={{marginBottom:'.5rem'}}>
-            {!col && (
-              <div style={{fontSize:'var(--text-xs)',color:'var(--faint)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',padding:'.5rem .85rem .3rem',userSelect:'none'}}>
-                {group}
-              </div>
-            )}
-            {col && <div style={{height:'.5rem'}}/>}
-            {items.map(({href,label,icon:Icon}) => {
-              const active = path === href || path.startsWith(href+'/')
-              return (
-                <Link key={href} href={href} title={col ? label : undefined}
-                  style={{display:'flex',alignItems:'center',gap:10,padding:'.7rem .85rem',borderRadius:11,textDecoration:'none',whiteSpace:'nowrap',overflow:'hidden',
-                    background: active ? 'rgba(0,232,176,.1)' : 'transparent',
-                    color: active ? 'var(--primary)' : 'var(--muted)',
-                    fontWeight: active ? 700 : 500,
-                    fontSize:'var(--text-sm)',
-                    boxShadow: active ? 'inset 0 0 0 1px rgba(0,232,176,.15)' : 'none',
-                    transition:'all 180ms cubic-bezier(0.16,1,0.3,1)'}}>
-                  <Icon size={16} style={{flexShrink:0}}/>
-                  {!col && <span>{label}</span>}
-                </Link>
-              )
-            })}
-          </div>
-        ))}
+      <nav style={{ flex: 1, padding: '.75rem .5rem', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
+        {tabs.map(({ key, label, href, icon: Icon }) => {
+          const active =
+            path === href ||
+            (key === 'driver' && path.startsWith('/driver/') && !path.startsWith('/driver/hours')) ||
+            (key === 'hours' && path.startsWith('/driver/hours')) ||
+            (key === 'dispatch' && path.startsWith('/dispatch')) ||
+            (key === 'admin' && path.startsWith('/admin'))
+
+          return (
+            <Link
+              key={key}
+              href={href}
+              title={collapsed ? label : undefined}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '.78rem .82rem',
+                borderRadius: 11,
+                textDecoration: 'none',
+                color: active ? 'var(--primary)' : 'var(--muted)',
+                background: active ? 'rgba(0,232,176,.1)' : 'transparent',
+                border: active ? '1px solid rgba(0,232,176,.16)' : '1px solid transparent',
+                fontWeight: active ? 850 : 650,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+              }}
+            >
+              <Icon size={17} style={{ flexShrink: 0 }} />
+              {!collapsed && <span>{label}</span>}
+            </Link>
+          )
+        })}
+
+        {!!identity?.portals.admin && (
+          <Link
+            href="/settings"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '.78rem .82rem',
+              borderRadius: 11,
+              textDecoration: 'none',
+              color: path.startsWith('/settings') ? 'var(--primary)' : 'var(--muted)',
+              marginTop: 'auto',
+              fontWeight: 650,
+            }}
+          >
+            <Settings size={17} style={{ flexShrink: 0 }} />
+            {!collapsed && <span>Settings</span>}
+          </Link>
+        )}
       </nav>
 
-      {/* Footer: user + MIS badge + collapse */}
-      <div style={{padding:'.5rem .45rem .9rem',borderTop:'1px solid var(--border)',display:'flex',flexDirection:'column',gap:6}}>
-        {/* Signed-in user + 3B ID */}
-        {profile && !col && (
-          <div style={{margin:'0 .45rem',borderRadius:12,background:'rgba(0,232,176,.04)',border:'1px solid rgba(0,232,176,.1)',overflow:'hidden'}}>
-            {/* User row */}
-            <div style={{padding:'.55rem .75rem',display:'flex',alignItems:'center',gap:7}}>
-              <div style={{width:30,height:30,borderRadius:'50%',background:'linear-gradient(135deg,#00e8b0,#00c090)',display:'grid',placeItems:'center',flexShrink:0,fontSize:'.8rem',fontWeight:900,color:'#061210',boxShadow:'0 0 8px rgba(0,232,176,.3)'}}>
-                {initial}
-              </div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:'.7rem',color:'var(--text)',fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                  {profile.full_name || profile.email}
-                </div>
-                {profile.role && (
-                  <div style={{fontSize:'.58rem',color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.07em',fontWeight:600}}>
-                    {profile.role}
-                  </div>
-                )}
-              </div>
-              <button onClick={signOut} title="Sign out" style={{padding:'.3rem',borderRadius:6,color:'var(--muted)',flexShrink:0,display:'flex',alignItems:'center',background:'none',border:'none',cursor:'pointer'}}>
-                <LogOut size={13}/>
-              </button>
-            </div>
-            {/* 3B ID row */}
-            {profile.three_b_id ? (
-              <div style={{padding:'.35rem .75rem .5rem',borderTop:'1px solid rgba(0,232,176,.08)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                <span style={{fontSize:'.58rem',color:'var(--muted)',fontWeight:700,letterSpacing:'.07em',textTransform:'uppercase'}}>3B ID</span>
-                <span style={{fontSize:'.68rem',color:'var(--primary)',fontWeight:800,letterSpacing:'.05em',fontVariantNumeric:'tabular-nums',textShadow:'0 0 8px rgba(0,232,176,.4)'}}>{profile.three_b_id}</span>
-              </div>
-            ) : (
-              <div style={{padding:'.35rem .75rem .5rem',borderTop:'1px solid rgba(0,232,176,.08)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                <span style={{fontSize:'.58rem',color:'var(--faint)',fontWeight:700,letterSpacing:'.07em',textTransform:'uppercase'}}>3B ID</span>
-                <span style={{fontSize:'.62rem',color:'rgba(245,194,0,.5)',fontWeight:700,letterSpacing:'.04em'}}>Not linked</span>
-              </div>
-            )}
-            {/* 3B Biz ID row */}
-            {profile.three_b_biz_id && (
-              <div style={{padding:'.35rem .75rem .5rem',borderTop:'1px solid rgba(0,232,176,.08)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                <span style={{fontSize:'.58rem',color:'var(--muted)',fontWeight:700,letterSpacing:'.07em',textTransform:'uppercase'}}>Biz ID</span>
-                <span style={{fontSize:'.68rem',color:'#f5c200',fontWeight:800,letterSpacing:'.05em',textShadow:'0 0 8px rgba(245,194,0,.3)'}}>{profile.three_b_biz_id}</span>
-              </div>
-            )}
+      <div style={{ padding: '.6rem .5rem .85rem', borderTop: '1px solid var(--border)', display: 'grid', gap: 6 }}>
+        {!collapsed && identity?.currentAsset && (
+          <div style={{ margin: '0 .35rem', padding: '.55rem .7rem', borderRadius: 10, border: '1px solid rgba(0,232,176,.1)', background: 'rgba(0,232,176,.04)' }}>
+            <div style={{ color: 'var(--muted)', fontSize: '.56rem', fontWeight: 850, textTransform: 'uppercase' }}>Current asset</div>
+            <div style={{ marginTop: 3, fontWeight: 900, fontSize: '.72rem' }}>Unit {identity.currentAsset.unitNumber}</div>
+            <div style={{ color: 'var(--primary)', fontSize: '.62rem', marginTop: 2 }}>{identity.currentAsset.operatingMode?.replaceAll('_', ' ') ?? 'Mode not set'}</div>
           </div>
-        )}
-        {profile && col && (
-          <button onClick={signOut} title={`Sign out — ${profile.email}`} style={{padding:'.65rem',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--muted)',background:'none',border:'none',cursor:'pointer'}}>
-            <LogOut size={15}/>
-          </button>
         )}
 
-        {!col && (
-          <div style={{margin:'0 .45rem',padding:'.5rem .75rem',borderRadius:10,background:'rgba(0,232,176,.06)',border:'1px solid rgba(0,232,176,.2)',display:'flex',alignItems:'center',gap:7}}>
-            <div style={{width:7,height:7,borderRadius:'50%',background:'var(--primary)',flexShrink:0,boxShadow:'0 0 8px var(--primary)'}}/>
-            <span style={{fontSize:'var(--text-xs)',color:'var(--primary)',fontWeight:700,letterSpacing:'.08em',textShadow:'0 0 8px rgba(0,232,176,.45)'}}>MIS ACTIVE</span>
-          </div>
-        )}
-        <button onClick={()=>setCol(!col)} aria-label={col?'Expand':'Collapse'}
-          style={{padding:'.65rem .85rem',borderRadius:10,display:'flex',alignItems:'center',justifyContent:col?'center':'flex-end',gap:6,width:'100%',color:'var(--muted)',fontSize:'var(--text-xs)',transition:'all var(--transition)'}}>
-          {col ? <ChevronRight size={15}/> : <><ChevronLeft size={15}/><span>Collapse</span></>}
+        <button onClick={signOut} style={{ border: 0, background: 'transparent', color: 'var(--muted)', display: 'flex', gap: 8, alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', padding: '.6rem .75rem', cursor: 'pointer' }}>
+          <LogOut size={15} />
+          {!collapsed && <span style={{ fontSize: '.72rem', fontWeight: 750 }}>Log Out</span>}
+        </button>
+
+        <button onClick={() => setCollapsed(v => !v)} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} style={{ border: 0, background: 'transparent', color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-end', padding: '.55rem .7rem', cursor: 'pointer' }}>
+          {collapsed ? <ChevronRight size={15} /> : <><ChevronLeft size={15} /><span style={{ fontSize: '.68rem', marginLeft: 4 }}>Collapse</span></>}
         </button>
       </div>
     </aside>
