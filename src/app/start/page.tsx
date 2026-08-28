@@ -16,28 +16,12 @@ export default function StartPage() {
   const [profile, setProfile] = useState<ThreeBProfile | null>(null)
   const [businesses, setBusinesses] = useState<BusinessRegistryRow[]>([])
   const [selectedBusinessId, setSelectedBusinessId] = useState('')
+  const [fleetReadyBusinessId, setFleetReadyBusinessId] = useState('')
   const [selectedMode, setSelectedMode] = useState('dump-truck')
   const [loading, setLoading] = useState(true)
   const [provisioning, setProvisioning] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const [error, setError] = useState('')
-
-  async function refresh() {
-    setLoading(true)
-    const p = await getThreeBProfile()
-    if (!p) { window.location.replace('/login'); return }
-    const rows = await getBusinessRegistry()
-    setProfile(p)
-    setBusinesses(rows)
-    setSelectedBusinessId(prev => prev || rows[0]?.business.id || '')
-    setLoading(false)
-  }
-
-  useEffect(() => { void refresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const selectedRow = useMemo(() => businesses.find(r => r.business.id === selectedBusinessId) ?? null, [businesses, selectedBusinessId])
-  const selectedBusiness = selectedRow?.business ?? null
-  const mode = FLEET_MODES.find(m => m.id === selectedMode) ?? FLEET_MODES[0]
 
   async function provisionFleetBusiness(businessId: string) {
     const response = await fetch('/api/fleet/provision-business', {
@@ -49,12 +33,50 @@ export default function StartPage() {
     if (!response.ok) throw new Error(payload.error || 'Could not provision Fleet Commander access for this Core business.')
   }
 
+  async function refresh() {
+    setLoading(true)
+    setError('')
+    const p = await getThreeBProfile()
+    if (!p) { window.location.replace('/login'); return }
+
+    const rows = await getBusinessRegistry()
+    setProfile(p)
+    setBusinesses(rows)
+
+    const initialBusinessId = rows[0]?.business.id ?? ''
+    setSelectedBusinessId(initialBusinessId)
+    setFleetReadyBusinessId('')
+
+    if (initialBusinessId) {
+      setProvisioning(true)
+      try {
+        await provisionFleetBusiness(initialBusinessId)
+        setFleetReadyBusinessId(initialBusinessId)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not activate Fleet Commander for this business.')
+      } finally {
+        setProvisioning(false)
+      }
+    }
+
+    setLoading(false)
+  }
+
+  useEffect(() => { void refresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selectedRow = useMemo(() => businesses.find(r => r.business.id === selectedBusinessId) ?? null, [businesses, selectedBusinessId])
+  const selectedBusiness = selectedRow?.business ?? null
+  const mode = FLEET_MODES.find(m => m.id === selectedMode) ?? FLEET_MODES[0]
+  const fleetReady = !!selectedBusiness && fleetReadyBusinessId === selectedBusiness.id
+
   async function chooseBusiness(businessId: string) {
     setSelectedBusinessId(businessId)
+    setFleetReadyBusinessId('')
     setError('')
     setProvisioning(true)
     try {
       await provisionFleetBusiness(businessId)
+      setFleetReadyBusinessId(businessId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not provision Fleet Commander access.')
     } finally {
@@ -68,7 +90,7 @@ export default function StartPage() {
     finally { window.location.replace('/login') }
   }
 
-  if (loading) return <main style={shell}><div style={{ maxWidth: 900, margin: '0 auto', padding: '3rem 1.25rem', color: '#78a79a' }}>Loading your 3Boost businesses…</div></main>
+  if (loading) return <main style={shell}><div style={{ maxWidth: 900, margin: '0 auto', padding: '3rem 1.25rem', color: '#78a79a' }}>Loading and connecting your 3Boost business…</div></main>
 
   return (
     <main style={shell}>
@@ -92,7 +114,7 @@ export default function StartPage() {
         <div>
           <div style={{ color: '#00e8b0', fontSize: '.65rem', fontWeight: 900, letterSpacing: '.12em', textTransform: 'uppercase' }}>Fleet Commander Activation</div>
           <h1 style={{ margin: '.45rem 0 .5rem', fontSize: 'clamp(1.8rem,5vw,2.8rem)' }}>Connect a 3Boost company</h1>
-          <p style={{ color: '#739d92', lineHeight: 1.6, margin: 0 }}>Businesses are created and owned by Core 3Boost. Fleet Commander only provisions operational access, assets, and fleet workflows for the selected 3B Business ID.</p>
+          <p style={{ color: '#739d92', lineHeight: 1.6, margin: 0 }}>3Boost owns the business identity. Fleet Commander activates fleet access and keeps every operational record scoped to the selected 3B Business ID.</p>
         </div>
 
         <Step n="1" title="Choose 3Boost business">
@@ -100,21 +122,25 @@ export default function StartPage() {
             {businesses.length === 0 ? (
               <div style={{ ...card, display: 'grid', gap: 10 }}>
                 <strong>No Core 3Boost businesses found.</strong>
-                <div style={{ color: '#789f95', fontSize: '.75rem', lineHeight: 1.5 }}>Create the company from the 3Boost Dashboard first. Once Core assigns its permanent 3B Business ID, come back here and Fleet Commander will provision access for that ID.</div>
+                <div style={{ color: '#789f95', fontSize: '.75rem', lineHeight: 1.5 }}>Create the company from the 3Boost Dashboard first. Once Core assigns its permanent 3B Business ID, Fleet Commander can activate that same business.</div>
                 <a href={`${threeBoostUrl}/dashboard`} style={{ padding: '.75rem', borderRadius: 10, background: '#00e8b0', color: '#04110d', fontWeight: 950, textDecoration: 'none', textAlign: 'center' }}>Open 3Boost Dashboard →</a>
               </div>
-            ) : businesses.map(row => (
-              <button key={row.business.id} onClick={() => void chooseBusiness(row.business.id)} style={{ ...card, color: '#eefcf8', textAlign: 'left', cursor: 'pointer', borderColor: selectedBusinessId === row.business.id ? 'rgba(0,232,176,.55)' : 'rgba(0,232,176,.12)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontWeight: 950 }}>{row.business.company_name}</div>
-                    <div style={{ color: '#709c90', marginTop: 3, fontSize: '.7rem' }}>{row.business.three_b_biz_id} · {row.business.business_type.replace('_', ' ')}</div>
+            ) : businesses.map(row => {
+              const selected = selectedBusinessId === row.business.id
+              const ready = fleetReadyBusinessId === row.business.id
+              return (
+                <button key={row.business.id} onClick={() => void chooseBusiness(row.business.id)} disabled={provisioning && selected} style={{ ...card, color: '#eefcf8', textAlign: 'left', cursor: 'pointer', borderColor: selected ? 'rgba(0,232,176,.55)' : 'rgba(0,232,176,.12)', opacity: provisioning && selected ? .75 : 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 950 }}>{row.business.company_name}</div>
+                      <div style={{ color: '#709c90', marginTop: 3, fontSize: '.7rem' }}>{row.business.three_b_biz_id} · {row.business.business_type.replace('_', ' ')}</div>
+                    </div>
+                    {selected && <span style={{ color: ready ? '#00e8b0' : '#f5c200', fontSize: '.68rem', fontWeight: 900 }}>{provisioning ? 'CONNECTING…' : ready ? 'FLEET READY ✓' : 'NOT CONNECTED'}</span>}
                   </div>
-                  {selectedBusinessId === row.business.id && <span style={{ color: '#00e8b0', fontSize: '.68rem', fontWeight: 900 }}>{provisioning ? 'CONNECTING…' : 'SELECTED ✓'}</span>}
-                </div>
-              </button>
-            ))}
-            {error && <div style={{ color: '#ff806f', fontSize: '.72rem' }}>{error}</div>}
+                </button>
+              )
+            })}
+            {error && <div style={{ color: '#ff806f', fontSize: '.72rem', lineHeight: 1.5 }}>{error}</div>}
           </div>
         </Step>
 
@@ -142,7 +168,7 @@ export default function StartPage() {
           <div style={{ ...card, display: 'grid', gap: 12 }}>
             <div><div style={{ color: '#719b90', fontSize: '.62rem', textTransform: 'uppercase', fontWeight: 850 }}>Core business</div><div style={{ marginTop: 4, fontWeight: 950 }}>{selectedBusiness?.company_name ?? 'Choose a business above'}</div>{selectedBusiness && <div style={{ color: '#709c90', fontSize: '.68rem', marginTop: 3 }}>{selectedBusiness.three_b_biz_id}</div>}</div>
             <div><div style={{ color: '#719b90', fontSize: '.62rem', textTransform: 'uppercase', fontWeight: 850 }}>Fleet mode</div><div style={{ marginTop: 4, fontWeight: 950 }}>{mode.name}</div></div>
-            {selectedBusiness && mode.status === 'live' && !provisioning ? <Link href="/admin/dump-truck/dashboard" style={{ padding: '.78rem 1rem', borderRadius: 10, background: '#00e8b0', color: '#04110d', fontWeight: 950, textDecoration: 'none', textAlign: 'center' }}>Open Company Fleet Dashboard →</Link> : <SetupHint text="Choose a Core business and available mode to continue." />}
+            {fleetReady && mode.status === 'live' ? <Link href="/admin/dump-truck/dashboard" style={{ padding: '.78rem 1rem', borderRadius: 10, background: '#00e8b0', color: '#04110d', fontWeight: 950, textDecoration: 'none', textAlign: 'center' }}>Open Company Fleet Dashboard →</Link> : <SetupHint text={provisioning ? 'Connecting this business to Fleet Commander…' : 'Fleet activation must complete before opening the company dashboard.'} />}
           </div>
         </Step>
       </section>
