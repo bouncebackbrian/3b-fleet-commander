@@ -11,7 +11,7 @@ alter table public.fleet_dt_events add constraint fleet_dt_events_event_type_che
   'arrive_dump','unloading_started','unloading_completed','depart_dump','arrive_yard',
   'break_started','break_ended','delay_started','delay_ended',
   'fuel_stop_started','fuel_stop_ended',
-  'posttrip_started','posttrip_completed','truck_dropped_off','clock_out','shutdown_clock_out',
+  'posttrip_started','posttrip_completed','truck_dropped_off','clock_out','shutdown_clock_out','asset_transfer_clock_out',
   'shift_submitted','correction_requested','event_corrected',
   'shift_approved','shift_reopened','note','photo_captured','ticket_captured','location_logged'
 ));
