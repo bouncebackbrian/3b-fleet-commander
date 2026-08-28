@@ -1,6 +1,6 @@
 /**
- * fleet/dumpTruck/hourOverrides.ts — verified paper-sheet / dispatcher hour
- * overrides (fleet_dt_shift_hour_overrides)
+ * fleet/dumpTruck/hourOverrides.ts — verified shift-hour overrides.
+ * Raw operational timestamps are never edited; every replacement is audited.
  */
 
 import { fleetServiceClient } from '@/lib/fleet-service-client'
@@ -48,12 +48,6 @@ export async function listOverrideHistory(shiftId: string): Promise<ShiftHourOve
   return (data ?? []).map(fromRow)
 }
 
-/**
- * Records a verified-hours override for a shift. The partial unique index
- * permits only one active override, so the prior row must be marked
- * superseded before the replacement insert. If the replacement insert fails,
- * the prior row is restored to active to avoid losing the authoritative value.
- */
 export async function applyShiftHourOverride(params: {
   businessId: string
   shiftId: string
@@ -62,6 +56,7 @@ export async function applyShiftHourOverride(params: {
   sourceDocument: string | null
   actorId: string
   actorEmail?: string | null
+  source?: 'admin' | 'driver' | 'system'
 }): Promise<ShiftHourOverride> {
   const prior = await getActiveOverride(params.shiftId)
   const supersededAt = new Date().toISOString()
@@ -88,7 +83,6 @@ export async function applyShiftHourOverride(params: {
     .single()
 
   if (insertError) {
-    // Best-effort rollback of the supersede if the replacement failed.
     if (prior) {
       await fleetServiceClient
         .from('fleet_dt_shift_hour_overrides')
@@ -99,12 +93,8 @@ export async function applyShiftHourOverride(params: {
   }
 
   const created = fromRow(inserted)
-
   if (prior) {
-    await fleetServiceClient
-      .from('fleet_dt_shift_hour_overrides')
-      .update({ superseded_by: created.id })
-      .eq('id', prior.id)
+    await fleetServiceClient.from('fleet_dt_shift_hour_overrides').update({ superseded_by: created.id }).eq('id', prior.id)
   }
 
   await fleetServiceClient.from('fleet_dt_corrections').insert({
@@ -127,7 +117,7 @@ export async function applyShiftHourOverride(params: {
     before: prior,
     after: created,
     metadata: { shiftId: params.shiftId, sourceDocument: params.sourceDocument },
-    source: 'admin',
+    source: params.source ?? 'admin',
   })
 
   return created
