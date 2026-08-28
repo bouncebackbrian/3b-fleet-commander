@@ -94,7 +94,7 @@ function normalizeBusiness(row: Record<string, unknown>): ThreeBBusiness {
     has_domain_email: Boolean(row.has_domain_email ?? domainEmail),
     has_bank_account: Boolean(row.has_bank_account ?? (row.bank_account_status && row.bank_account_status !== 'none')),
     revenue_status: (row.revenue_status ?? 'none') as RevenueStatus,
-    credit_status: (row.credit_status ?? (row.credit_builder_status === 'none' ? 'none' : 'building') ?? 'none') as CreditStatus,
+    credit_status: (row.credit_status ?? (row.credit_builder_status === 'none' ? 'none' : 'building')) as CreditStatus,
     created_at: String(row.created_at ?? ''),
     updated_at: String(row.updated_at ?? ''),
   }
