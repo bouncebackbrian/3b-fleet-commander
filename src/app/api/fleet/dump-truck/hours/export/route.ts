@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
     if (format === 'pdf') {
       if (exportType === 'summary') {
         const logo = await getFleetCommanderLogoForPdf()
+        const totalRecordedHours = rows.reduce((sum, row) => sum + row.totalShiftHours, 0)
         const additionalPaidOperationalHours = Math.max(0, summary.totalPaidHours - summary.totalCustomerBillableHours)
         const extraPaidExceptions = rows.map(r => ({ row: r, extra: Math.max(0, r.paidHours - r.customerBillableHours) })).filter(x => x.extra > EXTRA_PAID_NOTE_THRESHOLD_HOURS)
         const pdf = await renderSummaryReportPdf({
@@ -65,12 +66,14 @@ export async function GET(request: NextRequest) {
           subtitleLines: [`Driver: ${meta.driverName}${meta.threebId ? ` (${meta.threebId})` : ''}`, `Range: ${rangeType} (${range.start} to ${range.end})`],
           disclaimers: [
             'Estimated earnings only — not a pay stub or final wage statement.',
-            'Broker/Customer Hours show the customer-billable portion of the shift. Additional Paid Operational Hours are payable driver time outside the broker sheet, including assigned driving or other company-directed truck work. Broker billing does not determine driver pay.',
+            'Total Hours are the full recorded shift spans for the selected week. Paid Hours are the hours currently classified as payable. Broker/Customer Hours show the customer-billable portion of the shift.',
+            'Additional Paid Operational Hours are payable driver time outside the broker sheet, including assigned driving or other company-directed truck work. Broker billing does not determine driver pay.',
             'Any Additional Paid Operational Time over 0.50 hours (30 minutes) is specifically flagged and should retain an operational/work note describing the assigned activity.',
             ...(summary.totalPendingPayableHours > 0 || summary.totalNonPaidOperationalHours > 0 ? ['Regular + Overtime Hours are based on Paid Hours. Only time explicitly pending management review or classified non-payable is excluded from paid totals.'] : []),
           ],
           stats: [
             { label: 'Days Worked', value: String(summary.daysWorked) },
+            { label: 'Total Hours', value: totalRecordedHours.toFixed(2) },
             { label: 'Paid Hours', value: summary.totalPaidHours.toFixed(2) },
             { label: 'Broker/Customer Hrs', value: summary.totalCustomerBillableHours.toFixed(2) },
             { label: 'Additional Paid Operational Hrs', value: additionalPaidOperationalHours.toFixed(2) },
