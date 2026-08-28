@@ -1,16 +1,16 @@
 'use client'
 
 import { useState, useEffect, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { createAuthClient } from '@/lib/auth-client'
 
 const ALLOWED_HOSTS = ['bouncebackbrian.com']
 
 function sanitizeReturnTo(raw: string | null): string {
-  // Fleet Commander now lands authenticated users in their selected 3B
-  // Business context. /dashboard is a legacy product surface and should not
-  // be the default post-login destination.
-  const fallback = '/fleet'
+  // Until the universal 3B User Dashboard is mounted, authenticated users
+  // enter through onboarding/business selection. /fleet is a product launcher,
+  // not the account-level post-login home.
+  const fallback = '/start'
   if (!raw) return fallback
   try {
     const url = new URL(decodeURIComponent(raw))
@@ -21,6 +21,12 @@ function sanitizeReturnTo(raw: string | null): string {
     if (raw.startsWith('/') && !raw.startsWith('//')) return raw
   }
   return fallback
+}
+
+function navigateAfterAuth(destination: string) {
+  // Use a full navigation after auth so the destination's server components
+  // see the newly-written Supabase auth cookies on their first request.
+  window.location.replace(destination)
 }
 
 const inputStyle: React.CSSProperties = {
@@ -35,7 +41,6 @@ const inputStyle: React.CSSProperties = {
 }
 
 function LoginForm() {
-  const router = useRouter()
   const params = useSearchParams()
   const returnTo = sanitizeReturnTo(params.get('returnTo'))
 
@@ -49,12 +54,12 @@ function LoginForm() {
     const supabase = createAuthClient()
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
-        router.replace(returnTo)
+        navigateAfterAuth(returnTo)
       } else {
         setChecking(false)
       }
     })
-  }, [router, returnTo])
+  }, [returnTo])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -66,7 +71,7 @@ function LoginForm() {
       setError(authError.message)
       setLoading(false)
     } else {
-      router.replace(returnTo)
+      navigateAfterAuth(returnTo)
     }
   }
 
