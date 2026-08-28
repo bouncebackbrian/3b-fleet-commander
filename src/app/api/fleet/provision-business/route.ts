@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAuthServerClient } from '@/lib/auth-server-client'
 import { fleetServiceClient } from '@/lib/fleet-service-client'
+import { ACTIVE_FLEET_BUSINESS_COOKIE } from '@/lib/fleet-auth-guard'
 
 export const dynamic = 'force-dynamic'
 
 /**
  * Core 3Boost/Core_Eco is the source of truth for business identity.
  * This endpoint never creates a Core business. It mirrors an authorized Core
- * business into Fleet Commander using the SAME UUID / 3B Business ID, then
- * grants the current Core user operational Admin access in Fleet.
+ * business into Fleet Commander using the SAME UUID / 3B Business ID, grants
+ * Fleet operational access, and sets that business as the active Fleet context.
  *
- * Safe to retry: all Fleet writes are upserts.
+ * Safe to retry: all Fleet writes are upserts. A Fleet provisioning failure
+ * never deletes or rolls back the Core business.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -22,8 +24,6 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await core.auth.getUser()
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // Verify the signed-in Core user belongs to this business. Fleet access can
-    // only be provisioned from an existing Core relationship.
     const { data: membership, error: membershipError } = await core
       .from('business_members')
       .select('role')
@@ -93,8 +93,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Fleet operational authorization is separate from Core ownership.
-    // A Core owner/manager gets Fleet Admin manage access; Driver/Dispatch are
-    // separate grants assigned explicitly in Fleet Commander.
     const { error: grantError } = await fleetServiceClient.from('fleet_member_portal_grants').upsert({
       business_id: business.id,
       user_id: user.id,
@@ -108,11 +106,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Could not provision Fleet Admin access' }, { status: 500 })
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       provisioned: true,
       businessId: business.id,
       threeBBusinessId: business.business_code,
     })
+
+    response.cookies.set(ACTIVE_FLEET_BUSINESS_COOKIE, business.id, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 30,
+    })
+
+    return response
   } catch (err) {
     console.error('[provision-business] Unexpected error:', err)
     return NextResponse.json({ error: 'Could not provision Fleet Commander access' }, { status: 500 })
