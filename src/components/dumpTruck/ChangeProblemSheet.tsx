@@ -3,16 +3,17 @@ import Sheet from './Sheet'
 
 /** Single entry point for "something about this job changed or went wrong" —
  *  routes to whichever existing sheet already handles that category instead
- *  of showing 5+ separate always-visible buttons (Delay/Defect/Truck Problem/
- *  Incident/Report Issue) on the main driver screen at once. */
+ *  of showing 5+ separate always-visible buttons on the main driver screen.
+ *  End-shift exceptions use their own route because they close custody/pay time.
+ */
 
 export type ChangeProblemRoute = 'truck_problem' | 'delay' | 'defect' | 'incident' | 'edit_job' | 'note'
 
 interface Option {
   route: ChangeProblemRoute
-  icon:  string
+  icon: string
   label: string
-  hint:  string
+  hint: string
   enabled: boolean
 }
 
@@ -25,12 +26,12 @@ interface Props {
 
 export default function ChangeProblemSheet({ onClose, onSelect, hasActiveJob, hasTruck }: Props) {
   const options: Option[] = [
-    { route: 'truck_problem', icon: '🚨', label: 'Truck Problem',        hint: 'Breakdown, can\'t move, mechanical', enabled: hasTruck },
-    { route: 'delay',         icon: '⏱️', label: 'Waiting / Traffic / Delay', hint: 'Waiting on loader, traffic, scale line, customer', enabled: true },
-    { route: 'edit_job',      icon: '📍', label: 'Job or Location Changed', hint: 'Dispatch changed job, new site, material changed', enabled: hasActiveJob },
-    { route: 'defect',        icon: '🔧', label: 'Truck Defect',          hint: 'Inspection issue, not a full breakdown', enabled: hasTruck },
-    { route: 'incident',      icon: '⚠️', label: 'Incident',              hint: 'Accident, safety event', enabled: true },
-    { route: 'note',          icon: '📝', label: 'Other / Note',          hint: 'Anything else dispatch should know', enabled: true },
+    { route: 'truck_problem', icon: '🚨', label: 'Truck Problem', hint: 'Breakdown, can\'t move, mechanical', enabled: hasTruck },
+    { route: 'delay', icon: '⏱️', label: 'Waiting / Traffic / Delay', hint: 'Waiting on loader, traffic, scale line, customer', enabled: true },
+    { route: 'edit_job', icon: '📍', label: 'Job or Location Changed', hint: 'Dispatch changed job, new site, material changed', enabled: hasActiveJob },
+    { route: 'defect', icon: '🔧', label: 'Truck Defect', hint: 'Inspection issue, not a full breakdown', enabled: hasTruck },
+    { route: 'incident', icon: '⚠️', label: 'Incident', hint: 'Accident, safety event', enabled: true },
+    { route: 'note', icon: '📝', label: 'Other / Note', hint: 'Anything else dispatch should know', enabled: true },
   ]
 
   return (
@@ -54,6 +55,22 @@ export default function ChangeProblemSheet({ onClose, onSelect, hasActiveJob, ha
             </span>
           </button>
         ))}
+
+        <button
+          disabled={!hasTruck}
+          onClick={() => { window.location.href = '/driver/dump-truck/end-shift-exception' }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '.75rem', textAlign: 'left',
+            padding: '.85rem .9rem', borderRadius: 12, border: '1px solid var(--border)',
+            background: 'var(--surface-2)', color: 'var(--text)', opacity: hasTruck ? 1 : .4,
+          }}
+        >
+          <span style={{ fontSize: '1.3rem' }}>🛑</span>
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontWeight: 800, fontSize: '.92rem' }}>End Shift Exception</span>
+            <span style={{ fontSize: '.72rem', color: 'var(--muted)' }}>Asset shutdown or Transfer Post-Trip Lite</span>
+          </span>
+        </button>
       </div>
     </Sheet>
   )

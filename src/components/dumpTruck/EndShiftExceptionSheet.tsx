@@ -6,6 +6,7 @@ import { captureGeolocation } from '@/lib/dumpTruck/events'
 import { toast } from '@/hooks/useToast'
 
 type CloseoutMode = 'shutdown' | 'transfer'
+type TransferCondition = 'pass' | 'monitor' | 'fail'
 
 interface Props {
   shiftId: string
@@ -13,18 +14,25 @@ interface Props {
   onCompleted: () => void
 }
 
+const TRANSFER_CONDITIONS: { key: TransferCondition; label: string; color: string }[] = [
+  { key: 'pass', label: 'Pass', color: 'var(--success)' },
+  { key: 'monitor', label: 'Monitor', color: 'var(--warn, #d99a2b)' },
+  { key: 'fail', label: 'Fail', color: 'var(--error)' },
+]
+
 export default function EndShiftExceptionSheet({ shiftId, onClose, onCompleted }: Props) {
   const [mode, setMode] = useState<CloseoutMode>('shutdown')
   const [odometer, setOdometer] = useState('')
   const [reason, setReason] = useState('')
-  const [condition, setCondition] = useState('')
+  const [condition, setCondition] = useState<TransferCondition | null>(null)
+  const [conditionNote, setConditionNote] = useState('')
   const [receivingName, setReceivingName] = useState('')
   const [receivingUserId, setReceivingUserId] = useState('')
   const [busy, setBusy] = useState(false)
 
   const submit = async () => {
-    if (mode === 'transfer' && (!reason.trim() || !odometer.trim())) {
-      toast.error('Transfer reason and odometer are required')
+    if (mode === 'transfer' && (!reason.trim() || !odometer.trim() || !condition)) {
+      toast.error('Transfer odometer, reason and condition are required')
       return
     }
 
@@ -55,7 +63,8 @@ export default function EndShiftExceptionSheet({ shiftId, onClose, onCompleted }
             ...common,
             odometer: Number(odometer),
             transferReason: reason.trim(),
-            transferCondition: condition.trim() || null,
+            transferCondition: condition,
+            transferConditionNote: conditionNote.trim() || null,
             receivingUserId: receivingUserId.trim() || null,
             receivingName: receivingName.trim() || null,
           }
@@ -70,7 +79,7 @@ export default function EndShiftExceptionSheet({ shiftId, onClose, onCompleted }
 
       toast.success(mode === 'shutdown'
         ? 'Clocked out — Post-Trip waived for asset shutdown'
-        : 'Asset transferred and shift clocked out')
+        : 'Post-Trip Lite submitted — asset transferred and shift clocked out')
       onCompleted()
       onClose()
     } catch (err) {
@@ -92,10 +101,12 @@ export default function EndShiftExceptionSheet({ shiftId, onClose, onCompleted }
   })
 
   return (
-    <Sheet title="End Shift Exception" onClose={onClose}>
+    <Sheet title={mode === 'transfer' ? 'Post-Trip Lite — Asset Transfer' : 'End Shift — Asset Shutdown'} onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '.85rem' }}>
         <div style={{ fontSize: '.8rem', color: 'var(--muted)' }}>
-          Use only when a normal Post-Trip cannot be completed because the asset is formally shut down or custody is being transferred.
+          {mode === 'transfer'
+            ? 'Transfer requires a light custody closeout: mileage, timestamp/location, reason and a quick condition check.'
+            : 'Use shutdown closeout only when the asset has been formally taken out of service and a normal Post-Trip cannot reasonably be completed.'}
         </div>
 
         <div style={{ display: 'flex', gap: 8 }}>
@@ -121,6 +132,36 @@ export default function EndShiftExceptionSheet({ shiftId, onClose, onCompleted }
 
         {mode === 'transfer' && (
           <>
+            <div>
+              <div style={{ fontSize: '.75rem', fontWeight: 800, marginBottom: 6 }}>Quick asset condition</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {TRANSFER_CONDITIONS.map(item => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setCondition(item.key)}
+                    style={{
+                      flex: 1,
+                      minHeight: 44,
+                      borderRadius: 8,
+                      border: '1px solid var(--border)',
+                      fontWeight: 800,
+                      background: condition === item.key ? item.color : 'var(--surface-2)',
+                      color: condition === item.key ? '#fff' : 'var(--text)',
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <input
+              style={inputStyle}
+              placeholder="Condition note — optional"
+              value={conditionNote}
+              onChange={e => setConditionNote(e.target.value)}
+            />
             <input
               style={inputStyle}
               placeholder="Receiving person name"
@@ -129,21 +170,17 @@ export default function EndShiftExceptionSheet({ shiftId, onClose, onCompleted }
             />
             <input
               style={inputStyle}
-              placeholder="Receiving user ID — optional if selected elsewhere"
+              placeholder="Receiving 3B user ID / user ID — optional"
               value={receivingUserId}
               onChange={e => setReceivingUserId(e.target.value)}
-            />
-            <input
-              style={inputStyle}
-              placeholder="Asset condition at transfer — optional"
-              value={condition}
-              onChange={e => setCondition(e.target.value)}
             />
           </>
         )}
 
         <div style={{ padding: '.7rem', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface-2)', fontSize: '.76rem', color: 'var(--muted)' }}>
-          This closes the outgoing driver&apos;s shift without a normal Post-Trip. Time, mileage, location and the exception reason remain in the shift report and audit trail.
+          {mode === 'transfer'
+            ? 'Submitting ends the outgoing driver’s custody and shift at this recorded mileage/time/location. The next driver starts a new custody record.'
+            : 'Shutdown time remains part of the driver’s paid-time record as a separate shutdown/breakdown category. The asset remains unavailable until Admin approves return to service.'}
         </div>
 
         <button
@@ -151,7 +188,7 @@ export default function EndShiftExceptionSheet({ shiftId, onClose, onCompleted }
           disabled={busy}
           onClick={submit}
         >
-          {busy ? 'Saving…' : mode === 'shutdown' ? 'Clock Out — Asset Shutdown' : 'Transfer Asset & Clock Out'}
+          {busy ? 'Saving…' : mode === 'shutdown' ? 'Clock Out — Asset Shutdown' : 'Submit Post-Trip Lite & Clock Out'}
         </button>
       </div>
     </Sheet>

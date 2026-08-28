@@ -1,10 +1,10 @@
 /**
  * Dump Truck Mode — inspection completion + defect-severity gating
  *
- * Spec §8: "Safety-critical or out-of-service defects prevent normal
- * dispatch until an authorized person resolves or overrides them with a
- * documented reason." This module is the pure rule check; the API layer
- * enforces it before allowing `truck_picked_up` / `depart_yard` to fire.
+ * Safety-critical company holds may be acknowledged/overridden by an
+ * authorized operational workflow with a documented reason. A true
+ * out-of-service condition is a hard stop and cannot be bypassed here; it
+ * remains unavailable until the Admin return-to-service workflow clears it.
  */
 
 import type { DefectSeverity, InspectionItemInput, InspectionTemplateItem } from './types'
@@ -58,14 +58,19 @@ export function validateInspectionSubmission(
   return { valid: errors.length === 0, errors, missingItemKeys }
 }
 
-/** True if a truck may dispatch (custody may open / drive may start) given its open defects. */
+/**
+ * True if a truck may dispatch given its open defects.
+ * - out_of_service: never bypassed here; Admin return-to-service approval is required.
+ * - safety_critical: may proceed only through an authorized documented override flow.
+ */
 export function canDispatchWithDefects(
   openDefects: { severity: DefectSeverity; status: string }[],
   overrideReason: string | null,
 ): boolean {
-  const blocking = openDefects.some(
-    d => BLOCKING_SEVERITIES.includes(d.severity) && (d.status === 'open' || d.status === 'acknowledged'),
-  )
-  if (!blocking) return true
+  const active = openDefects.filter(d => d.status === 'open' || d.status === 'acknowledged')
+  if (active.some(d => d.severity === 'out_of_service')) return false
+
+  const safetyCritical = active.some(d => d.severity === 'safety_critical')
+  if (!safetyCritical) return true
   return !!overrideReason && overrideReason.trim().length > 0
 }
