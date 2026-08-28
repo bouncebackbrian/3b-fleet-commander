@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireFleetAuth } from '@/lib/fleet-auth-guard'
-import { respondStillWorking, resolveNextShiftReview } from '@/lib/fleet/dumpTruck/missedPunch'
+import { respondStillWorking, respondNotWorking, resolveNextShiftReview } from '@/lib/fleet/dumpTruck/missedPunch'
 import { DumpTruckError } from '@/lib/fleet/dumpTruck/shared'
 
 export const dynamic = 'force-dynamic'
@@ -25,6 +25,11 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ reconciliation })
     }
 
+    if (body.action === 'not_working') {
+      const reconciliation = await respondNotWorking(auth.businessId, auth.userId, auth.email, body.reconciliationId)
+      return NextResponse.json({ reconciliation })
+    }
+
     if (body.action === 'confirm' || body.action === 'correct') {
       const reconciliation = await resolveNextShiftReview({
         businessId: auth.businessId,
@@ -38,7 +43,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ reconciliation })
     }
 
-    return NextResponse.json({ error: 'action must be still_working, confirm, or correct' }, { status: 400 })
+    return NextResponse.json({ error: 'action must be still_working, not_working, confirm, or correct' }, { status: 400 })
   } catch (err) {
     if (err instanceof DumpTruckError) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error('[api/fleet/dump-truck/missed-punch] PATCH error:', err)
