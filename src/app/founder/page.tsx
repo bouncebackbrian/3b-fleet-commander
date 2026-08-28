@@ -4,190 +4,100 @@ import { fleetServiceClient } from '@/lib/fleet-service-client'
 
 export const dynamic = 'force-dynamic'
 
-type Business = {
-  id: string
-  three_b_biz_id: string
-  company_name: string
-  business_type: string
-  has_fleet: boolean
-  state: string | null
-  owner_id: string | null
-  created_at: string
-}
+type Business = { id: string; three_b_biz_id: string; company_name: string; business_type: string; has_fleet: boolean; created_at: string }
+type Member = { business_id: string; user_id: string; role: string; active: boolean }
+type Equipment = { business_id: string; equipment_type: string; status: string }
 
-type Member = {
-  business_id: string
-  user_id: string
-  role: string
-  active: boolean
-}
-
-type Equipment = {
-  business_id: string
-  equipment_type: string
-  status: string
-}
-
-function startOfMonthIso() {
-  const now = new Date()
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()
-}
-
-function pct(numerator: number, denominator: number) {
-  if (!denominator) return '0%'
-  return `${Math.round((numerator / denominator) * 100)}%`
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(value))
-}
+const areas = [
+  { label: 'Sales', href: '/founder/sales', detail: 'Leads, trials, conversions, pipeline and revenue readiness.', icon: '↗' },
+  { label: 'Members', href: '/founder/members', detail: 'People, 3B identities, access, activity and support context.', icon: '◎' },
+  { label: 'Businesses', href: '/founder/accounts', detail: 'Company accounts, Fleet activation, teams and asset footprint.', icon: '▦' },
+  { label: 'Fleet Operations', href: '/founder/accounts', detail: 'Cross-account operational health without becoming customer Admin.', icon: '◈' },
+  { label: 'Marketing', href: '/founder/marketing', detail: 'Campaigns, channels, acquisition, content and conversion signals.', icon: '✦' },
+  { label: 'Product / Build', href: '/founder/product', detail: 'Deployments, product areas, known gaps and release readiness.', icon: '⌘' },
+  { label: 'Problems & Decisions', href: '/founder/problems', detail: 'Capture, diagnose, decide, assign, verify and close system problems.', icon: '!' },
+] as const
 
 export default async function FounderPortalPage() {
   const founder = await requireFounder()
 
   const [{ data: businessesData }, { data: membersData }, { data: equipmentData }] = await Promise.all([
-    fleetServiceClient
-      .from('businesses')
-      .select('id, three_b_biz_id, company_name, business_type, has_fleet, state, owner_id, created_at')
-      .order('created_at', { ascending: false }),
-    fleetServiceClient
-      .from('fleet_business_members')
-      .select('business_id, user_id, role, active'),
-    fleetServiceClient
-      .from('fleet_equipment')
-      .select('business_id, equipment_type, status'),
+    fleetServiceClient.from('businesses').select('id,three_b_biz_id,company_name,business_type,has_fleet,created_at').order('created_at', { ascending: false }),
+    fleetServiceClient.from('fleet_business_members').select('business_id,user_id,role,active'),
+    fleetServiceClient.from('fleet_equipment').select('business_id,equipment_type,status'),
   ])
 
   const businesses = (businessesData ?? []) as Business[]
   const members = (membersData ?? []) as Member[]
   const equipment = (equipmentData ?? []) as Equipment[]
-
-  const fleetAccounts = businesses.filter(business => business.has_fleet)
-  const ownerOps = businesses.filter(business => business.business_type === 'owner_op')
-  const activeMembers = members.filter(member => member.active)
-  const drivers = activeMembers.filter(member => member.role === 'driver')
-  const poweredEquipment = equipment.filter(item => !item.equipment_type.startsWith('trailer_'))
-  const activePoweredEquipment = poweredEquipment.filter(item => item.status === 'active')
-  const monthStart = startOfMonthIso()
-  const newThisMonth = businesses.filter(business => business.created_at >= monthStart)
-
-  const memberCountByBusiness = new Map<string, number>()
-  const driverCountByBusiness = new Map<string, number>()
-  const equipmentCountByBusiness = new Map<string, number>()
-
-  for (const member of activeMembers) {
-    memberCountByBusiness.set(member.business_id, (memberCountByBusiness.get(member.business_id) ?? 0) + 1)
-    if (member.role === 'driver') {
-      driverCountByBusiness.set(member.business_id, (driverCountByBusiness.get(member.business_id) ?? 0) + 1)
-    }
-  }
-
-  for (const item of poweredEquipment) {
-    equipmentCountByBusiness.set(item.business_id, (equipmentCountByBusiness.get(item.business_id) ?? 0) + 1)
-  }
+  const fleetAccounts = businesses.filter(b => b.has_fleet)
+  const activeMembers = members.filter(m => m.active)
+  const powered = equipment.filter(e => !e.equipment_type.startsWith('trailer_'))
+  const activePowered = powered.filter(e => e.status === 'active')
 
   const metrics = [
-    { label: '3B business accounts', value: businesses.length, detail: `${newThisMonth.length} added this month` },
-    { label: 'Fleet-enabled accounts', value: fleetAccounts.length, detail: `${pct(fleetAccounts.length, businesses.length)} of business registry` },
-    { label: 'Owner-operators', value: ownerOps.length, detail: 'Same commercial model as fleets' },
-    { label: 'Active drivers', value: drivers.length, detail: `${activeMembers.length} active Fleet members` },
-    { label: 'Active powered units', value: activePoweredEquipment.length, detail: `${poweredEquipment.length} powered units registered` },
+    { label: 'Businesses', value: businesses.length, detail: `${fleetAccounts.length} Fleet enabled` },
+    { label: 'Active Members', value: activeMembers.length, detail: 'Across all Fleet accounts' },
+    { label: 'Powered Units', value: powered.length, detail: `${activePowered.length} active` },
+    { label: 'System Problems', value: '—', detail: 'Problem ledger connection next' },
   ]
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-5 border-b border-white/10 pb-7 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8">
+        <header className="flex flex-col gap-5 border-b border-white/10 pb-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-400">3B Founder Access</div>
-            <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">Fleet Commander Control Center</h1>
-            <p className="mt-2 max-w-3xl text-sm text-slate-400">
-              Platform-wide account visibility, fleet adoption and operating footprint. Customer company permissions stay separate from Founder access.
-            </p>
+            <div className="text-xs font-black uppercase tracking-[0.24em] text-amber-300">3B Founder Portal</div>
+            <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">System Command Center</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">Oversee Fleet Commander as a business and product: customers, members, sales, marketing, operations, product health and unresolved problems. Founder access stays separate from customer-company permissions.</p>
           </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-right">
-            <div className="text-xs uppercase tracking-wider text-slate-500">Signed in as Founder</div>
-            <div className="mt-1 text-sm font-semibold">{founder.threeBId ?? founder.email ?? 'Authorized 3B ID'}</div>
+          <div className="text-right text-sm">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Founder identity</div>
+            <div className="mt-1 font-bold text-slate-300">{founder.threeBId ?? founder.email ?? 'Authorized Founder'}</div>
           </div>
-        </div>
+        </header>
 
-        <section className="grid gap-3 py-6 sm:grid-cols-2 lg:grid-cols-5">
-          {metrics.map(metric => (
-            <div key={metric.label} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{metric.label}</div>
-              <div className="mt-2 text-3xl font-black">{metric.value}</div>
-              <div className="mt-2 text-xs text-slate-400">{metric.detail}</div>
-            </div>
-          ))}
+        <section className="grid gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 my-6 sm:grid-cols-2 lg:grid-cols-4">
+          {metrics.map(metric => <div key={metric.label} className="bg-slate-950 px-5 py-4">
+            <div className="text-[11px] font-black uppercase tracking-wider text-slate-600">{metric.label}</div>
+            <div className="mt-2 text-3xl font-black">{metric.value}</div>
+            <div className="mt-1 text-xs text-slate-500">{metric.detail}</div>
+          </div>)}
         </section>
 
-        <section className="mb-6 grid gap-4 lg:grid-cols-3">
-          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5 lg:col-span-2">
-            <div className="text-sm font-bold text-emerald-300">Commercial model checkpoint</div>
-            <p className="mt-2 text-sm leading-6 text-slate-300">
-              Company and owner-operator accounts are being structured around Dispatch + active trucks, with each truck assigned an operation mode. Revenue analytics will connect here once the subscription/entitlement records are finalized; this portal does not invent MRR from incomplete billing data.
-            </p>
+        <section>
+          <div className="mb-3 flex items-end justify-between gap-4">
+            <div><h2 className="text-lg font-black">Run the system</h2><p className="mt-1 text-sm text-slate-500">Choose the business function you need to inspect or improve.</p></div>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Fleet adoption</div>
-            <div className="mt-2 text-3xl font-black">{pct(fleetAccounts.length, businesses.length)}</div>
-            <div className="mt-2 text-sm text-slate-400">Businesses currently marked for Fleet Commander.</div>
+          <div className="divide-y divide-white/10 border-y border-white/10">
+            {areas.map(area => <Link key={area.label} href={area.href} className="grid gap-2 py-4 transition hover:bg-white/[0.025] sm:grid-cols-[42px_180px_1fr_auto] sm:items-center sm:px-2">
+              <div className="grid h-9 w-9 place-items-center rounded-lg bg-white/5 font-black text-amber-300">{area.icon}</div>
+              <div className="font-black">{area.label}</div>
+              <div className="text-sm text-slate-500">{area.detail}</div>
+              <div className="text-slate-600">→</div>
+            </Link>)}
           </div>
         </section>
 
-        <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
-          <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-            <div>
-              <h2 className="text-lg font-bold">Accounts</h2>
-              <p className="mt-1 text-xs text-slate-500">Newest businesses first. Open an account for its team and equipment view.</p>
+        <section className="mt-7 grid gap-5 lg:grid-cols-[1.2fr_.8fr]">
+          <div>
+            <div className="mb-3 text-xs font-black uppercase tracking-[0.16em] text-slate-600">Recent businesses</div>
+            <div className="divide-y divide-white/10 border-y border-white/10">
+              {businesses.slice(0, 6).map(business => <Link key={business.id} href={`/founder/accounts/${business.id}`} className="grid grid-cols-[1fr_auto] gap-4 py-3 hover:bg-white/[0.025] sm:px-2">
+                <div><div className="font-bold">{business.company_name}</div><div className="mt-1 text-xs text-slate-600">{business.three_b_biz_id} · {business.business_type.replaceAll('_', ' ')}</div></div>
+                <div className={business.has_fleet ? 'text-xs font-black text-emerald-400' : 'text-xs font-black text-slate-600'}>{business.has_fleet ? 'FLEET ON' : 'FLEET OFF'}</div>
+              </Link>)}
+              {businesses.length === 0 && <div className="py-6 text-sm text-slate-500">No businesses found.</div>}
             </div>
-            <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-slate-300">{businesses.length} total</span>
           </div>
 
-          {businesses.length === 0 ? (
-            <div className="px-5 py-12 text-center text-sm text-slate-500">No 3B business accounts found.</div>
-          ) : (
-            <div className="divide-y divide-white/10">
-              {businesses.map(business => (
-                <Link
-                  key={business.id}
-                  href={`/founder/accounts/${business.id}`}
-                  className="grid gap-3 px-5 py-4 transition hover:bg-white/[0.04] md:grid-cols-[minmax(0,2fr)_1fr_0.8fr_0.8fr_0.8fr_auto] md:items-center"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate font-bold">{business.company_name}</div>
-                    <div className="mt-1 text-xs text-slate-500">{business.three_b_biz_id} · {formatDate(business.created_at)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wider text-slate-600">Type</div>
-                    <div className="mt-1 text-sm capitalize text-slate-300">{business.business_type.replaceAll('_', ' ')}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wider text-slate-600">Members</div>
-                    <div className="mt-1 text-sm font-semibold">{memberCountByBusiness.get(business.id) ?? 0}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wider text-slate-600">Drivers</div>
-                    <div className="mt-1 text-sm font-semibold">{driverCountByBusiness.get(business.id) ?? 0}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wider text-slate-600">Trucks</div>
-                    <div className="mt-1 text-sm font-semibold">{equipmentCountByBusiness.get(business.id) ?? 0}</div>
-                  </div>
-                  <div className="flex items-center gap-2 md:justify-end">
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${business.has_fleet ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
-                      {business.has_fleet ? 'Fleet On' : 'Fleet Off'}
-                    </span>
-                    <span className="text-slate-600">→</span>
-                  </div>
-                </Link>
-              ))}
+          <div>
+            <div className="mb-3 text-xs font-black uppercase tracking-[0.16em] text-slate-600">Founder operating loop</div>
+            <div className="border-y border-white/10 py-4 text-sm leading-7 text-slate-400">
+              <strong className="text-white">Measure</strong> what is happening → <strong className="text-white">Diagnose</strong> the constraint → <strong className="text-white">Decide</strong> the response → <strong className="text-white">Assign</strong> ownership → <strong className="text-white">Verify</strong> the result → <strong className="text-white">Close</strong> or standardize the fix.
             </div>
-          )}
+            <Link href="/founder/problems" className="mt-4 inline-flex rounded-xl bg-amber-300 px-4 py-2.5 text-sm font-black text-slate-950">Open Problem Solver →</Link>
+          </div>
         </section>
       </div>
     </main>
