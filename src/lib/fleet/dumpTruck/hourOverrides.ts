@@ -1,14 +1,6 @@
 /**
  * fleet/dumpTruck/hourOverrides.ts — verified paper-sheet / dispatcher hour
  * overrides (fleet_dt_shift_hour_overrides)
- *
- * See the migration doc comment for the "why": raw operational timestamps
- * (fleet_dt_shifts.clock_in_at/clock_out_at, fleet_dt_events) stay untouched
- * as the GPS/audit record. When a stronger source gives a different
- * authoritative hours total for a shift — a signed paper haul sheet, a
- * dispatcher-confirmed paid adjustment for a truck-down day — dispatch
- * records that total here instead. buildDriverHoursForRange (hours.ts)
- * picks up the active override automatically.
  */
 
 import { fleetServiceClient } from '@/lib/fleet-service-client'
@@ -37,7 +29,6 @@ function fromRow(r: any): ShiftHourOverride {
   }
 }
 
-/** The currently-active (non-superseded) override for a shift, if any. */
 export async function getActiveOverride(shiftId: string): Promise<ShiftHourOverride | null> {
   const { data } = await fleetServiceClient
     .from('fleet_dt_shift_hour_overrides')
@@ -48,7 +39,6 @@ export async function getActiveOverride(shiftId: string): Promise<ShiftHourOverr
   return data ? fromRow(data) : null
 }
 
-/** Full override history for a shift (most recent first), for the audit view. */
 export async function listOverrideHistory(shiftId: string): Promise<ShiftHourOverride[]> {
   const { data } = await fleetServiceClient
     .from('fleet_dt_shift_hour_overrides')
@@ -59,11 +49,10 @@ export async function listOverrideHistory(shiftId: string): Promise<ShiftHourOve
 }
 
 /**
- * Records a verified-hours override for a shift, superseding any prior
- * active override (never mutates it — the old row is kept with
- * superseded_at/superseded_by set). Also writes a fleet_dt_corrections entry
- * so the reconciliation is visible in the same audit trail as timestamp
- * corrections, and the general fleet_audit_logs trail via audit.log().
+ * Records a verified-hours override for a shift. The partial unique index
+ * permits only one active override, so the prior row must be marked
+ * superseded before the replacement insert. If the replacement insert fails,
+ * the prior row is restored to active to avoid losing the authoritative value.
  */
 export async function applyShiftHourOverride(params: {
   businessId: string
@@ -75,6 +64,15 @@ export async function applyShiftHourOverride(params: {
   actorEmail?: string | null
 }): Promise<ShiftHourOverride> {
   const prior = await getActiveOverride(params.shiftId)
+  const supersededAt = new Date().toISOString()
+
+  if (prior) {
+    const { error: supersedeError } = await fleetServiceClient
+      .from('fleet_dt_shift_hour_overrides')
+      .update({ superseded_at: supersededAt })
+      .eq('id', prior.id)
+    if (supersedeError) throw supersedeError
+  }
 
   const { data: inserted, error: insertError } = await fleetServiceClient
     .from('fleet_dt_shift_hour_overrides')
@@ -88,13 +86,24 @@ export async function applyShiftHourOverride(params: {
     })
     .select('id, shift_id, verified_hours, source_document, reason, created_by, created_at')
     .single()
-  if (insertError) throw insertError
+
+  if (insertError) {
+    // Best-effort rollback of the supersede if the replacement failed.
+    if (prior) {
+      await fleetServiceClient
+        .from('fleet_dt_shift_hour_overrides')
+        .update({ superseded_at: null, superseded_by: null })
+        .eq('id', prior.id)
+    }
+    throw insertError
+  }
+
   const created = fromRow(inserted)
 
   if (prior) {
     await fleetServiceClient
       .from('fleet_dt_shift_hour_overrides')
-      .update({ superseded_at: new Date().toISOString(), superseded_by: created.id })
+      .update({ superseded_by: created.id })
       .eq('id', prior.id)
   }
 
