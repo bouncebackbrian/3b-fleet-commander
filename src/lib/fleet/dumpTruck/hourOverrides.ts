@@ -1,14 +1,6 @@
 /**
- * fleet/dumpTruck/hourOverrides.ts — verified paper-sheet / dispatcher hour
- * overrides (fleet_dt_shift_hour_overrides)
- *
- * See the migration doc comment for the "why": raw operational timestamps
- * (fleet_dt_shifts.clock_in_at/clock_out_at, fleet_dt_events) stay untouched
- * as the GPS/audit record. When a stronger source gives a different
- * authoritative hours total for a shift — a signed paper haul sheet, a
- * dispatcher-confirmed paid adjustment for a truck-down day — dispatch
- * records that total here instead. buildDriverHoursForRange (hours.ts)
- * picks up the active override automatically.
+ * fleet/dumpTruck/hourOverrides.ts — verified shift-hour overrides.
+ * Raw operational timestamps are never edited; every replacement is audited.
  */
 
 import { fleetServiceClient } from '@/lib/fleet-service-client'
@@ -37,7 +29,6 @@ function fromRow(r: any): ShiftHourOverride {
   }
 }
 
-/** The currently-active (non-superseded) override for a shift, if any. */
 export async function getActiveOverride(shiftId: string): Promise<ShiftHourOverride | null> {
   const { data } = await fleetServiceClient
     .from('fleet_dt_shift_hour_overrides')
@@ -48,7 +39,6 @@ export async function getActiveOverride(shiftId: string): Promise<ShiftHourOverr
   return data ? fromRow(data) : null
 }
 
-/** Full override history for a shift (most recent first), for the audit view. */
 export async function listOverrideHistory(shiftId: string): Promise<ShiftHourOverride[]> {
   const { data } = await fleetServiceClient
     .from('fleet_dt_shift_hour_overrides')
@@ -58,13 +48,6 @@ export async function listOverrideHistory(shiftId: string): Promise<ShiftHourOve
   return (data ?? []).map(fromRow)
 }
 
-/**
- * Records a verified-hours override for a shift, superseding any prior
- * active override (never mutates it — the old row is kept with
- * superseded_at/superseded_by set). Also writes a fleet_dt_corrections entry
- * so the reconciliation is visible in the same audit trail as timestamp
- * corrections, and the general fleet_audit_logs trail via audit.log().
- */
 export async function applyShiftHourOverride(params: {
   businessId: string
   shiftId: string
@@ -73,30 +56,33 @@ export async function applyShiftHourOverride(params: {
   sourceDocument: string | null
   actorId: string
   actorEmail?: string | null
+  source?: 'api' | 'admin' | 'system'
 }): Promise<ShiftHourOverride> {
   const prior = await getActiveOverride(params.shiftId)
-
-  const { data: inserted, error: insertError } = await fleetServiceClient
-    .from('fleet_dt_shift_hour_overrides')
-    .insert({
-      business_id: params.businessId,
-      shift_id: params.shiftId,
-      verified_hours: params.verifiedHours,
-      source_document: params.sourceDocument,
-      reason: params.reason,
-      created_by: params.actorId,
-    })
-    .select('id, shift_id, verified_hours, source_document, reason, created_by, created_at')
-    .single()
-  if (insertError) throw insertError
-  const created = fromRow(inserted)
+  const supersededAt = new Date().toISOString()
 
   if (prior) {
-    await fleetServiceClient
-      .from('fleet_dt_shift_hour_overrides')
-      .update({ superseded_at: new Date().toISOString(), superseded_by: created.id })
-      .eq('id', prior.id)
+    const { error: supersedeError } = await fleetServiceClient.from('fleet_dt_shift_hour_overrides')
+      .update({ superseded_at: supersededAt }).eq('id', prior.id)
+    if (supersedeError) throw supersedeError
   }
+
+  const { data: inserted, error: insertError } = await fleetServiceClient.from('fleet_dt_shift_hour_overrides').insert({
+    business_id: params.businessId,
+    shift_id: params.shiftId,
+    verified_hours: params.verifiedHours,
+    source_document: params.sourceDocument,
+    reason: params.reason,
+    created_by: params.actorId,
+  }).select('id, shift_id, verified_hours, source_document, reason, created_by, created_at').single()
+
+  if (insertError) {
+    if (prior) await fleetServiceClient.from('fleet_dt_shift_hour_overrides').update({ superseded_at: null, superseded_by: null }).eq('id', prior.id)
+    throw insertError
+  }
+
+  const created = fromRow(inserted)
+  if (prior) await fleetServiceClient.from('fleet_dt_shift_hour_overrides').update({ superseded_by: created.id }).eq('id', prior.id)
 
   await fleetServiceClient.from('fleet_dt_corrections').insert({
     business_id: params.businessId,
@@ -118,7 +104,7 @@ export async function applyShiftHourOverride(params: {
     before: prior,
     after: created,
     metadata: { shiftId: params.shiftId, sourceDocument: params.sourceDocument },
-    source: 'admin',
+    source: params.source ?? 'admin',
   })
 
   return created

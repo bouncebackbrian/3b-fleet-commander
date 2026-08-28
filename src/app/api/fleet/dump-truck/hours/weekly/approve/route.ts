@@ -1,23 +1,22 @@
 /**
  * POST /api/fleet/dump-truck/hours/weekly/approve — dispatch signs off on a
- * driver-confirmed week. multipart/form-data: `driverId`, `weekStart`,
- * `weekEnd`, `signature` (image/png). Dispatcher+ only; the service layer
- * itself re-checks the week is actually in 'pending_dispatch' status.
+ * driver-confirmed week. Approval is rejected if the live totals changed
+ * after the driver's signature; the driver must review/sign the new totals.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { requireFleetAuth, canManage } from '@/lib/fleet-auth-guard'
 import { uploadDocument } from '@/lib/fleet/dumpTruck/documents'
-import { approveWeeklyTimesheet } from '@/lib/fleet/dumpTruck/weeklyTimesheets'
+import { approveWeeklyTimesheet, buildWeeklyTimesheet } from '@/lib/fleet/dumpTruck/weeklyTimesheets'
 import { DumpTruckError } from '@/lib/fleet/dumpTruck/shared'
 
 export const dynamic = 'force-dynamic'
 
+const same = (a: number | null, b: number) => a != null && Math.abs(a - b) < 0.005
+
 export async function POST(request: NextRequest) {
   const auth = await requireFleetAuth()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canManage(auth.portals, 'dispatch') && !canManage(auth.portals, 'admin')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  if (!canManage(auth.portals, 'dispatch') && !canManage(auth.portals, 'admin')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   try {
     const form = await request.formData()
@@ -27,6 +26,14 @@ export async function POST(request: NextRequest) {
     const signature = form.get('signature')
     if (typeof driverId !== 'string' || typeof weekStart !== 'string' || typeof weekEnd !== 'string' || !(signature instanceof File)) {
       return NextResponse.json({ error: 'driverId, weekStart, weekEnd, and signature are required' }, { status: 400 })
+    }
+
+    const timesheet = await buildWeeklyTimesheet(auth.businessId, driverId, weekStart, weekEnd)
+    const driverAction = timesheet.driverAction
+    const liveTotal = timesheet.summary.totalRegularHours + timesheet.summary.totalOvertimeHours
+    if (!driverAction || driverAction.action !== 'confirmed') throw new DumpTruckError('Driver must sign the week before dispatch approval', 409)
+    if (!same(driverAction.totalHoursAtAction, liveTotal) || !same(driverAction.regularHoursAtAction, timesheet.summary.totalRegularHours) || !same(driverAction.overtimeHoursAtAction, timesheet.summary.totalOvertimeHours)) {
+      throw new DumpTruckError('Hours changed after the driver signed. Driver re-confirmation is required before dispatch can approve.', 409)
     }
 
     const sigBytes = Buffer.from(await signature.arrayBuffer())
