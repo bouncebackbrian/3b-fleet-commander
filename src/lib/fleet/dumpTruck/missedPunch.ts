@@ -59,7 +59,6 @@ export async function evaluateMissedPunchSafeguard(
 
   if (existing) {
     const rec = fromRow(existing)
-    // After a driver confirms they are still working, ask again two hours later.
     if (rec.status === 'confirmed_working' && now.getTime() >= new Date(rec.promptedAt).getTime() + PROMPT_AFTER_MS) {
       const deadline = new Date(now.getTime() + RESPONSE_GRACE_MS).toISOString()
       const { data, error } = await fleetServiceClient.from('fleet_dt_shift_reconciliations')
@@ -69,7 +68,6 @@ export async function evaluateMissedPunchSafeguard(
       return fromRow(data)
     }
     if (rec.status === 'pending' && now.getTime() > new Date(rec.responseDeadlineAt).getTime()) {
-      // Provisional auto-close: never edit an existing punch. Only fill a missing clock-out.
       const { error: shiftError } = await fleetServiceClient.from('fleet_dt_shifts')
         .update({ clock_out_at: rec.brokerEndAt, state: 'clocked_out' })
         .eq('id', shift.id).is('clock_out_at', null)
@@ -139,7 +137,6 @@ export async function resolveNextShiftReview(input: {
     throw new DumpTruckError('A note is required when paid time exceeds the broker sheet by more than 30 minutes', 400)
   }
 
-  // Use the existing verified-hours override mechanism rather than rewriting event history.
   const { data: shift, error: shiftError } = await fleetServiceClient.from('fleet_dt_shifts')
     .select('clock_in_at').eq('id', rec.shift_id).single()
   if (shiftError) throw shiftError
@@ -147,13 +144,16 @@ export async function resolveNextShiftReview(input: {
 
   const { data: prior } = await fleetServiceClient.from('fleet_dt_shift_hour_overrides')
     .select('id').eq('shift_id', rec.shift_id).is('superseded_at', null).maybeSingle()
-  if (prior) await fleetServiceClient.from('fleet_dt_shift_hour_overrides').update({ superseded_at: new Date().toISOString() }).eq('id', prior.id)
+  if (prior) await fleetServiceClient.from('fleet_dt_shift_hour_overrides')
+    .update({ superseded_at: new Date().toISOString() }).eq('id', prior.id)
 
   const { error: overrideError } = await fleetServiceClient.from('fleet_dt_shift_hour_overrides').insert({
-    business_id: input.businessId, driver_id: input.driverId, shift_id: rec.shift_id,
+    business_id: input.businessId,
+    shift_id: rec.shift_id,
     verified_hours: Math.round(verifiedHours * 100) / 100,
+    source_document: 'Fleet Commander missed-punch reconciliation',
     reason: input.note?.trim() || 'Confirmed provisional broker-sheet end after missed punch',
-    entered_by: input.driverId,
+    created_by: input.driverId,
   })
   if (overrideError) throw overrideError
 
