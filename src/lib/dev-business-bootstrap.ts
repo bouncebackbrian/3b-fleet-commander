@@ -5,21 +5,56 @@ import { fleetServiceClient } from '@/lib/fleet-service-client'
 
 const CAL_NEVA_BUSINESS_ID = '34f00ed3-1759-4534-afad-34b6b000792f'
 
+const FULL_BUSINESS_PERMISSIONS = [
+  'asset_portal_view',
+  'asset_portal_manage',
+  'authorized_users_view',
+  'authorized_users_manage',
+  'company_profile_view',
+  'company_profile_manage',
+  'billing_view',
+  'billing_manage',
+  'subscriptions_view',
+  'subscriptions_manage',
+  'compliance_view',
+  'compliance_manage',
+  'driver_pay_view',
+  'driver_pay_manage',
+  'payroll_settings_view',
+  'payroll_settings_manage',
+] as const
+
+const FULL_DUMP_TRUCK_CAPABILITIES = [
+  'hours_view',
+  'hours_approve',
+  'hours_correct',
+  'reports_view',
+  'reports_generate',
+  'kpi_view',
+  'kpi_export',
+  'driver_status_view',
+  'dispatch_assign',
+  'dispatch_message',
+  'tickets_view',
+  'tickets_manage',
+  'fuel_view',
+  'exceptions_manage',
+] as const
+
 export interface DevBusinessBootstrapResult {
   applied: boolean
   businessId: string | null
 }
 
 /**
- * Development convenience for the product owner account.
+ * Development convenience for the product-owner 3B account.
  *
- * IMPORTANT: the account email is configured through FLEET_DEV_ACCOUNT_EMAIL.
- * When that authenticated email signs in, we make Cal-Neva the selected
- * development business and ensure explicit Driver + Dispatch + Admin grants.
+ * The authenticated account configured in FLEET_DEV_ACCOUNT_EMAIL is treated
+ * as a fully authorized Cal-Neva user for product development: Business Admin
+ * + Driver + Dispatch + all current Dump Truck operational capabilities.
  *
- * The user is deliberately NOT made the legal/business owner of Cal-Neva.
- * Business governance stays `manager`; Fleet operational display role is
- * `admin`; actual authorization comes from portal grants.
+ * This does NOT make the account Cal-Neva's legal owner. Platform Founder
+ * authority is also separate and comes from fleet_platform_admins.
  */
 export async function ensureDevelopmentBusinessAccess(): Promise<DevBusinessBootstrapResult> {
   const configuredEmail = process.env.FLEET_DEV_ACCOUNT_EMAIL?.trim().toLowerCase()
@@ -71,6 +106,31 @@ export async function ensureDevelopmentBusinessAccess(): Promise<DevBusinessBoot
       { business_id: CAL_NEVA_BUSINESS_ID, user_id: user.id, portal: 'dispatch', permission_level: 'manage', granted_by: user.id },
       { business_id: CAL_NEVA_BUSINESS_ID, user_id: user.id, portal: 'admin', permission_level: 'manage', granted_by: user.id },
     ], { onConflict: 'business_id,user_id,portal' })
+
+  await fleetServiceClient
+    .from('business_member_permissions')
+    .upsert(
+      FULL_BUSINESS_PERMISSIONS.map(permission => ({
+        business_id: CAL_NEVA_BUSINESS_ID,
+        user_id: user.id,
+        permission,
+        granted_by: user.id,
+      })),
+      { onConflict: 'business_id,user_id,permission' },
+    )
+
+  await fleetServiceClient
+    .from('fleet_member_capability_grants')
+    .upsert(
+      FULL_DUMP_TRUCK_CAPABILITIES.map(capability => ({
+        business_id: CAL_NEVA_BUSINESS_ID,
+        user_id: user.id,
+        capability,
+        mode_id: 'dump-truck',
+        granted_by: user.id,
+      })),
+      { onConflict: 'business_id,user_id,capability,mode_id' },
+    )
 
   await fleetServiceClient
     .from('profiles')
