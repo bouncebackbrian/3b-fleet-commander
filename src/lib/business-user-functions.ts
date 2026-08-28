@@ -3,6 +3,7 @@
 import { createAuthClient } from '@/lib/auth-client'
 import { createClient } from '@/lib/supabase-browser'
 import type { BusinessPermission } from '@/lib/business-access'
+import type { FleetCapability } from '@/lib/fleet/capabilities'
 
 export type UserFunctionPortal = 'driver' | 'dispatch' | 'broker' | 'admin'
 export type UserFunctionPermissionLevel = 'view' | 'manage'
@@ -19,6 +20,7 @@ export interface BusinessUserFunction {
   description: string | null
   businessPermissions: BusinessPermission[]
   fleetPortalGrants: UserFunctionPortalGrant[]
+  fleetCapabilities: FleetCapability[]
   modeIds: string[]
   active: boolean
 }
@@ -32,6 +34,7 @@ function fromRow(row: any): BusinessUserFunction {
     description: row.description,
     businessPermissions: row.business_permissions ?? [],
     fleetPortalGrants: row.fleet_portal_grants ?? [],
+    fleetCapabilities: row.fleet_capabilities ?? [],
     modeIds: row.mode_ids ?? [],
     active: row.active,
   }
@@ -55,6 +58,7 @@ export async function createBusinessUserFunction(input: {
   description?: string
   businessPermissions?: BusinessPermission[]
   fleetPortalGrants?: UserFunctionPortalGrant[]
+  fleetCapabilities?: FleetCapability[]
   modeIds?: string[]
 }): Promise<BusinessUserFunction | null> {
   const supabase = createClient()
@@ -69,6 +73,7 @@ export async function createBusinessUserFunction(input: {
       description: input.description?.trim() || null,
       business_permissions: input.businessPermissions ?? [],
       fleet_portal_grants: input.fleetPortalGrants ?? [],
+      fleet_capabilities: input.fleetCapabilities ?? [],
       mode_ids: input.modeIds ?? [],
       created_by: user.id,
     })
