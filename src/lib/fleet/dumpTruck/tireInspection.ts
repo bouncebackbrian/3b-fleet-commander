@@ -2,6 +2,7 @@ import { fleetServiceClient } from '@/lib/fleet-service-client'
 
 export type TireStatus = 'green' | 'yellow' | 'red'
 export type TireAxleType = 'steer' | 'other'
+export type TireHoldClass = 'none' | 'company' | 'regulatory'
 
 export interface TireInspectionDetail {
   tirePosition?: string | null
@@ -11,23 +12,37 @@ export interface TireInspectionDetail {
 }
 
 /**
- * Maintenance planning thresholds.
- * Red aligns with the federal minimum tread-depth thresholds used for
- * commercial vehicles (4/32 steer, 2/32 other). Yellow provides replacement
- * planning lead time; it is not itself an out-of-service determination.
+ * Planning status:
+ * - Federal tread minimum: 4/32 steer/front; 2/32 all other tires.
+ * - Yellow is a company planning band above the minimum.
+ * - Visible damage is red for company review, but is not automatically labeled
+ *   a federal out-of-service condition without a specific regulatory match.
  */
 export function classifyTire(detail: TireInspectionDetail): TireStatus | null {
   if (detail.visibleDamage) return 'red'
   if (detail.treadDepth32nds == null || !detail.tireAxleType) return null
   const depth = detail.treadDepth32nds
   if (detail.tireAxleType === 'steer') {
-    if (depth <= 4) return 'red'
+    if (depth < 4) return 'red'
     if (depth <= 6) return 'yellow'
     return 'green'
   }
-  if (depth <= 2) return 'red'
+  if (depth < 2) return 'red'
   if (depth <= 4) return 'yellow'
   return 'green'
+}
+
+export function tireHold(detail: TireInspectionDetail): { holdClass: TireHoldClass; regulatoryReference: string | null } {
+  if (detail.treadDepth32nds != null && detail.tireAxleType === 'steer' && detail.treadDepth32nds < 4) {
+    return { holdClass: 'regulatory', regulatoryReference: '49 CFR 393.75(b) — front/steering axle tread depth' }
+  }
+  if (detail.treadDepth32nds != null && detail.tireAxleType === 'other' && detail.treadDepth32nds < 2) {
+    return { holdClass: 'regulatory', regulatoryReference: '49 CFR 393.75(c) — other tire tread depth' }
+  }
+  if (detail.visibleDamage) {
+    return { holdClass: 'company', regulatoryReference: 'Review tire condition against 49 CFR 393.75(a)' }
+  }
+  return { holdClass: 'none', regulatoryReference: null }
 }
 
 export async function persistTireInspectionDetails(
