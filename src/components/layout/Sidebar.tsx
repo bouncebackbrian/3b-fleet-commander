@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { BriefcaseBusiness, Clock3, Truck, Users, ShieldCheck, Receipt, BarChart3, Settings, LogOut, ChevronLeft, ChevronRight } from 'lucide-react'
+import { BriefcaseBusiness, Clock3, Truck, Users, ShieldCheck, Receipt, Activity, BarChart3, Settings, LogOut, ChevronLeft, ChevronRight } from 'lucide-react'
 import { createAuthClient } from '@/lib/auth-client'
 import { getCurrentUser, type PortalGrants } from '@/lib/auth-adapter'
 import { assetModeToSlug, type AssetOperatingMode } from '@/lib/fleet/asset-modes'
@@ -15,7 +15,7 @@ type FleetIdentity = {
 }
 
 type Tab = {
-  key: 'jobs' | 'hours' | 'assets' | 'team' | 'compliance' | 'expenses' | 'reports'
+  key: 'jobs' | 'hours' | 'assets' | 'team' | 'compliance' | 'expenses' | 'kpis' | 'reports'
   label: string
   href: string
   icon: typeof BriefcaseBusiness
@@ -53,11 +53,14 @@ export default function Sidebar() {
         ? '/dispatch/dump-truck/reports'
         : '/driver/reports'
 
+    const kpiLens = admin ? 'admin' : dispatch ? 'dispatch' : 'driver'
+    const kpiHref = `/kpis?lens=${kpiLens}${mode ? `&mode=${mode}` : ''}`
+
     const out: Tab[] = [
       {
         key: 'jobs', label: 'Jobs', href: jobsHref, icon: BriefcaseBusiness,
         match: p => p === '/admin/dashboard' || p === '/dispatch/dashboard' || (
-          !p.includes('/reports') && (
+          !p.includes('/reports') && !p.startsWith('/kpis') && (
             p.startsWith('/driver/dump-truck') || p.startsWith('/driver/water-truck') || p.startsWith('/driver/hotshot') || p.startsWith('/driver/otr') || p.startsWith('/driver/regional') || p.startsWith('/driver/local') || p.startsWith('/driver/business-vehicle')
           )
         ),
@@ -78,6 +81,7 @@ export default function Sidebar() {
       out.push({ key: 'expenses', label: 'Expenses', href: '/expenses', icon: Receipt, match: p => p.startsWith('/expenses') || p.startsWith('/fuel') })
     }
     if (driver || dispatch || admin) {
+      out.push({ key: 'kpis', label: 'KPIs', href: kpiHref, icon: Activity, match: p => p.startsWith('/kpis') })
       out.push({ key: 'reports', label: 'Reports', href: reportsHref, icon: BarChart3, match: p => p.includes('/reports') || p.startsWith('/audit') || p.startsWith('/mis') })
     }
 
