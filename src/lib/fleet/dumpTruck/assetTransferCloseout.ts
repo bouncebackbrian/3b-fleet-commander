@@ -14,6 +14,7 @@ export interface AssetTransferCloseoutInput {
   odometer: number
   transferReason: string
   transferCondition?: string | null
+  transferConditionNote?: string | null
   receivingUserId?: string | null
   receivingName?: string | null
 }
@@ -32,6 +33,9 @@ export async function closeShiftForAssetTransfer(
   if (shift.clockOutAt) throw new DumpTruckError('Shift is already clocked out', 409)
   if (!input.transferReason.trim()) throw new DumpTruckError('Transfer reason is required', 400)
   if (!Number.isFinite(input.odometer) || input.odometer < 0) throw new DumpTruckError('Valid transfer odometer is required', 400)
+  if (!input.transferCondition || !['pass', 'monitor', 'fail'].includes(input.transferCondition)) {
+    throw new DumpTruckError('Transfer condition must be Pass, Monitor or Fail', 400)
+  }
 
   let receivingThreeBId: string | null = null
   if (input.receivingUserId) {
@@ -48,6 +52,9 @@ export async function closeShiftForAssetTransfer(
 
   const eventId = crypto.randomUUID()
   const outgoingThreeBId = await getThreebId(driverId)
+  const transferConditionText = input.transferConditionNote?.trim()
+    ? `${input.transferCondition}: ${input.transferConditionNote.trim()}`
+    : input.transferCondition
 
   const { error: eventError } = await fleetServiceClient.from('fleet_dt_events').insert({
     id: eventId,
@@ -72,11 +79,13 @@ export async function closeShiftForAssetTransfer(
     notes: input.transferReason,
     device_metadata: {
       closeoutReason: 'asset_transfer',
-      posttripWaived: true,
+      normalPosttripWaived: true,
+      posttripLiteCompleted: true,
       receivingUserId: input.receivingUserId ?? null,
       receivingThreeBId,
       receivingName: input.receivingName ?? null,
-      transferCondition: input.transferCondition ?? null,
+      transferCondition: input.transferCondition,
+      transferConditionNote: input.transferConditionNote ?? null,
     },
     sync_state: 'synced',
     created_by: driverId,
@@ -94,7 +103,7 @@ export async function closeShiftForAssetTransfer(
     const { error } = await fleetServiceClient.from('fleet_dt_vehicle_custody').update({
       end_event_id: eventId,
       end_odometer: input.odometer,
-      end_condition: input.transferCondition ?? 'transferred',
+      end_condition: transferConditionText,
       ended_at: input.effectiveAt,
     }).eq('id', openCustody.id)
     if (error) throw error
@@ -110,7 +119,7 @@ export async function closeShiftForAssetTransfer(
     receiving_three_b_id: receivingThreeBId,
     receiving_name: input.receivingName ?? null,
     transfer_reason: input.transferReason.trim(),
-    transfer_condition: input.transferCondition ?? null,
+    transfer_condition: transferConditionText,
     transfer_odometer: input.odometer,
     transfer_at: input.effectiveAt,
     transfer_lat: input.geo.lat,
@@ -120,7 +129,7 @@ export async function closeShiftForAssetTransfer(
     clock_out_event_id: eventId,
     clock_out_at: input.effectiveAt,
     posttrip_waived: true,
-    posttrip_waiver_reason: 'asset_transfer',
+    posttrip_waiver_reason: 'asset_transfer_posttrip_lite_completed',
     created_by: driverId,
   })
   if (transferError) throw transferError
@@ -129,6 +138,28 @@ export async function closeShiftForAssetTransfer(
     clock_out_at: input.effectiveAt,
     state: 'clocked_out',
   }).eq('id', input.shiftId)
+
+  // Keep the consolidated shift report synchronized with the exception closeout.
+  await fleetServiceClient.from('fleet_dt_shift_reports').update({
+    clock_out_at: input.effectiveAt,
+    end_odometer: input.odometer,
+    end_lat: input.geo.lat,
+    end_lng: input.geo.lng,
+    posttrip_waived: true,
+    posttrip_waiver_reason: 'asset_transfer_posttrip_lite_completed',
+    report_status: 'end_submitted',
+    end_summary: {
+      closeoutType: 'asset_transfer',
+      posttripLiteCompleted: true,
+      transferReason: input.transferReason.trim(),
+      transferCondition: input.transferCondition,
+      transferConditionNote: input.transferConditionNote ?? null,
+      receivingUserId: input.receivingUserId ?? null,
+      receivingThreeBId,
+      receivingName: input.receivingName ?? null,
+      submittedAt: input.effectiveAt,
+    },
+  }).eq('business_id', businessId).eq('shift_id', input.shiftId)
 
   audit.log({
     userId: driverId,
@@ -141,7 +172,9 @@ export async function closeShiftForAssetTransfer(
       receivingUserId: input.receivingUserId ?? null,
       receivingThreeBId,
       transferOdometer: input.odometer,
-      posttripWaived: true,
+      transferCondition: input.transferCondition,
+      normalPosttripWaived: true,
+      posttripLiteCompleted: true,
     },
   })
 
@@ -149,7 +182,8 @@ export async function closeShiftForAssetTransfer(
     shiftId: input.shiftId,
     eventId,
     clockOutAt: input.effectiveAt,
-    posttripWaived: true,
+    normalPosttripWaived: true,
+    posttripLiteCompleted: true,
     transferOdometer: input.odometer,
     receivingThreeBId,
   }
