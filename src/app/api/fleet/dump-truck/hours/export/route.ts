@@ -11,7 +11,7 @@ import { getPayrollPayment } from '@/lib/fleet/dumpTruck/payroll'
 import { listDefectsForShifts } from '@/lib/fleet/dumpTruck/incidents'
 import { fleetServiceClient } from '@/lib/fleet-service-client'
 import { renderReportTablePdf, renderSummaryReportPdf } from '@/lib/reports/pdf'
-import { getBusinessLogoForPdf } from '@/lib/fleet/business'
+import { getFleetCommanderLogoForPdf } from '@/lib/fleet/business'
 
 export const dynamic = 'force-dynamic'
 const VALID_RANGES: RangeType[] = ['current_week', 'previous_week', 'current_pay_period', 'previous_pay_period', 'custom']
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
 
     if (format === 'pdf') {
       if (exportType === 'summary') {
-        const logo = await getBusinessLogoForPdf(auth.businessId)
+        const logo = await getFleetCommanderLogoForPdf()
         const additionalPaidOperationalHours = Math.max(0, summary.totalPaidHours - summary.totalCustomerBillableHours)
         const extraPaidExceptions = rows.map(r => ({ row: r, extra: Math.max(0, r.paidHours - r.customerBillableHours) })).filter(x => x.extra > EXTRA_PAID_NOTE_THRESHOLD_HOURS)
         const pdf = await renderSummaryReportPdf({
