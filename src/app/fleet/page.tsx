@@ -22,22 +22,22 @@ const VIEW_META = {
   driver: {
     eyebrow: 'Driver',
     title: 'Driver View',
-    description: 'Run the assigned truck workflow, time, mileage, tickets, fuel and field evidence.',
-    href: '/driver/dump-truck',
+    description: 'Run the assigned asset workflow, time, mileage, tickets, fuel and field evidence.',
+    href: '/driver',
     icon: '🚛',
   },
   dispatch: {
     eyebrow: 'Operations',
     title: 'Dispatch View',
-    description: 'Coordinate Dump Truck operations, assignments, live exceptions, hours and reporting allowed by your permissions.',
-    href: '/dispatch/dump-truck',
+    description: 'Coordinate jobs, assignments, live exceptions, assets, team and operational reporting.',
+    href: '/dispatch/dashboard',
     icon: '📡',
   },
   admin: {
     eyebrow: 'Business',
     title: 'Admin View',
-    description: 'Manage the company Fleet account, assets, people, compliance, payroll permissions and settings.',
-    href: '/admin/dump-truck',
+    description: 'Manage the company Fleet account, assets, team, compliance, expenses, KPIs and reports.',
+    href: '/admin/dashboard',
     icon: '⚙️',
   },
 } as const
@@ -48,6 +48,11 @@ export default async function FleetBusinessHome() {
   const auth = await createAuthServerClient()
   const { data: { user } } = await auth.auth.getUser()
   if (!user) redirect('/login')
+
+  // Founder is a platform role, not a customer-business role. Resolve it
+  // before requiring any Fleet membership so founder access can never loop
+  // through onboarding just because a default company is missing/stale.
+  const founder = await getFounderIdentity()
 
   const { data: profile } = await fleetServiceClient
     .from('profiles')
@@ -62,9 +67,13 @@ export default async function FleetBusinessHome() {
     .eq('active', true)
 
   const preferredBusinessId = profile?.default_business_id ?? memberships?.[0]?.business_id
-  if (!preferredBusinessId) redirect('/start')
 
-  const [{ data: businessData }, { data: grantsData }, founder] = await Promise.all([
+  if (!preferredBusinessId) {
+    if (founder) redirect('/founder')
+    redirect('/start')
+  }
+
+  const [{ data: businessData }, { data: grantsData }] = await Promise.all([
     fleetServiceClient
       .from('businesses')
       .select('id, three_b_biz_id, company_name, business_type, city, state')
@@ -75,10 +84,13 @@ export default async function FleetBusinessHome() {
       .select('portal, permission_level')
       .eq('business_id', preferredBusinessId)
       .eq('user_id', user.id),
-    getFounderIdentity(),
   ])
 
-  if (!businessData) redirect('/start')
+  if (!businessData) {
+    if (founder) redirect('/founder')
+    redirect('/start')
+  }
+
   const business = businessData as Business
   const grants = (grantsData ?? []) as Grant[]
   const grantMap = new Map(grants.map(grant => [grant.portal, grant.permission_level]))
@@ -97,14 +109,8 @@ export default async function FleetBusinessHome() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              {founder && (
-                <Link href="/founder" className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-2.5 text-sm font-bold text-amber-300 hover:bg-amber-400/15">
-                  Founder Portal
-                </Link>
-              )}
-              <Link href="/account" className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-bold text-slate-300 hover:bg-white/10">
-                Account Settings
-              </Link>
+              {founder && <Link href="/founder" className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-2.5 text-sm font-bold text-amber-300 hover:bg-amber-400/15">Founder Portal</Link>}
+              <Link href="/account" className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-bold text-slate-300 hover:bg-white/10">Account Settings</Link>
             </div>
           </div>
         </header>
@@ -112,7 +118,7 @@ export default async function FleetBusinessHome() {
         <section className="py-7">
           <div className="mb-4">
             <h2 className="text-lg font-bold">Your views</h2>
-            <p className="mt-1 text-sm text-slate-500">You only see portals explicitly granted to your 3B ID for this business.</p>
+            <p className="mt-1 text-sm text-slate-500">Only portals explicitly granted to your 3B ID for this business appear here.</p>
           </div>
 
           {availableViews.length === 0 ? (
@@ -125,16 +131,10 @@ export default async function FleetBusinessHome() {
                 const meta = VIEW_META[portal]
                 const level = grantMap.get(portal)
                 return (
-                  <Link
-                    key={portal}
-                    href={meta.href}
-                    className="group rounded-2xl border border-white/10 bg-white/[0.04] p-6 transition hover:-translate-y-0.5 hover:border-emerald-400/30 hover:bg-white/[0.06]"
-                  >
+                  <Link key={portal} href={meta.href} className="group rounded-2xl border border-white/10 bg-white/[0.04] p-6 transition hover:-translate-y-0.5 hover:border-emerald-400/30 hover:bg-white/[0.06]">
                     <div className="flex items-start justify-between gap-4">
                       <div className="text-3xl">{meta.icon}</div>
-                      <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-300">
-                        {level}
-                      </span>
+                      <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-300">{level}</span>
                     </div>
                     <div className="mt-5 text-xs font-bold uppercase tracking-wider text-slate-500">{meta.eyebrow}</div>
                     <h3 className="mt-1 text-xl font-black">{meta.title}</h3>
