@@ -1,21 +1,14 @@
 /**
  * fleet/business.ts — business profile + logo (2026-07-29)
- *
- * The businesses table has had dot_number/mc_number/ein/insurance_* columns
- * with nowhere in the app to edit them, and no logo — this is the first
- * service/UI to expose them. The logo is consumed server-side by the
- * branded-report PDF engine (src/lib/reports/pdf.tsx), so this module
- * downloads raw bytes rather than issuing a signed URL — no need for a
- * browser-facing link.
  */
 
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 import { fleetServiceClient } from '@/lib/fleet-service-client'
 import { audit } from '@/lib/fleet/audit'
 import { DumpTruckError } from '@/lib/fleet/dumpTruck/shared'
 
 const LOGO_BUCKET = 'business-assets'
-// png/jpeg only — the PDF report engine (@react-pdf/renderer) only reliably
-// embeds those two formats; webp would silently fail to render in PDFs.
 const ALLOWED_LOGO_MIME = new Set(['image/png', 'image/jpeg'])
 const MAX_LOGO_BYTES = 5 * 1024 * 1024
 
@@ -30,9 +23,7 @@ export interface BusinessProfile {
   insuranceExpiry: string | null
   threeBBizId: string | null
   logoStoragePath: string | null
-  /** Where safety-critical/out-of-service defect alerts get emailed — see lib/email/resend.ts. Null = alerts skipped. */
   dispatchAlertEmail: string | null
-  /** Payer mailing address on Form 1099-NEC — see lib/fleet/dumpTruck/driverTax.ts. */
   addressLine1: string | null
   city: string | null
   state: string | null
@@ -120,12 +111,8 @@ export async function updateBusinessProfile(
 export async function uploadBusinessLogo(
   businessId: string, fileName: string, mimeType: string, bytes: Buffer, userId: string, email: string | null,
 ): Promise<{ logoStoragePath: string }> {
-  if (!ALLOWED_LOGO_MIME.has(mimeType)) {
-    throw new DumpTruckError(`Unsupported image type: ${mimeType}`, 400)
-  }
-  if (bytes.length > MAX_LOGO_BYTES) {
-    throw new DumpTruckError('Logo image exceeds 5MB limit', 400)
-  }
+  if (!ALLOWED_LOGO_MIME.has(mimeType)) throw new DumpTruckError(`Unsupported image type: ${mimeType}`, 400)
+  if (bytes.length > MAX_LOGO_BYTES) throw new DumpTruckError('Logo image exceeds 5MB limit', 400)
 
   const ext = fileName.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'png'
   const storagePath = `${businessId}/logo-${crypto.randomUUID()}.${ext}`
@@ -145,32 +132,24 @@ export async function uploadBusinessLogo(
   return { logoStoragePath: storagePath }
 }
 
-/** Short-lived signed URL — used only for the Settings-page logo preview. */
 export async function getBusinessLogoSignedUrl(businessId: string): Promise<string | null> {
   const profile = await getBusinessProfile(businessId)
   if (!profile?.logoStoragePath) return null
 
-  const { data, error } = await fleetServiceClient.storage
-    .from(LOGO_BUCKET)
-    .createSignedUrl(profile.logoStoragePath, 300)
+  const { data, error } = await fleetServiceClient.storage.from(LOGO_BUCKET).createSignedUrl(profile.logoStoragePath, 300)
   if (error || !data) return null
   return data.signedUrl
 }
 
-/** Raw bytes for server-side embedding (PDF generation) — no signed URL needed. */
 export async function getBusinessLogoBytes(businessId: string): Promise<Buffer | null> {
   const profile = await getBusinessProfile(businessId)
   if (!profile?.logoStoragePath) return null
 
-  const { data, error } = await fleetServiceClient.storage
-    .from(LOGO_BUCKET)
-    .download(profile.logoStoragePath)
+  const { data, error } = await fleetServiceClient.storage.from(LOGO_BUCKET).download(profile.logoStoragePath)
   if (error || !data) return null
-
   return Buffer.from(await data.arrayBuffer())
 }
 
-/** Bytes + format ('png'|'jpg') for the PDF engine's <Image> component. */
 export async function getBusinessLogoForPdf(businessId: string): Promise<{ bytes: Buffer; format: 'png' | 'jpg' } | null> {
   const profile = await getBusinessProfile(businessId)
   if (!profile?.logoStoragePath) return null
@@ -178,4 +157,23 @@ export async function getBusinessLogoForPdf(businessId: string): Promise<{ bytes
   if (!bytes) return null
   const format = profile.logoStoragePath.toLowerCase().endsWith('.png') ? 'png' : 'jpg'
   return { bytes, format }
+}
+
+/**
+ * The Fleet Commander product logo shipped with the app (public/logo.png),
+ * for platform-branded reports. Reading it server-side avoids external URLs
+ * and works with @react-pdf/renderer the same way business logos do.
+ */
+export async function getFleetCommanderLogoForPdf(): Promise<{ bytes: Buffer; format: 'png' } | null> {
+  try {
+    const bytes = await readFile(path.join(process.cwd(), 'public', 'logo.png'))
+    return { bytes, format: 'png' }
+  } catch {
+    return null
+  }
+}
+
+/** Prefer a business logo when configured; otherwise always brand the report with Fleet Commander. */
+export async function getReportLogoForPdf(businessId: string): Promise<{ bytes: Buffer; format: 'png' | 'jpg' } | null> {
+  return (await getBusinessLogoForPdf(businessId)) ?? getFleetCommanderLogoForPdf()
 }
