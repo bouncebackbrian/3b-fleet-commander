@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { createAuthClient } from '@/lib/auth-client'
 import { createBusiness, getBusinessRegistry, getThreeBProfile, type BusinessRegistryRow, type BusinessType, type ThreeBProfile } from '@/lib/identity-registry'
 import { FLEET_MODES } from '@/lib/fleet/modes'
@@ -12,7 +11,6 @@ const card: React.CSSProperties = { border: '1px solid rgba(0,232,176,.12)', bac
 const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '.7rem .75rem', borderRadius: 10, border: '1px solid rgba(255,255,255,.12)', background: '#07120f', color: '#eefcf8' }
 
 export default function StartPage() {
-  const router = useRouter()
   const [profile, setProfile] = useState<ThreeBProfile | null>(null)
   const [businesses, setBusinesses] = useState<BusinessRegistryRow[]>([])
   const [selectedBusinessId, setSelectedBusinessId] = useState('')
@@ -47,6 +45,7 @@ export default function StartPage() {
     setError('')
     try {
       const biz = await createBusiness({ company_name: companyName.trim(), business_type: businessType })
+      if (!biz) throw new Error('Business creation did not return a business record. Please try again.')
       await refresh()
       setSelectedBusinessId(biz.id)
       setCompanyName('')
