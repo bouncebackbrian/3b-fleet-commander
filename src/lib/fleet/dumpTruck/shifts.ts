@@ -6,6 +6,7 @@ import { fleetServiceClient } from '@/lib/fleet-service-client'
 import { audit } from '@/lib/fleet/audit'
 import { getThreebId, syncShiftState, DumpTruckError } from './shared'
 import { recordEvent, type RecordEventInput } from './events'
+import { requireNoPendingNextShiftReview } from './missedPunch'
 import type { DumpTruckShift } from '@/lib/dumpTruck/types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -54,10 +55,8 @@ export interface ClockInInput {
 
 /**
  * Clock in: creates the shift row, then immediately records the clock_in event
- * against it. Not a single DB transaction (supabase-js service client does
- * multi-statement writes sequentially) — if the event insert fails after the
- * shift is created, the shift is left in 'draft' and the client should retry
- * recordEvent with the same shift id (idempotency key makes the retry safe).
+ * against it. A prior missed-punch auto-close must be reconciled first so a
+ * provisional end time can never disappear underneath a new day's work.
  */
 export async function clockIn(
   businessId: string,
@@ -65,6 +64,8 @@ export async function clockIn(
   email: string | null,
   input: ClockInInput,
 ): Promise<{ shift: DumpTruckShift; eventId: string }> {
+  await requireNoPendingNextShiftReview(businessId, driverId)
+
   const existing = await getOpenShift(driverId)
   if (existing) {
     throw new DumpTruckError('Driver already has an open shift', 409)
