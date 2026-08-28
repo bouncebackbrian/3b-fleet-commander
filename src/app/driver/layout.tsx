@@ -1,11 +1,6 @@
 import type { ReactNode } from 'react'
-import MissedPunchGuard from '@/components/dumpTruck/MissedPunchGuard'
+import SafeDriveGuard from '@/components/driver/SafeDriveGuard'
 
 export default function DriverLayout({ children }: { children: ReactNode }) {
-  return (
-    <>
-      {children}
-      <MissedPunchGuard />
-    </>
-  )
+  return <SafeDriveGuard>{children}</SafeDriveGuard>
 }
