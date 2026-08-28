@@ -13,8 +13,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    if (!body.shiftId || !body.effectiveAt || !body.deviceCapturedAt || !body.geo || body.odometer == null || !body.transferReason) {
-      return NextResponse.json({ error: 'shiftId, effectiveAt, deviceCapturedAt, geo, odometer and transferReason are required' }, { status: 400 })
+    if (!body.shiftId || !body.effectiveAt || !body.deviceCapturedAt || !body.geo || body.odometer == null || !body.transferReason || !body.transferCondition) {
+      return NextResponse.json({ error: 'shiftId, effectiveAt, deviceCapturedAt, geo, odometer, transferReason and transferCondition are required' }, { status: 400 })
     }
 
     const result = await closeShiftForAssetTransfer(auth.businessId, auth.userId, auth.email, {
@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
       odometer: Number(body.odometer),
       transferReason: String(body.transferReason),
       transferCondition: typeof body.transferCondition === 'string' ? body.transferCondition : null,
+      transferConditionNote: typeof body.transferConditionNote === 'string' ? body.transferConditionNote : null,
       receivingUserId: typeof body.receivingUserId === 'string' ? body.receivingUserId : null,
       receivingName: typeof body.receivingName === 'string' ? body.receivingName : null,
     })
