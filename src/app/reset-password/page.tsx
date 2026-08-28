@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { createAuthClient } from '@/lib/auth-client'
@@ -16,7 +16,7 @@ const inputStyle: React.CSSProperties = {
   fontSize: '.9rem',
 }
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const params = useSearchParams()
   const [ready, setReady] = useState(false)
   const [password, setPassword] = useState('')
@@ -109,5 +109,13 @@ export default function ResetPasswordPage() {
         )}
       </section>
     </main>
+  )
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#080f0d', color: '#8b949e' }}>Loading…</main>}>
+      <ResetPasswordContent />
+    </Suspense>
   )
 }
