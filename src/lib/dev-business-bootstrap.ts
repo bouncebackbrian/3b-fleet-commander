@@ -13,12 +13,13 @@ export interface DevBusinessBootstrapResult {
 /**
  * Development convenience for the product owner account.
  *
- * IMPORTANT: the account email is configured through FLEET_DEV_ACCOUNT_EMAIL
- * and is never committed to source. When that authenticated email signs in,
- * we make Cal-Neva the selected development business and ensure explicit
- * Driver + Dispatch + Admin portal grants.
+ * IMPORTANT: the account email is configured through FLEET_DEV_ACCOUNT_EMAIL.
+ * When that authenticated email signs in, we make Cal-Neva the selected
+ * development business and ensure explicit Driver + Dispatch + Admin grants.
  *
- * This is intentionally idempotent and does not create a second business.
+ * The user is deliberately NOT made the legal/business owner of Cal-Neva.
+ * Business governance stays `manager`; Fleet operational display role is
+ * `admin`; actual authorization comes from portal grants.
  */
 export async function ensureDevelopmentBusinessAccess(): Promise<DevBusinessBootstrapResult> {
   const configuredEmail = process.env.FLEET_DEV_ACCOUNT_EMAIL?.trim().toLowerCase()
@@ -51,7 +52,7 @@ export async function ensureDevelopmentBusinessAccess(): Promise<DevBusinessBoot
     .upsert({
       business_id: CAL_NEVA_BUSINESS_ID,
       user_id: user.id,
-      role: 'owner',
+      role: 'admin',
       active: true,
     }, { onConflict: 'business_id,user_id' })
 
@@ -60,7 +61,7 @@ export async function ensureDevelopmentBusinessAccess(): Promise<DevBusinessBoot
     .upsert({
       business_id: CAL_NEVA_BUSINESS_ID,
       user_id: user.id,
-      role: 'owner',
+      role: 'manager',
     }, { onConflict: 'business_id,user_id' })
 
   await fleetServiceClient
