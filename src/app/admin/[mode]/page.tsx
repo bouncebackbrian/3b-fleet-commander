@@ -1,9 +1,8 @@
-import { notFound } from 'next/navigation'
-import ModeWorkspace from '@/components/fleet/ModeWorkspace'
-import { getModeUi } from '@/lib/fleet/mode-ui'
+import { redirect } from 'next/navigation'
+import { slugToAssetMode } from '@/lib/fleet/asset-modes'
 
 export default async function AdminAssetModePage({ params }: { params: Promise<{ mode: string }> }) {
   const { mode } = await params
-  if (!getModeUi(mode)) notFound()
-  return <ModeWorkspace modeSlug={mode} portal="admin" />
+  const assetMode = slugToAssetMode(mode)
+  redirect(assetMode ? `/admin/dashboard?view=${assetMode}` : '/admin/dashboard')
 }
