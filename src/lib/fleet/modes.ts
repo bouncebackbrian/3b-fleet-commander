@@ -6,6 +6,7 @@ export type FleetMode = {
   icon: string
   status: FleetModeStatus
   driverHref?: string
+  dispatchHref?: string
   summary: string
   driverValue: string[]
   companyValue: string[]
@@ -13,7 +14,8 @@ export type FleetMode = {
 
 export const FLEET_MODES: FleetMode[] = [
   {
-    id: 'dump-truck', name: 'Dump Truck', icon: '🚛', status: 'live', driverHref: '/driver/dump-truck',
+    id: 'dump-truck', name: 'Dump Truck', icon: '🚛', status: 'live',
+    driverHref: '/driver/dump-truck', dispatchHref: '/dispatch/dump-truck',
     summary: 'Built around real haul cycles, broker sheets, tickets, time evidence and truck profitability.',
     driverValue: ['Simple load-cycle actions', 'Fuel + receipt evidence', 'Paid vs broker time visibility', 'Post-trip closes the workday'],
     companyValue: ['Loads / tons / miles', 'Billable vs non-billable time', 'Fuel + MPG', 'Weekly approval + audit trail'],
