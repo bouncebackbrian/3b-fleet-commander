@@ -12,15 +12,19 @@ alter table public.fleet_dt_time_policy_settings
   alter column include_return_to_yard_in_pay set default true,
   alter column include_posttrip_in_pay set default true;
 
--- Correct existing business settings created under the old default. Keep
--- customer billing flags untouched so broker/customer billing remains
--- independently controlled.
+-- Correct only settings rows that still represent the old untouched defaults.
+-- If an owner/admin explicitly configured a policy, updateTimePolicySettings
+-- records updated_by; preserve that deliberate choice rather than silently
+-- changing historical payroll policy. Customer billing flags are untouched.
 update public.fleet_dt_time_policy_settings
 set
   include_return_to_yard_in_pay = true,
   include_posttrip_in_pay = true,
   updated_at = now()
-where include_return_to_yard_in_pay = false
-   or include_posttrip_in_pay = false;
+where updated_by is null
+  and (
+    include_return_to_yard_in_pay = false
+    or include_posttrip_in_pay = false
+  );
 
 notify pgrst, 'reload schema';
