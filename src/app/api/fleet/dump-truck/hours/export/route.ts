@@ -95,6 +95,7 @@ export async function GET(request: NextRequest) {
     if (format === 'pdf') {
       if (exportType === 'summary') {
         const logo = await getBusinessLogoForPdf(auth.businessId)
+        const additionalPaidOperationalHours = Math.max(0, summary.totalPaidHours - summary.totalCustomerBillableHours)
         const pdf = await renderSummaryReportPdf({
           logoBytes: logo?.bytes ?? null,
           logoFormat: logo?.format,
@@ -107,13 +108,16 @@ export async function GET(request: NextRequest) {
           ],
           disclaimers: [
             'Estimated earnings only — not a pay stub or final wage statement.',
+            'Broker/Customer Hours show the customer-billable portion of the shift. Additional Paid Operational Hours are payable driver time outside the broker sheet, including assigned driving or other company-directed truck work. Broker billing does not determine driver pay.',
             ...(summary.totalPendingPayableHours > 0 || summary.totalNonPaidOperationalHours > 0
-              ? ['Regular + Overtime Hours below are based on Paid Hours, not the raw Total Hrs clock span in the Daily Breakdown — hours pending management review or excluded by policy (e.g. an unapproved breakdown) are shown separately and are not yet counted as paid.']
+              ? ['Regular + Overtime Hours are based on Paid Hours. Only time explicitly pending management review or classified non-payable is excluded from paid totals.']
               : []),
           ],
           stats: [
             { label: 'Days Worked', value: String(summary.daysWorked) },
             { label: 'Paid Hours', value: summary.totalPaidHours.toFixed(2) },
+            { label: 'Broker/Customer Hrs', value: summary.totalCustomerBillableHours.toFixed(2) },
+            { label: 'Additional Paid Operational Hrs', value: additionalPaidOperationalHours.toFixed(2) },
             { label: 'Regular Hours', value: summary.totalRegularHours.toFixed(2) },
             { label: 'Overtime Hours', value: summary.totalOvertimeHours.toFixed(2) },
             ...(summary.totalPendingPayableHours > 0 ? [{ label: 'Pending Review Hrs', value: summary.totalPendingPayableHours.toFixed(2) }] : []),
@@ -127,17 +131,15 @@ export async function GET(request: NextRequest) {
           sections: [
             {
               title: 'Daily Breakdown',
-              headers: ['Date', 'Truck', 'Total Hrs', 'Paid Hrs', 'Reg', 'OT', 'Loads', 'Status'],
-              // Total Hrs is the raw clock span; Paid Hrs (and the Reg/OT split
-              // it's rounded up from) is what the Regular/Overtime Hours stats
-              // above actually sum to once non-payable classified time (e.g. an
-              // unapproved breakdown, or return-to-yard excluded by policy) is
-              // backed out — showing only Total Hrs here made this table's own
-              // column not reconcile with the report's own headline stats.
-              rows: rows.map(r => [
-                r.workDate, r.truckUnit ?? '—', r.totalShiftHours.toFixed(2), r.paidHours.toFixed(2),
-                r.regularHours.toFixed(2), r.overtimeHours.toFixed(2), r.loadsCompleted, r.submissionStatus,
-              ]),
+              headers: ['Date', 'Truck', 'Total Hrs', 'Broker Hrs', 'Paid Hrs', 'Extra Paid', 'Reg', 'OT', 'Loads', 'Status'],
+              rows: rows.map(r => {
+                const additionalPaid = Math.max(0, r.paidHours - r.customerBillableHours)
+                return [
+                  r.workDate, r.truckUnit ?? '—', r.totalShiftHours.toFixed(2), r.customerBillableHours.toFixed(2),
+                  r.paidHours.toFixed(2), additionalPaid.toFixed(2), r.regularHours.toFixed(2),
+                  r.overtimeHours.toFixed(2), r.loadsCompleted, r.submissionStatus,
+                ]
+              }),
             },
             {
               title: 'Truck Issues Reported',
