@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createBusiness, getBusinessRegistry, getThreeBProfile, type BusinessRegistryRow, type BusinessType, type ThreeBProfile } from '@/lib/identity-registry'
 import { FLEET_MODES } from '@/lib/fleet/modes'
+import AuthorizedBusinessMembersSetup from '@/components/setup/AuthorizedBusinessMembersSetup'
 
 const shell: React.CSSProperties = { minHeight: '100dvh', background: '#030c0a', color: '#eefcf8', fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif' }
 const card: React.CSSProperties = { border: '1px solid rgba(0,232,176,.12)', background: 'rgba(11,27,24,.72)', borderRadius: 16, padding: '1rem' }
@@ -35,7 +36,8 @@ export default function StartPage() {
 
   useEffect(() => { void refresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const selectedBusiness = useMemo(() => businesses.find(r => r.business.id === selectedBusinessId)?.business ?? null, [businesses, selectedBusinessId])
+  const selectedRow = useMemo(() => businesses.find(r => r.business.id === selectedBusinessId) ?? null, [businesses, selectedBusinessId])
+  const selectedBusiness = selectedRow?.business ?? null
   const mode = FLEET_MODES.find(m => m.id === selectedMode) ?? FLEET_MODES[0]
 
   async function createNewBusiness() {
@@ -61,7 +63,7 @@ export default function StartPage() {
       </header>
 
       <section style={{ maxWidth: 900, margin: '0 auto', padding: '2.5rem 1.25rem 4rem', display: 'grid', gap: 18 }}>
-        <div><div style={{ color: '#00e8b0', fontSize: '.65rem', fontWeight: 900, letterSpacing: '.12em', textTransform: 'uppercase' }}>Fleet Commander Setup</div><h1 style={{ margin: '.45rem 0 .5rem', fontSize: 'clamp(1.8rem,5vw,2.8rem)' }}>3B ID → Business → Mode → Permissions</h1><p style={{ color: '#739d92', lineHeight: 1.6 }}>Start with the person, connect the correct company or owner-operator, then enable only the driver flow and portal permissions that person needs.</p></div>
+        <div><div style={{ color: '#00e8b0', fontSize: '.65rem', fontWeight: 900, letterSpacing: '.12em', textTransform: 'uppercase' }}>Fleet Commander Setup</div><h1 style={{ margin: '.45rem 0 .5rem', fontSize: 'clamp(1.8rem,5vw,2.8rem)' }}>3B ID → Business → Mode → Permissions</h1><p style={{ color: '#739d92', lineHeight: 1.6 }}>Start with the person, connect the correct company or owner-operator, then enable only the business relationships, driver flows and portal permissions each 3B ID needs.</p></div>
 
         <Step n="1" title="Confirm your 3B ID">
           <div style={{ ...card, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}><div><div style={{ fontWeight: 950 }}>{[profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || profile?.email}</div><div style={{ color: '#00e8b0', marginTop: 4, fontSize: '.78rem', fontWeight: 850 }}>{profile?.three_b_id ?? '3B ID pending'}</div></div><div style={{ color: profile?.verification_status === 'verified' ? '#00e8b0' : '#f5c200', fontSize: '.68rem', fontWeight: 900, textTransform: 'uppercase' }}>{profile?.verification_status ?? 'unverified'}</div></div>
@@ -78,8 +80,11 @@ export default function StartPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 9 }}>{FLEET_MODES.map(m => <button key={m.id} onClick={() => m.status === 'live' && setSelectedMode(m.id)} style={{ ...card, textAlign: 'left', color: '#eefcf8', cursor: m.status === 'live' ? 'pointer' : 'default', opacity: m.status === 'live' ? 1 : .64, borderColor: selectedMode === m.id ? 'rgba(0,232,176,.5)' : 'rgba(0,232,176,.12)' }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><span style={{ fontSize: '1.35rem' }}>{m.icon}</span><span style={{ color: m.status === 'live' ? '#00e8b0' : '#f5c200', fontSize: '.55rem', fontWeight: 900, textTransform: 'uppercase' }}>{m.status === 'live' ? 'Available' : 'Coming Soon'}</span></div><div style={{ marginTop: 7, fontWeight: 950 }}>{m.name}</div><div style={{ color: '#729b90', marginTop: 5, fontSize: '.7rem', lineHeight: 1.45 }}>{m.summary}</div></button>)}</div>
         </Step>
 
-        <Step n="4" title="Set people and permissions">
-          <div style={card}><div style={{ fontWeight: 950 }}>Permissions stay business-scoped and tied to each 3B ID.</div><p style={{ color: '#759f94', fontSize: '.78rem', lineHeight: 1.55 }}>Owners can invite drivers, dispatchers, brokers and admins from Account & Team. Portal grants control what each person can view or manage; the operating-mode subscription controls which driver workflows the business can use.</p><Link href="/account" style={{ color: '#00e8b0', fontWeight: 850, textDecoration: 'none', fontSize: '.76rem' }}>Manage team permissions →</Link></div>
+        <Step n="4" title="Authorize 3B IDs and set permissions">
+          <div style={card}>
+            <AuthorizedBusinessMembersSetup businessId={selectedBusinessId || null} canManage={selectedRow?.memberRole === 'owner'} />
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,.08)', color: '#759f94', fontSize: '.73rem', lineHeight: 1.5 }}>You can keep managing members later from <Link href="/account" style={{ color: '#00e8b0', fontWeight: 850, textDecoration: 'none' }}>Account & Team</Link>. Business authorization and Fleet Commander operational permission remain separate.</div>
+          </div>
         </Step>
 
         <Step n="5" title="Open Fleet Commander">
