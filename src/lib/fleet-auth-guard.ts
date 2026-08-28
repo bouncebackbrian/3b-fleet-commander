@@ -2,58 +2,79 @@
  * fleet-auth-guard.ts — Server-side auth + membership resolver
  *
  * Use at the top of every /api/fleet/* route handler.
- * Validates session via Core_Eco (ADR-001), resolves Fleet membership (ADR-004).
+ * Validates session via Core_Eco, then resolves the EXACT active Fleet business.
  *
- * Returns null if the user is unauthenticated or has no active Fleet membership.
- * Route handlers must check for null and return 401/403 accordingly.
- *
- * Portals (2026-07-29): authorization is granted per-portal (driver/dispatch/
- * broker/admin) at a view or manage level via fleet_member_portal_grants —
- * one member can hold any combination (an owner who also drives no longer
- * has to pick one role). `role` is still returned for display purposes
- * (Settings team list) but is NOT authoritative — no route should branch on
- * it. Use `hasPortal`/`canManage` instead of the old `canWrite`.
+ * Business isolation rule:
+ * - Core 3Boost owns business identity.
+ * - Fleet operations are always scoped to one selected 3B Business ID.
+ * - Never use "first membership wins" for a multi-business user.
  */
 
+import { cookies } from 'next/headers'
 import { createAuthServerClient } from '@/lib/auth-server-client'
-import { fleetServiceClient }     from '@/lib/fleet-service-client'
+import { fleetServiceClient } from '@/lib/fleet-service-client'
+
+export const ACTIVE_FLEET_BUSINESS_COOKIE = '3b_fleet_business_id'
 
 export type Portal = 'driver' | 'dispatch' | 'broker' | 'admin' | 'payroll' | 'billing'
 export type PermissionLevel = 'view' | 'manage'
 export type PortalGrants = Partial<Record<Portal, PermissionLevel>>
 
 export interface FleetGuardResult {
-  userId:     string
-  email:      string | null
+  userId: string
+  email: string | null
   businessId: string
-  /** Display-only — e.g. Settings team list. Not authoritative; see PortalGrants. */
-  role:       string
-  portals:    PortalGrants
+  /** Display-only. Authorization comes from PortalGrants. */
+  role: string
+  portals: PortalGrants
 }
 
 /**
- * Validate session and resolve Fleet membership + portal grants in one call.
- * Returns null on any auth or membership failure.
+ * Validate the Core session and resolve one exact Fleet membership.
+ *
+ * If the user belongs to multiple Fleet businesses, an active-business cookie
+ * is required. That cookie is set when the user selects a Core 3Boost business
+ * during Fleet activation. We intentionally do not guess between companies.
  */
 export async function requireFleetAuth(): Promise<FleetGuardResult | null> {
   try {
-    // 1. Validate session → Core_Eco (ADR-001)
+    // 1. Validate session against Core_Eco.
     const auth = await createAuthServerClient()
     const { data: { user }, error } = await auth.auth.getUser()
     if (error || !user) return null
 
-    // 2. Resolve Fleet membership → Fleet DB (ADR-002)
-    const { data: membership } = await fleetServiceClient
-      .from('fleet_business_members')
-      .select('business_id, role')
-      .eq('user_id', user.id)
-      .eq('active', true)
-      .limit(1)
-      .maybeSingle()
+    // 2. Read explicit Fleet business context.
+    const cookieStore = await cookies()
+    const selectedBusinessId = cookieStore.get(ACTIVE_FLEET_BUSINESS_COOKIE)?.value?.trim() || ''
+
+    let membership: { business_id: string; role: string } | null = null
+
+    if (selectedBusinessId) {
+      const { data } = await fleetServiceClient
+        .from('fleet_business_members')
+        .select('business_id, role')
+        .eq('user_id', user.id)
+        .eq('business_id', selectedBusinessId)
+        .eq('active', true)
+        .maybeSingle()
+      membership = data
+    } else {
+      // Single-company users can enter Fleet without an extra selection step.
+      // Multi-company users must explicitly select a business in /start.
+      const { data } = await fleetServiceClient
+        .from('fleet_business_members')
+        .select('business_id, role')
+        .eq('user_id', user.id)
+        .eq('active', true)
+        .limit(2)
+
+      if ((data?.length ?? 0) === 1) membership = data![0]
+      else return null
+    }
 
     if (!membership) return null
 
-    // 3. Resolve portal grants for this business
+    // 3. Resolve portal grants only for that exact business.
     const { data: grantRows } = await fleetServiceClient
       .from('fleet_member_portal_grants')
       .select('portal, permission_level')
@@ -66,10 +87,10 @@ export async function requireFleetAuth(): Promise<FleetGuardResult | null> {
     }
 
     return {
-      userId:     user.id,
-      email:      user.email ?? null,
+      userId: user.id,
+      email: user.email ?? null,
       businessId: membership.business_id,
-      role:       membership.role,
+      role: membership.role,
       portals,
     }
   } catch {
@@ -88,9 +109,8 @@ export function canManage(portals: PortalGrants, portal: Portal): boolean {
 }
 
 /**
- * Best-effort legacy role label from a set of portal grants — used only to
- * populate fleet_business_members.role / fleet_team_invites.role, which are
- * display-only now (see module doc). Never used for authorization.
+ * Best-effort legacy role label from portal grants. This is display-only and
+ * must never be used as the authorization boundary.
  */
 export function derivePrimaryRoleLabel(grants: { portal: Portal; permissionLevel: PermissionLevel }[]): string {
   const has = (p: Portal, level: PermissionLevel = 'manage') =>
