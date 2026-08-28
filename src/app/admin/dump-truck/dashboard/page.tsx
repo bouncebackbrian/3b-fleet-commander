@@ -14,7 +14,7 @@ const nav = [
   ['Assets', '/admin/dump-truck'],
   ['KPIs', '/admin/dump-truck/kpis'],
   ['Issues', '/admin/dump-truck/recurring-issues'],
-  ['Reports', '/admin/dump-truck/kpis'],
+  ['Reports', '/admin/dump-truck/reports'],
   ['Team', '/account'],
   ['Settings', '/admin/dump-truck'],
 ] as const
@@ -103,11 +103,11 @@ export default async function AdminOperationsDashboard() {
             <div className="mt-5 font-bold text-sky-300">Open Drivers →</div>
           </Link>
 
-          <Link href="/admin/dump-truck/kpis" className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.05] p-6">
+          <Link href="/admin/dump-truck/reports" className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.05] p-6">
             <div className="text-2xl">📈</div>
-            <h2 className="mt-3 text-xl font-black">KPI & Reports</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-400">Review production, hours, mileage, loads, asset performance, exceptions, and final company reporting.</p>
-            <div className="mt-5 font-bold text-amber-300">Open KPIs →</div>
+            <h2 className="mt-3 text-xl font-black">Reports</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-400">Build custom date-range reports for hours, mileage, loads, driver activity, exceptions, and company totals.</p>
+            <div className="mt-5 font-bold text-amber-300">Open Reports →</div>
           </Link>
         </section>
 
