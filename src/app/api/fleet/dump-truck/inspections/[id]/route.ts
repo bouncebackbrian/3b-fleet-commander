@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireFleetAuth } from '@/lib/fleet-auth-guard'
 import { completeInspection } from '@/lib/fleet/dumpTruck/inspections'
 import { syncShiftReportFromInspection } from '@/lib/fleet/dumpTruck/shiftReports'
+import { persistTireInspectionDetails } from '@/lib/fleet/dumpTruck/tireInspection'
 import { DumpTruckError } from '@/lib/fleet/dumpTruck/shared'
 
 export const dynamic = 'force-dynamic'
@@ -33,6 +34,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       overrideReason: body.overrideReason ?? null,
       completionEvent: body.completionEvent,
     })
+
+    await persistTireInspectionDetails(id, body.items)
 
     const report = await syncShiftReportFromInspection({
       businessId: auth.businessId,
