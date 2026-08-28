@@ -2,9 +2,9 @@
 /**
  * identity-registry.ts — 3B Identity & Business Registry
  *
- * Permanent identity model:
- *   3B-U-XXXXXXXX = person
- *   3B-B-XXXXXXXX = business
+ * Core_Eco owns person/business identity. Fleet DB owns operational records.
+ * This adapter normalizes the Core_Eco business schema into Fleet Commander's
+ * stable ThreeBBusiness shape so setup does not depend on Fleet-only columns.
  */
 
 import { createClient } from '@/lib/supabase-browser'
@@ -37,6 +37,7 @@ export interface ThreeBBusiness {
   id: string; three_b_biz_id: ThreeBBizId; company_name: string; slug: string | null; entity_type: EntityType | null
   formation_date: string | null; ein: string | null; mc_number: string | null; dot_number: string | null; state_of_formation: string | null
   address: string | null; city: string | null; state: string | null; zip: string | null; business_phone: string | null; website: string | null; domain_email: string | null
+  quick_text_phone?: string | null
   owner_id: string | null; business_type: BusinessType
   has_fleet: boolean; has_funding: boolean; has_credit: boolean; has_payments: boolean; has_media: boolean; has_content: boolean
   stripe_account_id: string | null; has_ein: boolean; has_business_address: boolean; has_business_phone: boolean; has_website: boolean; has_domain_email: boolean
@@ -46,6 +47,57 @@ export interface ThreeBBusiness {
 export interface BankabilityBreakdown {
   entity_formed: number; ein: number; business_address: number; business_phone: number; website: number; domain_email: number
   bank_account: number; revenue: number; business_credit: number; total: number
+}
+
+function normalizeBusiness(row: Record<string, unknown>): ThreeBBusiness {
+  const companyName = String(row.company_name ?? row.name ?? row.legal_name ?? '')
+  const address = (row.address ?? row.address_line1 ?? null) as string | null
+  const zip = (row.zip ?? row.postal_code ?? row.zip_code ?? null) as string | null
+  const website = (row.website ?? row.website_url ?? null) as string | null
+  const domainEmail = (row.domain_email ?? row.business_email ?? null) as string | null
+  const ein = (row.ein ?? null) as string | null
+  const businessPhone = (row.business_phone ?? null) as string | null
+  const businessType = String(row.business_type ?? row.type ?? 'other') as BusinessType
+
+  return {
+    id: String(row.id),
+    three_b_biz_id: String(row.three_b_biz_id ?? row.business_code ?? ''),
+    company_name: companyName,
+    slug: (row.slug ?? null) as string | null,
+    entity_type: (row.entity_type ?? null) as EntityType | null,
+    formation_date: (row.formation_date ?? null) as string | null,
+    ein,
+    mc_number: (row.mc_number ?? null) as string | null,
+    dot_number: (row.dot_number ?? null) as string | null,
+    state_of_formation: (row.state_of_formation ?? row.formation_state ?? null) as string | null,
+    address,
+    city: (row.city ?? null) as string | null,
+    state: (row.state ?? null) as string | null,
+    zip,
+    business_phone: businessPhone,
+    website,
+    domain_email: domainEmail,
+    quick_text_phone: (row.quick_text_phone ?? null) as string | null,
+    owner_id: (row.owner_id ?? null) as string | null,
+    business_type: businessType,
+    has_fleet: Boolean(row.has_fleet ?? true),
+    has_funding: Boolean(row.has_funding ?? (row.funding_status && row.funding_status !== 'none')),
+    has_credit: Boolean(row.has_credit ?? (row.credit_builder_status && row.credit_builder_status !== 'none')),
+    has_payments: Boolean(row.has_payments ?? false),
+    has_media: Boolean(row.has_media ?? (row.media_status && row.media_status !== 'none')),
+    has_content: Boolean(row.has_content ?? false),
+    stripe_account_id: (row.stripe_account_id ?? null) as string | null,
+    has_ein: Boolean(row.has_ein ?? ein),
+    has_business_address: Boolean(row.has_business_address ?? address),
+    has_business_phone: Boolean(row.has_business_phone ?? businessPhone),
+    has_website: Boolean(row.has_website ?? website),
+    has_domain_email: Boolean(row.has_domain_email ?? domainEmail),
+    has_bank_account: Boolean(row.has_bank_account ?? (row.bank_account_status && row.bank_account_status !== 'none')),
+    revenue_status: (row.revenue_status ?? 'none') as RevenueStatus,
+    credit_status: (row.credit_status ?? (row.credit_builder_status === 'none' ? 'none' : 'building') ?? 'none') as CreditStatus,
+    created_at: String(row.created_at ?? ''),
+    updated_at: String(row.updated_at ?? ''),
+  }
 }
 
 export function calcBankabilityScore(b: Pick<ThreeBBusiness,
@@ -73,8 +125,18 @@ export async function getThreeBProfile(): Promise<ThreeBProfile | null> {
     const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return null
     const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-    if (error) return null
-    return data as ThreeBProfile
+    if (error || !data) return null
+    const row = data as Record<string, unknown>
+    const raw3b = String(row.three_b_id ?? row.user_id ?? '')
+    return {
+      ...(data as unknown as ThreeBProfile),
+      three_b_id: raw3b.startsWith('3B-U-') ? raw3b : '',
+      first_name: (row.first_name ?? null) as string | null,
+      last_name: (row.last_name ?? null) as string | null,
+      state: (row.state ?? row.state_code ?? null) as string | null,
+      zip: (row.zip ?? null) as string | null,
+      default_business_id: (row.default_business_id ?? null) as string | null,
+    }
   } catch { return null }
 }
 
@@ -83,10 +145,10 @@ export async function getBusinessRegistry(): Promise<BusinessRegistryRow[]> {
     const supabase = createClient()
     const { data: { user } } = await createAuthClient().auth.getUser()
     if (!user) return []
-    const { data, error } = await supabase.from('business_members').select('role, businesses (*)').eq('user_id', user.id).order('joined_at', { ascending: true })
+    const { data, error } = await supabase.from('business_members').select('role, businesses (*)').eq('user_id', user.id).order('created_at', { ascending: true })
     if (error || !data) return []
     return data.filter(row => row.businesses).map(row => {
-      const biz = row.businesses as unknown as ThreeBBusiness
+      const biz = normalizeBusiness(row.businesses as unknown as Record<string, unknown>)
       return { business: biz, memberRole: row.role as EcosystemRole, bankability: calcBankabilityScore(biz) }
     })
   } catch { return [] }
@@ -96,8 +158,8 @@ export async function getBusiness(businessId: string): Promise<ThreeBBusiness | 
   try {
     const supabase = createClient()
     const { data, error } = await supabase.from('businesses').select('*').eq('id', businessId).single()
-    if (error) return null
-    return data as ThreeBBusiness
+    if (error || !data) return null
+    return normalizeBusiness(data as Record<string, unknown>)
   } catch { return null }
 }
 
@@ -105,61 +167,6 @@ function isMissingCreatorRpc(error: { code?: string; message?: string } | null):
   if (!error) return false
   const text = `${error.code ?? ''} ${error.message ?? ''}`.toLowerCase()
   return text.includes('pgrst202') || (text.includes('schema cache') && text.includes('create_3b_business_for_current_user'))
-}
-
-async function createBusinessCompatibilityFallback(input: {
-  company_name: string; business_type: BusinessType; entity_type?: EntityType; slug?: string
-}, userId: string): Promise<ThreeBBusiness> {
-  const supabase = createClient()
-
-  const modernInsert = {
-    company_name: input.company_name,
-    business_type: input.business_type,
-    entity_type: input.entity_type ?? null,
-    slug: input.slug ?? null,
-    owner_id: userId,
-  }
-
-  let business: ThreeBBusiness | null = null
-  let createError: { message: string } | null = null
-
-  const modern = await supabase.from('businesses').insert(modernInsert).select('*').single()
-  if (!modern.error && modern.data) {
-    business = modern.data as ThreeBBusiness
-  } else {
-    // Older Fleet schema compatibility: name/type are the canonical columns.
-    const legacy = await supabase.from('businesses').insert({
-      name: input.company_name,
-      type: input.business_type,
-      slug: input.slug ?? null,
-      owner_id: userId,
-      active: true,
-    }).select('*').single()
-    if (legacy.error || !legacy.data) createError = { message: legacy.error?.message ?? modern.error?.message ?? 'Could not create business.' }
-    else business = legacy.data as unknown as ThreeBBusiness
-  }
-
-  if (!business) throw new Error(createError?.message ?? 'Could not create business.')
-
-  try {
-    const ownerMembership = await supabase.from('business_members').upsert({ business_id: business.id, user_id: userId, role: 'owner' }, { onConflict: 'business_id,user_id' })
-    if (ownerMembership.error) throw ownerMembership.error
-
-    const fleetMembership = await supabase.from('fleet_business_members').upsert({ business_id: business.id, user_id: userId, role: 'owner', active: true }, { onConflict: 'business_id,user_id' })
-    if (fleetMembership.error) throw fleetMembership.error
-
-    const adminGrant = await supabase.from('fleet_member_portal_grants').upsert({
-      business_id: business.id, user_id: userId, portal: 'admin', permission_level: 'manage', granted_by: userId,
-    }, { onConflict: 'business_id,user_id,portal' })
-    if (adminGrant.error) throw adminGrant.error
-
-    await supabase.from('profiles').update({ default_business_id: business.id }).eq('id', userId).is('default_business_id', null)
-    return business
-  } catch (err) {
-    // Best-effort rollback so a failed membership/grant does not leave an orphan company.
-    await supabase.from('businesses').delete().eq('id', business.id).eq('owner_id', userId)
-    throw new Error(err instanceof Error ? err.message : 'Business was created but access setup failed. Please try again.')
-  }
 }
 
 export async function createBusiness(input: {
@@ -176,8 +183,8 @@ export async function createBusiness(input: {
     p_slug: input.slug ?? null,
   })
 
-  if (!error && data) return data as ThreeBBusiness
-  if (isMissingCreatorRpc(error)) return createBusinessCompatibilityFallback(input, user.id)
+  if (!error && data) return normalizeBusiness(data as Record<string, unknown>)
+  if (isMissingCreatorRpc(error)) throw new Error('Business setup is not available in the connected identity database yet. Please refresh and try again.')
   if (error) throw new Error(error.message)
   throw new Error('Business creation returned no record.')
 }
@@ -190,7 +197,14 @@ export async function updateBankabilityFactors(
 ): Promise<boolean> {
   try {
     const supabase = createClient()
-    const { error } = await supabase.from('businesses').update(factors).eq('id', businessId)
+    const patch: Record<string, unknown> = {}
+    if ('formation_date' in factors) patch.formation_date = factors.formation_date
+    if ('entity_type' in factors) patch.entity_type = factors.entity_type
+    if ('ein' in factors) patch.ein = factors.ein
+    if ('business_phone' in factors) patch.business_phone = factors.business_phone
+    if ('website' in factors) patch.website_url = factors.website
+    if ('domain_email' in factors) patch.business_email = factors.domain_email
+    const { error } = await supabase.from('businesses').update(patch).eq('id', businessId)
     return !error
   } catch { return false }
 }
