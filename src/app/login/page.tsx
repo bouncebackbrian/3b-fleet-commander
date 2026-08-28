@@ -7,7 +7,10 @@ import { createAuthClient } from '@/lib/auth-client'
 const ALLOWED_HOSTS = ['bouncebackbrian.com']
 
 function sanitizeReturnTo(raw: string | null): string {
-  const fallback = '/dashboard'
+  // Fleet Commander now lands authenticated users in their selected 3B
+  // Business context. /dashboard is a legacy product surface and should not
+  // be the default post-login destination.
+  const fallback = '/fleet'
   if (!raw) return fallback
   try {
     const url = new URL(decodeURIComponent(raw))
