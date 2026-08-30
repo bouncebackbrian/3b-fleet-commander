@@ -76,8 +76,12 @@ describe('canDispatchWithDefects', () => {
     expect(canDispatchWithDefects([{ severity: 'safety_critical', status: 'open' }], null)).toBe(false)
   })
 
-  it('allows dispatch with a documented override reason', () => {
-    expect(canDispatchWithDefects([{ severity: 'out_of_service', status: 'acknowledged' }], 'Fleet manager approved temp repair, service scheduled')).toBe(true)
+  it('allows dispatch with a documented override reason for a safety-critical defect', () => {
+    expect(canDispatchWithDefects([{ severity: 'safety_critical', status: 'acknowledged' }], 'Fleet manager approved temp repair, service scheduled')).toBe(true)
+  })
+
+  it('never bypasses an out-of-service defect, even with a documented override reason', () => {
+    expect(canDispatchWithDefects([{ severity: 'out_of_service', status: 'acknowledged' }], 'Fleet manager approved temp repair, service scheduled')).toBe(false)
   })
 
   it('ignores a resolved defect even if it was severe', () => {
